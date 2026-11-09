@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>[hidden]{display:none!important}body{margin:0}</style></head><body>
+<title>Exit_ProtocoL Character Concepts</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: one numbered concept card per character direction, each showing 3 color variants + its glitched state. Single dark theme to match the game. */
+:root{--bg:#141922;--frame:#2a3140;--frame3:#4a5568;--edge:#0b0e13;--ink:#f2f5f8;--muted:#9aa6b8;--red:#e0394d;--sky:#a8d8ff;--gold:#f2b84b;--pink:#ff4fa3;
+--cond:"Barlow Condensed","Arial Narrow",sans-serif;--body:"Barlow",system-ui,sans-serif;--mono:"Share Tech Mono",ui-monospace,monospace;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--body);margin:0;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:18px}
+h1,h2{font-family:var(--cond);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin:0;line-height:1.05}
+h1{font-size:clamp(2rem,5vw,3rem)} h2{font-size:1.7rem}
+p{margin:0;max-width:65ch}
+.lead{color:var(--muted);font-size:1.05rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+@media (max-width:420px){.grid{grid-template-columns:1fr}}
+.card{background:var(--frame);border:4px solid var(--edge);border-radius:18px;box-shadow:inset 0 0 0 3px var(--frame3);padding:16px;display:grid;gap:12px;align-content:start;min-width:0}
+.head{display:flex;align-items:center;gap:10px}
+.num{width:38px;height:38px;flex:none;border-radius:10px;border:3px solid var(--edge);background:var(--red);color:#fff;font-family:var(--cond);font-weight:800;font-size:1.4rem;display:grid;place-items:center}
+.stage{background:radial-gradient(circle at 50% 55%,rgba(120,150,170,.35),transparent 65%),#0b0e13;border:4px solid var(--edge);border-radius:14px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:12px 8px 6px;align-items:end}
+.stage figure{margin:0;display:grid;justify-items:center;gap:2px}
+.stage svg{width:100%;max-width:96px;height:auto}
+.stage figcaption{font-family:var(--mono);font-size:.7rem;color:var(--muted)}
+.stage figure.gl figcaption{color:var(--pink)}
+dl{margin:0;display:grid;gap:6px}
+dt{font-family:var(--cond);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.8rem;color:var(--sky)}
+dd{margin:0;font-size:.95rem}
+.pros{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-family:var(--cond);font-weight:800;letter-spacing:.05em;text-transform:uppercase;font-size:.78rem;padding:0 8px;border-radius:6px;border:2px solid var(--edge);background:var(--gold);color:var(--edge)}
+.tag.r{background:var(--frame3);color:var(--ink)}
+.note{background:#fff3dc;color:#2a1a0c;border:4px solid var(--edge);border-radius:14px;padding:12px 16px}
+</style>
+
+<div class="wrap">
+  <div><span class="tag">Exit_ProtocoL · Character direction</span><h1 style="margin-top:8px">Pick who walks the office</h1>
+  <p class="lead" style="margin-top:6px">Six original directions. Each card shows three color variants and how that character looks when it glitches. Pick one, or mix two (for example, a Meeple body with a Screen-Head face).</p></div>
+  <div class="grid" id="grid"></div>
+  <div class="note"><b>How to choose:</b> think about what the room should feel at the facilitation. Cute and social? Sharp and techy? Board-game first? The character sets that tone more than any other piece.</div>
+</div>
+
+<script>
+(function(){
+const E="#0b0e13",st=`stroke="${E}" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"`;
+const VAR=[["#d8323f","Red"],["#2f5fe0","Blue"],["#f2b84b","Gold"]];
+const shade=(h,f)=>{const n=parseInt(h.slice(1),16);const c=x=>Math.min(255,Math.round(x*f));return "#"+((1<<24)+(c((n>>16)&255)<<16)+(c((n>>8)&255)<<8)+c(n&255)).toString(16).slice(1)};
+const glitch=(svg)=>svg.replace("<svg",`<svg style="filter:drop-shadow(3px 0 0 #ff4fa3) drop-shadow(-3px 0 0 #38e6d6)"`);
+
+/* 1. Screen-Head */
+function screenhead(c,g){const scr=g?"#ff5b6e":"#5ff2ff";return `<svg viewBox="-6 -8 132 158"><ellipse cx="60" cy="146" rx="32" ry="5" fill="rgba(255,255,255,.08)"/>
+<rect x="38" y="110" width="17" height="26" rx="7" fill="#2a2f3a" ${st}/><rect x="65" y="110" width="17" height="26" rx="7" fill="#2a2f3a" ${st}/>
+<rect x="16" y="72" width="16" height="38" rx="8" fill="${shade(c,.75)}" ${st}/><rect x="88" y="72" width="16" height="38" rx="8" fill="${shade(c,.75)}" ${st}/>
+<rect x="28" y="64" width="64" height="58" rx="20" fill="${c}" ${st}/><path d="M60 72 l-6 6 l6 26 l6 -26z" fill="#fff" ${st}/>
+<rect x="18" y="4" width="84" height="58" rx="14" fill="#e6ecf2" ${st}/><rect x="27" y="12" width="66" height="42" rx="9" fill="#13202b" stroke="${E}" stroke-width="3"/>
+${g?`<rect x="34" y="22" width="22" height="6" fill="${scr}"/><rect x="58" y="30" width="30" height="4" fill="#6aa8ff"/><rect x="40" y="40" width="40" height="4" fill="${scr}"/>`:`<path d="M44 34 l5 -5 l5 5 M66 34 l5 -5 l5 5" stroke="${scr}" stroke-width="4" fill="none"/><rect x="50" y="43" width="20" height="3" fill="${scr}"/>`}</svg>`}
+
+/* 2. Meeple token (board-game piece) */
+function meeple(c,g){return `<svg viewBox="0 0 120 150"><ellipse cx="60" cy="140" rx="40" ry="7" fill="rgba(255,255,255,.08)"/>
+<path d="M60 10 a20 20 0 0 1 20 20 a20 20 0 0 1 -9 16 Q98 50 108 62 Q112 70 102 74 L86 74 L98 124 Q100 134 90 134 H70 L60 108 L50 134 H30 Q20 134 22 124 L34 74 L18 74 Q8 70 12 62 Q22 50 49 46 a20 20 0 0 1 -9 -16 a20 20 0 0 1 20 -20Z" fill="${c}" ${st}/>
+<path d="M30 70 Q60 80 90 70" stroke="${shade(c,.7)}" stroke-width="5" fill="none"/>
+<path d="M60 52 l-6 6 l6 24 l6 -24z" fill="#fff" stroke="${E}" stroke-width="3" stroke-linejoin="round"/>
+<circle cx="53" cy="28" r="3.4" fill="${E}"/><circle cx="67" cy="28" r="3.4" fill="${E}"/>
+${g?`<rect x="20" y="88" width="80" height="6" fill="#ff4fa3"/><rect x="34" y="100" width="54" height="5" fill="#38e6d6"/>`:`<path d="M54 36 q6 4 12 0" stroke="${E}" stroke-width="3" fill="none"/>`}
+<path d="M40 14 Q60 -4 80 14 L76 20 Q60 10 44 20Z" fill="${shade(c,.6)}" ${st}/></svg>`}
+
+/* 3. Office object buddies (a mug, a sticky note, a stapler) */
+function objects(c,g,i){
+  const eyes=`<circle cx="48" cy="72" r="4" fill="${E}"/><circle cx="68" cy="72" r="4" fill="${E}"/>`;
+  const gl=g?`<rect x="18" y="60" width="80" height="5" fill="#ff4fa3"/><rect x="28" y="84" width="60" height="4" fill="#38e6d6"/>`:"";
+  const legs=`<path d="M46 124 v14 M70 124 v14" stroke="${E}" stroke-width="5"/><ellipse cx="44" cy="140" rx="9" ry="5" fill="${E}"/><ellipse cx="72" cy="140" rx="9" ry="5" fill="${E}"/>`;
+  if(i===0)return `<svg viewBox="0 0 120 150">${legs}<path d="M92 66 q22 0 22 20 q0 20 -22 20" fill="none" stroke="${E}" stroke-width="11"/><path d="M92 66 q22 0 22 20 q0 20 -22 20" fill="none" stroke="${c}" stroke-width="5"/><rect x="24" y="44" width="70" height="82" rx="12" fill="${c}" ${st}/><rect x="24" y="44" width="70" height="14" rx="6" fill="#7a4d2a" ${st}/><path d="M44 30 q4 -8 0 -14 M60 30 q4 -8 0 -14" stroke="#9aa6b8" stroke-width="3" fill="none"/>${eyes}<path d="M50 86 q8 6 16 0" stroke="${E}" stroke-width="3" fill="none"/>${gl}</svg>`;
+  if(i===1)return `<svg viewBox="0 0 120 150">${legs}<path d="M18 40 H100 V112 L86 126 H18Z" fill="${c}" ${st}/><path d="M86 126 V112 H100" fill="${shade(c,.75)}" ${st}/><path d="M30 98 h40 M30 106 h28" stroke="${shade(c,.6)}" stroke-width="3"/>${eyes}<path d="M50 84 q8 6 16 0" stroke="${E}" stroke-width="3" fill="none"/>${gl}</svg>`;
+  return `<svg viewBox="0 0 120 150">${legs}<rect x="14" y="96" width="94" height="26" rx="8" fill="#7f8fa1" ${st}/><path d="M18 96 Q18 52 50 52 H104 V96Z" fill="${c}" ${st}/><circle cx="92" cy="74" r="4" fill="#fff"/>${eyes.replace(/cy="72"/g,'cy="76"')}<path d="M48 88 q8 6 16 0" stroke="${E}" stroke-width="3" fill="none"/>${gl}</svg>`;
+}
+
+/* 4. Pixel sprite (16x20) */
+const PX=["....hhhhhh....","...hhhhhhhh...","...hssssssh...","...sseesees...","...ssssssss...","....ssmmss....",".....ssss.....","...cccttccc...","..ccccttcccc..","..ccccttcccc..","..sccccccccs..","..s.cccccc.s..","....pppppp....","....pp..pp....","....pp..pp....","...bbb..bbb..."];
+function pixel(c,g){const col={h:"#3b2416",s:"#c98f62",e:E,m:"#7a3b2a",c:c,t:"#fff",p:"#2a2f3a",b:E};let r="";PX.forEach((row,y)=>[...row].forEach((ch,x)=>{if(ch===".")return;let xx=x;if(g&&(y===4||y===9||y===10))xx=x+(y===9?2:-1);r+=`<rect x="${xx*8}" y="${y*8}" width="8.4" height="8.4" fill="${g&&y===4&&ch==="s"?"#ff4fa3":col[ch]}"/>`}));
+  return `<svg viewBox="-8 -8 128 148" shape-rendering="crispEdges">${r}${g?`<rect x="-4" y="72" width="120" height="6" fill="#38e6d6" opacity=".8"/>`:""}</svg>`}
+
+/* 5. Hologram / wireframe */
+function holo(c,g){const lc=shade(c,1.25);return `<svg viewBox="0 0 120 150"><defs><linearGradient id="hg${c.slice(1)}${g?1:0}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${lc}" stop-opacity=".55"/><stop offset="1" stop-color="${lc}" stop-opacity=".05"/></linearGradient></defs>
+<ellipse cx="60" cy="140" rx="40" ry="8" fill="none" stroke="${lc}" stroke-width="3"/><ellipse cx="60" cy="140" rx="26" ry="5" fill="${lc}" opacity=".4"/>
+<path d="M44 140 L36 30 M76 140 L84 30" stroke="${lc}" stroke-width="1" opacity=".3"/>
+<g fill="url(#hg${c.slice(1)}${g?1:0})" stroke="${lc}" stroke-width="2.5" ${g?'transform="translate(4 0) skewX(-6)"':""}>
+<ellipse cx="60" cy="42" rx="20" ry="24"/><path d="M60 18 V66 M40 42 H80 M44 28 Q60 36 76 28 M44 56 Q60 50 76 56" fill="none"/>
+<path d="M22 118 Q24 82 60 76 Q96 82 98 118Z"/><path d="M40 82 L60 118 L80 82 M30 100 H90" fill="none"/></g>
+<rect x="44" y="36" width="32" height="8" rx="3" fill="${lc}"/>
+${[0,1,2,3,4,5,6,7].map(i=>`<rect x="20" y="${20+i*13}" width="80" height="1.5" fill="${lc}" opacity=".25"/>`).join("")}
+${g?`<rect x="14" y="60" width="92" height="5" fill="#ff4fa3"/><rect x="30" y="96" width="70" height="4" fill="#38e6d6"/>`:""}</svg>`}
+
+/* 6. Cursor sprites */
+function cursor(c,g,i){const sh=`<ellipse cx="60" cy="140" rx="26" ry="5" fill="rgba(255,255,255,.08)"/>`;
+  const trail=`<g opacity=".35">${[0,1,2].map(k=>`<circle cx="${92-k*14}" cy="${120-k*10}" r="${6-k*1.5}" fill="${c}"/>`).join("")}</g>`;
+  let body;
+  if(i===0)body=`<path d="M34 18 L34 112 L56 92 L72 128 L88 120 L72 86 L102 84Z" fill="${c}" ${st}/>`;
+  else if(i===1)body=`<path d="M48 30 Q48 18 58 18 Q68 18 68 30 V64 Q72 54 80 56 Q88 58 86 70 Q92 62 98 66 Q104 70 100 82 V100 Q100 128 72 128 H64 Q44 128 34 108 L22 84 Q18 74 26 72 Q34 70 40 80 L48 92Z" fill="${c}" ${st}/>`;
+  else body=`<circle cx="62" cy="70" r="40" fill="none" stroke="${E}" stroke-width="14"/><circle cx="62" cy="70" r="40" fill="none" stroke="${c}" stroke-width="7" stroke-dasharray="60 20"/>`;
+  const eyes=i===2?`<circle cx="52" cy="66" r="5" fill="#fff" ${st}/><circle cx="72" cy="66" r="5" fill="#fff" ${st}/>`:i===1?`<circle cx="60" cy="96" r="4" fill="${E}"/><circle cx="76" cy="96" r="4" fill="${E}"/>`:`<circle cx="50" cy="66" r="4" fill="${E}"/><circle cx="64" cy="66" r="4" fill="${E}"/>`;
+  return `<svg viewBox="0 0 120 150">${sh}${trail}<g ${g?'transform="translate(6 0) skewX(-8)"':""}>${body}${eyes}</g>${g?`<rect x="10" y="70" width="100" height="5" fill="#ff4fa3"/><rect x="30" y="92" width="70" height="4" fill="#38e6d6"/>`:""}</svg>`}
+
+const CONCEPTS=[
+ {n:"Screen-Head",fn:(c,g,i)=>screenhead(c,g),pitch:"An office worker whose head is a computer monitor. The face is pixels on the screen.",custom:"Body color, screen glow, screen face (happy, focused, glitch), hats, ties, lanyards, desk pets.",glitch:"The screen tears and scrambles. Easy to read across a room.",fit:"Tech + office in one shape. It's the current prototype.",tags:["Techy","Easy to animate","In prototype"]},
+ {n:"Meeple Token",fn:(c,g,i)=>meeple(c,g),pitch:"Players are board-game pieces wearing work clothes, standing on the office map like a game board.",custom:"Token color, tie, hat, hair tuft, badge, little props held at the side.",glitch:"The token splits and shifts like a misprinted piece.",fit:"Nods straight to the assignment: a board game about your cycle.",tags:["Board-game first","Simple","Bold on a map"]},
+ {n:"Office Objects",fn:(c,g,i)=>objects(c,g,i),pitch:"Everyone is a living office supply: a coffee mug, a sticky note, a stapler, a desk plant, a rubber duck.",custom:"Pick your object type first, then its color, face and one accessory.",glitch:"The object flickers between two different objects.",fit:"Funniest, most memorable for guests. Each object can hint at a work style.",tags:["Playful","Big personality","Most to draw"]},
+ {n:"Pixel Employee",fn:(c,g,i)=>pixel(c,g),pitch:"A retro 16-bit sprite of an intern, like an old office RPG.",custom:"Shirt, hair and skin palette, plus pixel hats and items. Color swaps are instant.",glitch:"Rows of pixels slide sideways and recolor.",fit:"Matches the pixel hearts and stars you liked, and the code-rain intro.",tags:["Retro","Matches pixel UI","Small file size"]},
+ {n:"Hologram",fn:(c,g,i)=>holo(c,g),pitch:"Players appear as glowing wireframe holograms, still being \"rendered\" by the simulation.",custom:"Glow color, visor, wire pattern. At graduation the hologram turns solid.",glitch:"Scanlines tear and the body skews.",fit:"Leans hardest into the Matrix side. Exiting = becoming real.",tags:["Sci-fi","Strong story","Less cute"]},
+ {n:"Cursor Sprite",fn:(c,g,i)=>cursor(c,g,i),pitch:"Each player is a mouse pointer with eyes: an arrow, a hand, or a loading spinner.",custom:"Cursor shape, color, trail effect, click sound.",glitch:"The pointer jitters and leaves broken trails.",fit:"Most abstract. You literally move around inside the computer.",tags:["Minimal","Clever","Least human"]}];
+
+document.getElementById("grid").innerHTML=CONCEPTS.map((c,k)=>`<article class="card">
+ <div class="head"><span class="num">${k+1}</span><h2>${c.n}</h2></div>
+ <div class="stage">${VAR.map(([col,nm],i)=>`<figure>${c.fn(col,false,i)}<figcaption>${nm}</figcaption></figure>`).join("")}<figure class="gl">${glitch(c.fn("#2f5fe0",true,0))}<figcaption>Glitched</figcaption></figure></div>
+ <p>${c.pitch}</p>
+ <dl><dt>Customize</dt><dd>${c.custom}</dd><dt>When it glitches</dt><dd>${c.glitch}</dd><dt>Why it fits</dt><dd>${c.fit}</dd></dl>
+ <div class="pros">${c.tags.map((t,i)=>`<span class="tag ${i===2?"r":""}">${t}</span>`).join("")}</div></article>`).join("");
+})();
+</script>
+
+</body></html>

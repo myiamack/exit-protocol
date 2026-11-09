@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>[hidden]{display:none!important}body{margin:0}</style></head><body>
+<title>Exit_ProtocoL Character System</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Layout: the character system built around the Pixel Intern.
+   1 live pixel builder, 2 instructors (Screen-Head + Meeple dialog boxes), 3 pixel tools, 4 cursor set, 5 map + hologram state.
+   Single dark theme to match the game. */
+:root{--bg:#141922;--frame:#2a3140;--panel:#1d232e;--frame3:#4a5568;--edge:#0b0e13;--ink:#f2f5f8;--muted:#9aa6b8;--red:#e0394d;--sky:#a8d8ff;--gold:#f2b84b;--pink:#ff4fa3;--ok:#4fe08a;--cream:#fff3dc;
+--common:#9aa6b8;--rare:#3a74ff;--epic:#a05cff;--legend:#f2b84b;
+--cond:"Barlow Condensed","Arial Narrow",sans-serif;--body:"Barlow",system-ui,sans-serif;--mono:"Share Tech Mono",ui-monospace,monospace;--px:"Pixelify Sans",ui-monospace,monospace;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--body);margin:0;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:22px}
+h1,h2,h3{font-family:var(--cond);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin:0;line-height:1.05}
+h1{font-size:clamp(2rem,5vw,3rem)} h2{font-size:1.9rem} h3{font-size:1.2rem}
+p{margin:0;max-width:68ch}
+.lead{color:var(--muted);font-size:1.05rem}
+.hint{color:var(--muted);font-size:.93rem}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.tag{display:inline-block;font-family:var(--cond);font-weight:800;letter-spacing:.05em;text-transform:uppercase;font-size:.8rem;padding:0 8px;border-radius:6px;border:2px solid var(--edge);background:var(--gold);color:var(--edge)}
+.tag.p{background:var(--pink);color:#fff}.tag.b{background:var(--sky)}.tag.m{background:var(--frame3);color:var(--ink)}
+.sec{background:var(--frame);border:4px solid var(--edge);border-radius:20px;box-shadow:inset 0 0 0 3px var(--frame3);padding:18px;display:grid;gap:14px;min-width:0}
+.sechead{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.num{width:42px;height:42px;flex:none;border-radius:10px;border:3px solid var(--edge);background:var(--red);color:#fff;font-family:var(--cond);font-weight:800;font-size:1.5rem;display:grid;place-items:center}
+.btn{font-family:var(--cond);font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:1rem;border:3px solid var(--edge);border-radius:10px;padding:5px 14px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18);background:var(--sky);color:var(--edge)}
+.btn.red{background:var(--red);color:#fff}
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.roles div{background:var(--panel);border:3px solid var(--edge);border-radius:14px;padding:12px;display:grid;gap:4px;align-content:start}
+.roles b{font-family:var(--cond);font-size:1.2rem;text-transform:uppercase;letter-spacing:.04em}
+.roles svg{width:56px;height:56px}
+
+/* builder */
+.builder{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.3fr);gap:16px}
+@media (max-width:820px){.builder{grid-template-columns:1fr}}
+.stagebox{position:sticky;top:12px;background:radial-gradient(circle at 50% 48%,#c9d6e6 0,#8fa3bd 32%,#2a3448 62%,#0b0e13 80%);border:4px solid var(--edge);border-radius:16px;display:grid;justify-items:center;gap:8px;padding:16px;align-content:center;min-height:420px}
+@media (max-width:820px){.stagebox{position:relative;top:0;min-height:0}}
+.stagebox .big{width:min(220px,70%)}
+.stagebox .big svg{width:100%;height:auto;display:block}
+.plate{font-family:var(--px);font-weight:700;font-size:1.2rem;background:var(--cream);color:var(--edge);border:3px solid var(--edge);border-radius:8px;padding:0 14px}
+.opts{display:grid;gap:12px;align-content:start}
+.og{display:grid;gap:6px}
+.og .label{font-family:var(--cond);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.85rem;color:var(--sky)}
+.sws{display:flex;gap:8px;flex-wrap:wrap}
+.sw{width:38px;height:38px;border:3px solid var(--edge);border-radius:8px;padding:0;position:relative;box-shadow:0 0 0 2px #dfe6ee}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 3px var(--edge),0 0 0 7px var(--gold);transform:scale(1.08)}
+.sw[aria-pressed="true"]::after,.tile[aria-pressed="true"]::after{content:"✓";position:absolute;top:-10px;right:-10px;width:22px;height:22px;border-radius:50%;background:var(--ok);border:3px solid var(--edge);color:var(--edge);font-weight:800;font-size:.75rem;display:grid;place-items:center}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:10px}
+.tile{position:relative;background:#dfe6ee;color:#141922;border:3px solid var(--edge);border-radius:12px;padding:6px 2px 4px;display:grid;justify-items:center;gap:2px;font-family:var(--cond);font-weight:800;font-size:.8rem;letter-spacing:.03em;text-transform:uppercase;transition:transform .08s}
+.tile:hover{background:#ffffff;transform:translateY(-2px)}
+.tile svg{width:60px;height:60px;display:block}
+.tile[aria-pressed="true"]{background:#ffe08a;box-shadow:0 0 0 4px var(--gold);transform:translateY(-2px)}
+.lineup{background:radial-gradient(circle at 50% 70%,rgba(120,150,170,.3),transparent 65%),#0b0e13;border:4px solid var(--edge);border-radius:16px;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;padding:14px 10px 10px;align-items:end}
+@media (max-width:760px){.lineup{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.lineup button{background:none;border:0;padding:0;display:grid;justify-items:center;gap:2px;font-family:var(--px);font-size:.8rem}
+.lineup svg{width:100%;max-width:90px;height:auto;display:block}
+
+/* instructors: RPG dialog boxes */
+.dialogs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px}
+.dlg{background:#0b0e13;border:4px solid var(--edge);border-radius:16px;box-shadow:inset 0 0 0 3px var(--frame3);display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}
+.dlg .top{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border-bottom:3px solid var(--edge)}
+.dlg .top b{font-family:var(--cond);font-size:1.15rem;text-transform:uppercase;letter-spacing:.05em}
+.dlg .body{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;padding:14px;align-items:center}
+.portrait{background:radial-gradient(circle at 50% 55%,rgba(120,150,170,.35),transparent 70%);border:3px solid var(--frame3);border-radius:12px;padding:4px}
+.portrait svg{width:100%;height:auto;display:block}
+.portrait.glitching{animation:gl .18s steps(2) infinite;filter:drop-shadow(3px 0 0 #ff4fa3) drop-shadow(-3px 0 0 #38e6d6)}
+@keyframes gl{0%{transform:translate(2px,-1px) skewX(-4deg)}50%{transform:translate(-3px,1px) skewX(5deg)}100%{transform:none}}
+.speech{font-family:var(--px);font-size:1.02rem;line-height:1.45;min-height:5.5em;color:var(--ink)}
+.speech.corrupt{color:var(--pink);text-shadow:2px 0 #38e6d6}
+.dlg .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-top:3px solid var(--edge);background:var(--panel)}
+.dots{display:flex;gap:4px}.dots i{width:9px;height:9px;border-radius:2px;background:var(--frame3)}.dots i.on{background:var(--gold)}
+
+/* tools */
+.store{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr));gap:12px}
+.tool{background:var(--panel);border:4px solid var(--edge);border-radius:16px;display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;padding:12px;align-items:start;box-shadow:inset 0 0 0 3px var(--r)}
+.tool .art{background:#0b0e13;border:3px solid var(--edge);border-radius:10px;aspect-ratio:1;display:grid;place-items:center}
+.tool .art svg{width:80%;height:auto;display:block}
+.tool h3{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.rar{font-family:var(--cond);font-weight:800;font-size:.8rem;letter-spacing:.08em;color:var(--r)}
+.ab{font-family:var(--cond);font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--sky);font-size:.9rem}
+.tool p{font-size:.92rem}
+.uses{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+
+/* cursor */
+.cursors{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:760px){.cursors{grid-template-columns:1fr}}
+.cdemo{position:relative;background:#0b0e13;border:4px solid var(--edge);border-radius:16px;min-height:230px;display:grid;place-items:center;gap:10px;padding:18px;cursor:var(--cur-red),auto;overflow:hidden}
+.cdemo.gl{cursor:var(--cur-gl),auto}
+.cdemo .btn{cursor:inherit}
+.cdemo .mock{display:grid;gap:10px;width:min(280px,100%)}
+.cdemo .mock .btn{font-size:1.25rem;padding:8px}
+.ctable{display:grid;gap:8px}
+.crow{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;align-items:center;background:var(--panel);border:3px solid var(--edge);border-radius:12px;padding:6px 10px}
+.crow svg{width:44px;height:44px;display:block}
+.crow b{font-family:var(--cond);text-transform:uppercase;letter-spacing:.04em}
+
+/* map */
+.mapbox{background:#0b0e13;border:4px solid var(--edge);border-radius:16px;overflow-x:auto}
+.mapbox svg{display:block;width:100%;min-width:600px;height:auto}
+.ghostroles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px}
+.ghostroles div{background:var(--panel);border:3px solid var(--edge);border-radius:14px;padding:12px;display:grid;gap:6px;align-content:start}
+.ghosts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:12px}
+.ghost{background:#0b0e13;border:4px solid var(--edge);border-radius:14px;display:grid;grid-template-columns:70px minmax(0,1fr);gap:12px;padding:12px;align-items:center;box-shadow:inset 0 0 0 3px #3a3f5a}
+.ghost .gs{animation:float 3.2s ease-in-out infinite,flick 4s steps(1) infinite}
+.ghost .gs svg{width:100%;height:auto;display:block}
+.ghost b{font-family:var(--px);color:#e9ecff}
+.ghost q{font-family:var(--px);font-size:.92rem;color:#c9cff5;quotes:"\201C" "\201D"}
+@keyframes float{50%{transform:translateY(-6px)}}
+@keyframes flick{0%,86%{opacity:1}88%{opacity:.25}90%{opacity:.9}92%{opacity:.3}94%{opacity:1}}
+.gwalk{transition:opacity .9s ease}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.92rem;color:var(--muted)}
+.note{background:var(--cream);color:#2a1a0c;border:4px solid var(--edge);border-radius:14px;padding:12px 16px;display:grid;gap:6px}
+.note ol,.note ul{margin:0;padding-left:20px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div><span class="tag">Exit_ProtocoL · Character system v2</span><h1 style="margin-top:8px">The Pixel Intern, and who's around them</h1>
+  <p class="lead" style="margin-top:6px">Every player is a <b>Pixel Intern</b>. The other concepts get jobs of their own: Screen-Heads and Meeples teach, office objects become tools, the red cursor drives the menus, and holograms show when someone is glitched.</p></div>
+
+  <div class="roles" id="roles"></div>
+
+  <section class="sec">
+    <div class="sechead"><span class="num">1</span><h2>Build your Pixel Intern</h2><span class="tag b">Try it</span></div>
+    <p class="hint">Start with <b>Masculine</b> (the original intern) or <b>Feminine</b> (defined waist and hips, softer chin). Then mix any hair, skin tone, outfit and accessory. Nothing is locked to one or the other. Tap anyone in the lineup to load their look.</p>
+    <div class="builder">
+      <div class="stagebox"><div class="big" id="bigSprite"></div><span class="plate" id="plate">INTERN 060</span><div style="display:flex;gap:8px"><button class="btn" id="rand">Randomize</button><button class="btn red" id="glBtn">Glitch</button></div></div>
+      <div class="opts" id="opts"></div>
+    </div>
+    <div class="lineup" id="lineup"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sechead"><span class="num">2</span><h2>Instructors</h2><span class="tag p">Press Next</span></div>
+    <p>Instructors appear in <b>How to Play</b> and at the start of each level. <b>Screen-Heads</b> explain the system: glitches and the Contrarian. When they finish talking about glitches, they glitch. <b>Meeples</b> teach the Cooperative side, the players who win by helping each other. A <b>Hologram</b> teaches the Independents.</p>
+    <div class="dialogs" id="dialogs"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sechead"><span class="num">3</span><h2>Tools: office objects, in pixels</h2><span class="tag p">Proposed · team to approve</span></div>
+    <p>Same idea as before, redrawn as pixel items so they match the interns. Pick one tool before Level 1. Each ability uses rules you already have.</p>
+    <div class="store" id="store"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sechead"><span class="num">4</span><h2>The cursor</h2></div>
+    <div class="cursors">
+      <div class="cdemo" id="cdemo"><div class="mock"><span class="hint" style="text-align:center">Move your mouse here, then click a button</span><button class="btn red">Play</button><button class="btn">How to play</button><button class="btn">Wardrobe</button></div></div>
+      <div class="ctable" id="ctable"></div>
+    </div>
+    <p class="hint"><b>Decided: menus only.</b> On the start page, menu and wardrobe, the pointer is the red arrow. The hand, spinner and target below stay as ideas only, so gameplay screens keep the normal pointer. Every click makes it glitch for a split second, then it snaps back to red. On phones there's no pointer, so tapped buttons flash the same glitch instead.</p>
+  </section>
+
+  <section class="sec">
+    <div class="sechead"><span class="num">5</span><h2>On the office map</h2></div>
+    <p>Interns walk the map as their pixel selves. Holograms have two jobs here:</p>
+    <div class="ghostroles">
+      <div><span class="tag b">Role A · Glitched players</span><p>When a real player is <b>Glitching</b> or <b>Stuck</b>, they show as a cyan hologram of their own intern. Graduates turn solid again on the exit screen.</p></div>
+      <div><span class="tag" style="background:#e9ecff">Role B · Wandering ghosts</span><p>Three <b>default interns who glitched out</b> of the program. They're not players. They drift through the office, fade in and out at random, and sometimes leave behind an anomaly clue.</p></div>
+    </div>
+    <div class="mapbox" id="map"></div>
+    <div class="ghosts" id="ghosts"></div>
+    <div class="legend"><span>● Solid = OK</span><span>● Cyan hologram = player Glitching or Stuck</span><span>● Pale flickering ghost = wandering ghost (watch them move)</span><span>● Small item by the feet = equipped tool</span></div>
+  </section>
+
+  <div class="note"><b>Still open</b><ol>
+                <li>Office objects: tools with abilities (section 3), or also the props in each room?</li>
+    <li>Do you want body options beyond hair and clothes (height, build)?</li>
+  </ol></div>
+</div>
+
+<script>
+(function(){
+const E="#0b0e13";
+const shade=(h,f)=>{const n=parseInt(h.slice(1),16);const c=x=>Math.min(255,Math.round(x*f));return "#"+((1<<24)+(c((n>>16)&255)<<16)+(c((n>>8)&255)<<8)+c(n&255)).toString(16).slice(1)};
+
+/* ================= PIXEL INTERN ENGINE ================= */
+const SKIN=["#ffe0c8","#f6cba8","#e8b48c","#d8a072","#c68c5e","#ad7448","#94603a","#7c4d2e","#653c23","#4e2d1a"];
+const HAIRC=["#16100c","#3b2416","#6b4226","#a0522d","#d9a35b","#f1dfb0","#a9a9b3","#d8323f","#7b3fd4","#2f5fe0"];
+const CLOTH=["#d8323f","#2f5fe0","#f2b84b","#1f8a3b","#ec5fc0","#7b3fd4","#f2f5f8","#3e4650","#38c6d6","#f2852a"];
+const BOTC=["#2a2f3a","#13294b","#4a5f8a","#6b4a2e","#e6dccb","#d8323f"];
+const BODY=["Masculine","Feminine"];
+const HAIR=["Short","Buzz","Curly","Afro","Puffs","Bob","Long","Ponytail","Bun","Braids","Head wrap","None"];
+const TOP=["Tee","Blazer","Hoodie","Cardigan","Polo"];
+const BOT=["Pants","Skirt","Shorts"];
+const HAT=["None","Cap","Beanie","Headphones","Bow","Crown","Hard hat"];
+const EXTRA=["None","Glasses","Lashes","Earrings","Lanyard","Freckles"];
+const GW=16,GH=27,OY=2; // grid with outline margin
+
+function sprite(a,o={}){
+  const g=Array.from({length:GH},()=>Array(GW).fill(null));
+  const set=(x,y,c)=>{y+=OY;if(x>=0&&x<GW&&y>=0&&y<GH)g[y][x]=c};
+  const R=(x,y,w,h,c)=>{for(let j=0;j<h;j++)for(let i=0;i<w;i++)set(x+i,y+j,c)};
+  const sk=SKIN[a.skin],skd=shade(sk,.85),hc=HAIRC[a.hairC],hcd=shade(hc,.7),hcl=shade(hc,1.35),cl=CLOTH[a.top],cld=shade(cl,.78),bc=BOTC[a.bot],bcd=shade(bc,.75),ac=CLOTH[a.acc];
+  const hair=HAIR[a.hair],top=TOP[a.topS],bot=BOT[a.botS],hat=HAT[a.hat],ex=EXTRA[a.extra];
+  /* back hair */
+  if(hair==="Afro"){R(5,1,6,1,hc);R(3,2,10,1,hc);R(2,3,12,6,hc);R(3,9,10,1,hc)}
+  if(hair==="Long"){R(3,4,10,2,hc);R(3,6,1,10,hc);R(12,6,1,10,hc);R(4,11,8,1,hcd)}
+  if(hair==="Bob"){R(3,4,10,2,hc);R(3,6,1,5,hc);R(12,6,1,5,hc)}
+  if(hair==="Ponytail"){R(12,5,2,7,hc);R(13,11,1,2,hcd)}
+  if(hair==="Bun"){R(6,1,4,2,hc);R(7,0,2,1,hc)}
+  if(hair==="Puffs"){R(1,2,4,3,hc);R(2,1,2,1,hc);R(2,5,2,1,hc);R(11,2,4,3,hc);R(12,1,2,1,hc);R(12,5,2,1,hc)}
+  if(hair==="Braids"){for(let y=6;y<18;y++){set(3,y,y%2?hc:hcd);set(12,y,y%2?hc:hcd)}set(3,18,ac);set(12,18,ac)}
+  if(hair==="Head wrap"){R(3,3,10,3,ac);R(3,6,2,6,ac);R(11,6,2,6,ac);R(3,12,10,2,shade(ac,.8))}
+  /* legs / bottoms */
+  if(bot==="Skirt"){R(4,19,8,2,bc);R(3,20,1,1,bc);R(12,20,1,1,bc);R(4,20,8,1,bcd);R(5,21,2,2,sk);R(9,21,2,2,sk)}
+  else if(bot==="Shorts"){R(5,19,3,2,bc);R(8,19,3,2,bc);R(5,21,2,2,sk);R(9,21,2,2,sk)}
+  else{R(5,19,3,4,bc);R(8,19,3,4,bc);R(7,19,2,1,bcd)}
+  R(4,23,4,1,"#1b1f27");R(8,23,4,1,"#1b1f27");set(4,23,"#3a3f4a");set(11,23,"#3a3f4a");
+  /* torso + arms */
+  if(a.body===1){/* fitted cut: shoulders, waist, hips */
+    R(4,13,8,1,cl);R(5,14,6,4,cl);R(4,18,8,1,cld);R(4,14,1,4,cld);R(11,14,1,4,cld);set(3,18,sk);set(12,18,sk);
+  }else{R(4,13,8,6,cl);R(4,18,8,1,cld);R(3,13,1,5,cld);R(12,13,1,5,cld);set(3,18,sk);set(12,18,sk)}
+  if(top==="Blazer"){R(6,13,4,4,"#f2f5f8");R(7,13,2,4,a.top===0?CLOTH[1]:CLOTH[0]);set(6,13,cl);set(9,13,cl);set(7,17,cl);set(8,17,cl);set(5,15,cld);set(10,15,cld)}
+  if(top==="Hoodie"){R(5,12,6,1,cld);set(6,14,"#fff");set(6,15,"#fff");set(9,14,"#fff");set(9,15,"#fff");R(5,17,6,1,cld)}
+  if(top==="Cardigan"){R(6,13,4,5,"#f2f5f8");set(5,14,cld);set(5,16,cld);set(10,14,cld);set(10,16,cld)}
+  if(top==="Polo"){R(6,13,1,1,"#f2f5f8");R(9,13,1,1,"#f2f5f8");set(7,14,cld);set(7,15,cld)}
+  if(ex==="Lanyard"){set(5,13,ac);set(6,14,ac);set(10,13,ac);set(9,14,ac);R(7,15,2,2,"#fff")}
+  /* neck + head */
+  R(7,12,2,1,skd);
+  R(4,5,8,7,sk);R(5,4,6,1,sk);R(5,12-0,6,0,sk);if(a.body===1){set(4,11,null);set(11,11,null)}else{set(4,11,skd);set(11,11,skd)}R(5,11,6,1,sk);
+  /* face */
+  R(6,8,1,2,E);R(9,8,1,2,E);set(6,8,"#2a3240");set(9,8,"#2a3240");
+  set(7,11,shade(sk,.7));set(8,11,shade(sk,.7));
+  if(a.blush!==false){set(5,10,shade(sk,.9).replace(/./,"#")&&"#e88a8a");set(10,10,"#e88a8a")}
+  if(ex==="Glasses"){const fr="#2a3240";R(5,7,3,1,fr);R(8,7,3,1,fr);[5,7,8,10].forEach(x=>{set(x,8,fr)});set(6,8,"#cfe8ff");set(9,8,"#cfe8ff");set(6,9,E);set(9,9,E)}
+  if(ex==="Lashes"){set(5,7,E);set(10,7,E);set(7,11,"#c0394d");set(8,11,"#c0394d")}
+  if(ex==="Earrings"){set(3,10,"#f2b84b");set(12,10,"#f2b84b")}
+  if(ex==="Freckles"){set(5,10,shade(sk,.72));set(10,10,shade(sk,.72));set(6,10,shade(sk,.8))}
+  /* front hair */
+  const cap=()=>{R(5,3,6,1,hc);R(4,4,8,1,hc);set(4,5,hc);set(11,5,hc);R(5,5,3,1,hc);set(5,3,hcl)};
+  if(hair==="Short"){cap();set(4,6,hc);set(11,6,hc)}
+  if(hair==="Buzz"){R(4,4,8,1,hcd);set(4,5,hcd);set(11,5,hcd)}
+  if(hair==="Curly"){R(4,3,8,2,hc);set(5,2,hc);set(7,2,hc);set(9,2,hc);set(4,5,hc);set(11,5,hc);set(6,5,hc);set(8,5,hc);set(10,5,hc);set(7,3,hcl);set(10,3,hcl)}
+  if(hair==="Afro"){R(4,4,8,1,hc);set(4,5,hc);set(11,5,hc);set(6,2,hcl);set(9,3,hcl)}
+  if(["Puffs","Bob","Long","Ponytail","Bun","Braids"].includes(hair)){cap();if(hair!=="Ponytail"&&hair!=="Bun"&&hair!=="Puffs"){set(4,6,hc);set(11,6,hc)}}
+  if(hair==="Bob"||hair==="Long"){R(4,5,1,4,hc);R(11,5,1,4,hc)}
+  if(hair==="Head wrap"){R(4,4,8,2,ac);set(5,4,shade(ac,1.3));set(9,3,shade(ac,1.2))}
+  /* hats */
+  if(hat==="Cap"){R(4,2,8,3,ac);R(11,4,3,1,shade(ac,.7));set(7,2,shade(ac,1.3))}
+  if(hat==="Beanie"){R(4,1,8,3,ac);R(4,4,8,1,shade(ac,.7));R(7,0,2,1,shade(ac,.7))}
+  if(hat==="Headphones"){R(4,2,8,1,E);set(3,3,E);set(12,3,E);R(3,6,1,4,ac);R(12,6,1,4,ac);R(2,7,1,2,shade(ac,.7));R(13,7,1,2,shade(ac,.7))}
+  if(hat==="Bow"){R(10,2,3,2,ac);set(11,2,shade(ac,.7));set(11,3,shade(ac,.7));set(13,2,ac);set(9,3,ac)}
+  if(hat==="Crown"){R(5,2,6,2,"#f2b84b");set(5,1,"#f2b84b");set(7,1,"#f2b84b");set(8,1,"#f2b84b");set(10,1,"#f2b84b");set(7,3,"#d8323f")}
+  if(hat==="Hard hat"){R(5,1,6,3,"#f2b84b");R(3,4,10,1,"#d29a2a");set(6,1,"#ffe08a")}
+  /* outline pass */
+  const out=g.map(r=>r.slice());
+  for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){if(g[y][x])continue;const n=[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>g[y+dy]&&g[y+dy][x+dx]);if(n)out[y][x]=E}
+  /* render */
+  const s=o.cell||10;let r="";
+  const holo=o.holo,glitch=o.glitch;
+  out.forEach((row,y)=>row.forEach((c,x)=>{if(!c)return;let xx=x;if(glitch&&(y===10||y===16||y===17))xx+=(y===16?2:-1);
+    const hc=o.holoC||"#5ff2ff";let fill=c,op="";if(holo){if(c===E)fill=hc;else op=` opacity="${o.ghost?.16:.38}"`}
+    else if(glitch&&y===10&&c!==E)fill="#ff4fa3";
+    r+=`<rect x="${xx*s}" y="${y*s}" width="${s+.4}" height="${s+.4}" fill="${fill}"${op}/>`}));
+  if(holo)for(let y=0;y<GH;y+=2)r+=`<rect x="0" y="${y*s}" width="${GW*s}" height="${s*.4}" fill="${o.holoC||"#5ff2ff"}" opacity=".12"/>`;
+  if(glitch)r+=`<rect x="0" y="${14*s}" width="${GW*s}" height="${s*.6}" fill="#38e6d6" opacity=".7"/>`;
+  const vb=o.head?`${2*s} 0 ${12*s} ${14*s}`:`0 0 ${GW*s} ${GH*s}`;
+  return `<svg viewBox="${vb}" shape-rendering="crispEdges" role="img" aria-label="${o.label||"Pixel intern"}"${o.attrs||""}>${r}</svg>`;
+}
+const PRESETS=[
+  {n:"NOVA",a:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4}},
+  {n:"JUNO",a:{body:1,skin:2,hair:7,hairC:3,top:1,topS:3,bot:0,botS:0,hat:4,extra:2,acc:0}},
+  {n:"DEX",a:{body:0,skin:8,hair:0,hairC:0,top:6,topS:2,bot:1,botS:0,hat:3,extra:0,acc:0}},
+  {n:"MARA",a:{body:0,skin:5,hair:9,hairC:1,top:2,topS:4,bot:0,botS:0,hat:0,extra:4,acc:1}},
+  {n:"KAI",a:{body:0,skin:3,hair:1,hairC:0,top:3,topS:0,bot:2,botS:2,hat:1,extra:1,acc:1}},
+  {n:"AMIRA",a:{body:1,skin:4,hair:10,hairC:0,top:5,topS:3,bot:5,botS:1,hat:0,extra:0,acc:5}},
+  {n:"ROOK",a:{body:0,skin:9,hair:3,hairC:0,top:7,topS:1,bot:0,botS:0,hat:0,extra:1,acc:2}},
+  {n:"BEA",a:{body:1,skin:0,hair:5,hairC:5,top:4,topS:0,bot:2,botS:1,hat:5,extra:5,acc:0}}];
+let A={...PRESETS[0].a},GL=false;
+
+function drawBuilder(){
+  document.getElementById("bigSprite").innerHTML=sprite(A,{glitch:GL,cell:10,label:"Your pixel intern"});
+  const sws=(key,list,label)=>`<div class="og"><span class="label">${label}</span><div class="sws">${list.map((c,i)=>`<button class="sw" data-k="${key}" data-i="${i}" style="background:${c}" aria-label="${label} ${i+1}" aria-pressed="${A[key]===i}"></button>`).join("")}</div></div>`;
+  const tiles=(key,list,label,head)=>`<div class="og"><span class="label">${label}</span><div class="tiles">${list.map((o,i)=>`<button class="tile" data-k="${key}" data-i="${i}" aria-pressed="${A[key]===i}">${sprite({...A,[key]:i},{head,cell:10,label:o})}${o}</button>`).join("")}</div></div>`;
+  document.getElementById("opts").innerHTML=
+    tiles("body",BODY,"Character",false)+sws("skin",SKIN,"Skin tone")+tiles("hair",HAIR,"Hair",true)+sws("hairC",HAIRC,"Hair color")+
+    tiles("hat",HAT,"Hats",true)+tiles("extra",EXTRA,"Extras",true)+sws("acc",CLOTH,"Hat, wrap and accessory color")+
+    tiles("topS",TOP,"Top",false)+sws("top",CLOTH,"Top color")+tiles("botS",BOT,"Bottoms",false)+sws("bot",BOTC,"Bottom color");
+  document.querySelectorAll("#opts [data-k]").forEach(b=>b.onclick=()=>{A[b.dataset.k]=+b.dataset.i;drawBuilder()});
+}
+document.getElementById("lineup").innerHTML=PRESETS.map((p,i)=>`<button data-p="${i}" aria-label="Load ${p.n}">${sprite(p.a,{cell:10,label:p.n})}${p.n}</button>`).join("");
+document.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>{A={...PRESETS[+b.dataset.p].a};document.getElementById("plate").textContent=PRESETS[+b.dataset.p].n;drawBuilder()});
+document.getElementById("rand").onclick=()=>{const r=n=>Math.floor(Math.random()*n);A={body:r(2),skin:r(SKIN.length),hair:r(HAIR.length),hairC:r(HAIRC.length),top:r(CLOTH.length),topS:r(TOP.length),bot:r(BOTC.length),botS:r(BOT.length),hat:r(HAT.length),extra:r(EXTRA.length),acc:r(CLOTH.length)};document.getElementById("plate").textContent="INTERN 060";drawBuilder()};
+document.getElementById("glBtn").onclick=()=>{GL=true;drawBuilder();setTimeout(()=>{GL=false;drawBuilder()},900)};
+drawBuilder();
+
+/* ================= INSTRUCTORS ================= */
+const st=`stroke="${E}" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"`;
+function screenhead(c,scr,face){const F={happy:`<path d="M44 34 l5 -5 l5 5 M66 34 l5 -5 l5 5" stroke="${scr}" stroke-width="4" fill="none"/><rect x="50" y="43" width="20" height="3" fill="${scr}"/>`,
+  talk:`<rect x="45" y="27" width="8" height="8" fill="${scr}"/><rect x="67" y="27" width="8" height="8" fill="${scr}"/><rect x="52" y="41" width="16" height="7" fill="${scr}"/>`,
+  sly:`<rect x="43" y="31" width="12" height="3" fill="${scr}"/><rect x="65" y="31" width="12" height="3" fill="${scr}"/><path d="M50 45 h14 l4 -4" stroke="${scr}" stroke-width="3" fill="none"/>`,
+  glitch:`<rect x="34" y="22" width="22" height="6" fill="#ff5b6e"/><rect x="58" y="30" width="30" height="4" fill="#6aa8ff"/><rect x="40" y="40" width="40" height="4" fill="${scr}"/>`}[face];
+  return `<svg viewBox="-6 -6 132 150"><rect x="38" y="110" width="17" height="26" rx="7" fill="#2a2f3a" ${st}/><rect x="65" y="110" width="17" height="26" rx="7" fill="#2a2f3a" ${st}/>
+<rect x="16" y="72" width="16" height="38" rx="8" fill="${shade(c,.75)}" ${st}/><rect x="88" y="72" width="16" height="38" rx="8" fill="${shade(c,.75)}" ${st}/>
+<rect x="28" y="64" width="64" height="58" rx="20" fill="${c}" ${st}/><path d="M60 72 l-6 6 l6 26 l6 -26z" fill="#fff" ${st}/>
+<rect x="18" y="4" width="84" height="58" rx="14" fill="#e6ecf2" ${st}/><rect x="27" y="12" width="66" height="42" rx="9" fill="#13202b" stroke="${E}" stroke-width="3"/>${F}</svg>`}
+function meeple(c,face){const mouth=face==="talk"?`<ellipse cx="60" cy="38" rx="5" ry="3.5" fill="${E}"/>`:`<path d="M54 36 q6 4 12 0" stroke="${E}" stroke-width="3" fill="none"/>`;
+  return `<svg viewBox="0 0 120 145"><path d="M60 10 a20 20 0 0 1 20 20 a20 20 0 0 1 -9 16 Q98 50 108 62 Q112 70 102 74 L86 74 L98 124 Q100 134 90 134 H70 L60 108 L50 134 H30 Q20 134 22 124 L34 74 L18 74 Q8 70 12 62 Q22 50 49 46 a20 20 0 0 1 -9 -16 a20 20 0 0 1 20 -20Z" fill="${c}" ${st}/>
+<path d="M60 52 l-6 6 l6 24 l6 -24z" fill="#fff" stroke="${E}" stroke-width="3" stroke-linejoin="round"/><circle cx="53" cy="28" r="3.4" fill="${E}"/><circle cx="67" cy="28" r="3.4" fill="${E}"/>${mouth}
+<path d="M40 14 Q60 -4 80 14 L76 20 Q60 10 44 20Z" fill="${shade(c,.6)}" ${st}/></svg>`}
+function holoTeacher(face){const c="#5ff2ff",g=face==="glitch";return `<svg viewBox="0 0 120 150"><ellipse cx="60" cy="140" rx="40" ry="8" fill="none" stroke="${c}" stroke-width="3"/><ellipse cx="60" cy="140" rx="26" ry="5" fill="${c}" opacity=".4"/>
+<g fill="rgba(95,242,255,.18)" stroke="${c}" stroke-width="2.5"${g?' transform="translate(4 0) skewX(-6)"':""}><ellipse cx="60" cy="42" rx="20" ry="24"/><path d="M60 18 V66 M40 42 H80 M44 28 Q60 36 76 28 M44 56 Q60 50 76 56" fill="none"/>
+<path d="M22 118 Q24 82 60 76 Q96 82 98 118Z"/><path d="M40 82 L60 118 L80 82 M30 100 H90" fill="none"/></g>
+<rect x="44" y="36" width="32" height="8" rx="3" fill="${c}"/>${face==="talk"?'<rect x="54" y="54" width="12" height="3" fill="#5ff2ff"/>':""}
+${[0,1,2,3,4,5,6,7].map(i=>`<rect x="20" y="${20+i*13}" width="80" height="1.5" fill="${c}" opacity=".25"/>`).join("")}</svg>`}
+const DIALOGS=[
+ {who:"SYS-ADMIN 01",role:"Screen-Head · Glitches",tag:"System",draw:f=>screenhead("#2f5fe0","#5ff2ff",f),lines:[
+   "Welcome back, intern. I'm here to explain how your performance is tracked.",
+   "Every review costs points from one attribute. If an attribute drops below zero, you start glitching.",
+   "During the gift window, a teammate can send points to pull you back to safety.",
+   "If the window closes and you're still below zero, the glitch locks in. Glitch twice and you're stuck. Like m— like m— l1k3 m3."],glitchAt:3},
+ {who:"SYS-ADMIN 02",role:"Screen-Head · Contrarian",tag:"Secret",draw:f=>screenhead("#d8323f","#ff5b6e",f==="talk"?"sly":f),lines:[
+   "Some interns don't trust the system. We call them Contrarians.",
+   "Once per round, a Contrarian can sabotage someone on another team: it costs them 1 heart and drains 2 points from the target.",
+   "At the all-hands, each team gets one vote to name the saboteur. Guess right and your team earns a point. Guess wrong and you lose one.",
+   "Three sabotages that nobody catches, and the Contrarian wins their own way. Not that I'd know anything about that."],glitchAt:-1},
+ {who:"TEAM LEAD MEEP",role:"Meeple · Cooperative",tag:"Teamwork",draw:f=>meeple("#1f8a3b",f),lines:[
+   "Hey! I'm here for the Cooperatives: the interns who win by lifting each other up.",
+   "You're strongest at Collaboration and Composure. Your gifts only cost 1 heart per point.",
+   "Your secret path is called Lifeline: save 2 teammates from glitching with gift-window gifts.",
+   "Nobody exits alone in here. Watch your team's status flags, and send help before the window closes."],glitchAt:-1},
+ {who:"PROJECTION_IND",role:"Hologram · Independent",tag:"Solo",draw:f=>holoTeacher(f),lines:[
+   "Signal received. I'm here for the Independents: interns who lock in and push through on their own.",
+   "You're strongest at Focus and Grit. Collaboration costs you more, so your gifts cost 2 hearts per point.",
+   "Your secret path is called Auditor: be on a team that makes 2 correct accusations.",
+   "Trust the data, not the noise. Watch who stays quiet when points go missing."],glitchAt:-1}];
+document.getElementById("dialogs").innerHTML=DIALOGS.map((d,i)=>`<article class="dlg" data-d="${i}"><div class="top"><b>${d.who}</b><span class="tag ${i===2||i===3?"b":i===1?"p":""}">${d.tag}</span></div>
+<div class="body"><div class="portrait">${d.draw("talk")}</div><div class="speech">${d.lines[0]}</div></div>
+<div class="foot"><span class="dots">${d.lines.map((_,j)=>`<i class="${j===0?"on":""}"></i>`).join("")}</span><span class="hint">${d.role}</span><button class="btn" data-next="${i}">Next ▶</button></div></article>`).join("");
+const pos=DIALOGS.map(()=>0);
+document.querySelectorAll("[data-next]").forEach(b=>b.onclick=()=>{const i=+b.dataset.next,d=DIALOGS[i];const card=document.querySelector(`[data-d="${i}"]`);
+  pos[i]=(pos[i]+1)%d.lines.length;const p=pos[i];const sp=card.querySelector(".speech"),pt=card.querySelector(".portrait");
+  sp.textContent=d.lines[p];sp.classList.toggle("corrupt",p===d.glitchAt);
+  const gl=p===d.glitchAt;pt.innerHTML=d.draw(gl?"glitch":"talk");pt.classList.toggle("glitching",gl);
+  card.querySelectorAll(".dots i").forEach((x,j)=>x.classList.toggle("on",j<=p));b.textContent=p===d.lines.length-1?"Replay ↺":"Next ▶"});
+
+/* ================= PIXEL TOOLS ================= */
+function pix(map,pal,s=6){let r="";map.forEach((row,y)=>[...row].forEach((ch,x)=>{if(ch===".")return;r+=`<rect x="${x*s}" y="${y*s}" width="${s+.3}" height="${s+.3}" fill="${pal[ch]}"/>`}));const w=map[0].length*s,h=map.length*s;return `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">${r}</svg>`}
+const TOOLS=[
+ {n:"Coffee Mug",rar:"Common",r:"var(--common)",ab:"Recharge",d:"Refill 1 backup heart, even above the round's refill.",uses:"1 use",m:["...g..g...","....g..g..",".kkkkkkk..",".kwwwwwwkk",".kbbbbbbk.k",".kwwwwwwk.k",".kwwwwwwkk.",".kwwwwwwk..","..kkkkkk..",".........."],p:{k:E,w:"#f2f5f8",b:"#7a4d2a",g:"#9aa6b8"}},
+ {n:"Sticky Note",rar:"Common",r:"var(--common)",ab:"Reminder",d:"Peek at next level's trial attribute before you place your points.",uses:"2 uses",m:["kkkkkkkkk.","kyyyyyyyk.","kyddddyyk.","kyyyyyyyk.","kydddyyyk.","kyyyyyyyk.","kyyyyykkk.","kyyyyykk..","kkkkkkk...",".........."],p:{k:E,y:"#f5e04a",d:"#a8941f"}},
+ {n:"Stapler",rar:"Rare",r:"var(--rare)",ab:"Lock down",d:"Staple one attribute for a round. Sabotage can't drain it.",uses:"1 use",m:["..........","..kkkkkkk.",".krrrrrrwk","krrrrrrrrk","kkkkkkkkkk","kssssssssk","kkkkkkkkkk",".........."],p:{k:E,r:"#d8323f",w:"#fff",s:"#7f8fa1"}},
+ {n:"Desk Plant",rar:"Rare",r:"var(--rare)",ab:"Breathe",d:"Add 10 seconds to your team's gift window.",uses:"2 uses",m:["...k..k...","..kgk.kgk.","..kgkkggk.","...kggk...","....kk....","..kkkkkk..","..kccccck.","...kccck..","...kkkkk..",".........."],p:{k:E,g:"#4fe08a",c:"#e2706a"}},
+ {n:"Rubber Duck",rar:"Epic",r:"var(--epic)",ab:"Debug",d:"Your team's next wrong accusation costs nothing.",uses:"1 use",m:["....kkk...","...kyyyk..","...kyeykok","...kyyykkk","kk.kyyyk..","kykkyyyykk","kyyyyyyyyk",".kyyyyyyk.","..kkkkkk..",".........."],p:{k:E,y:"#f5e04a",e:E,o:"#f2852a"}},
+ {n:"USB Backup",rar:"Legendary",r:"var(--legend)",ab:"Restore point",d:"Your first glitch reboots without losing your backup hearts.",uses:"1 use",m:["..........","kkkkkkk...","kbbbbbkkkk","kbcbbbkssk","kbbbbbkskk","kbbbbbkssk","kbbbbbkkkk","kkkkkkk...",".........."],p:{k:E,b:"#2f5fe0",c:"#5ff2ff",s:"#cbd3dc"}}];
+document.getElementById("store").innerHTML=TOOLS.map(t=>`<article class="tool" style="--r:${t.r}"><div class="art">${pix(t.m,t.p)}</div>
+<div style="display:grid;gap:4px"><h3>${t.n}<span class="rar">${t.rar.toUpperCase()}</span></h3><span class="ab">Ability · ${t.ab}</span><p>${t.d}</p><span class="uses">${t.uses} per game</span></div></article>`).join("");
+
+/* ================= CURSOR ================= */
+const arrow=(fill,extra="")=>`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">${extra}<path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="${fill}" stroke="#0b0e13" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
+const curRed=arrow("#e0394d");
+const curGl=`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M6 2 L6 26 L12 20 L16 30 L21 28 L17 18 L26 18Z" fill="#ff4fa3" opacity=".8"/><path d="M2 2 L2 26 L8 20 L12 30 L17 28 L13 18 L22 18Z" fill="#38e6d6" opacity=".8"/><path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="#e0394d" stroke="#0b0e13" stroke-width="2.5" stroke-linejoin="round"/><rect x="0" y="12" width="28" height="3" fill="#ff4fa3"/></svg>`;
+const uri=s=>`url("data:image/svg+xml,${encodeURIComponent(s)}") 4 2`;
+const cd=document.getElementById("cdemo");cd.style.setProperty("--cur-red",uri(curRed));cd.style.setProperty("--cur-gl",uri(curGl));
+cd.addEventListener("pointerdown",()=>{cd.classList.add("gl");setTimeout(()=>cd.classList.remove("gl"),220)});
+cd.querySelectorAll(".btn").forEach(b=>b.addEventListener("click",()=>{b.style.filter="drop-shadow(3px 0 0 #ff4fa3) drop-shadow(-3px 0 0 #38e6d6)";setTimeout(()=>b.style.filter="",220)}));
+const hand=`<svg viewBox="0 0 32 32"><path d="M12 6 Q12 3 14.5 3 Q17 3 17 6 V14 Q18 12 20 12.5 Q22 13 21.5 16 Q23 14 25 15 Q27 16 26 19 V22 Q26 29 19 29 H17 Q12 29 9 24 L6 18 Q5 15 7.5 15 Q9.5 15 11 18 L12 20Z" fill="#a8d8ff" stroke="#0b0e13" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
+const spin=`<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="none" stroke="#0b0e13" stroke-width="7"/><circle cx="16" cy="16" r="10" fill="none" stroke="#f2b84b" stroke-width="3.5" stroke-dasharray="40 23"/></svg>`;
+const target=`<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#0b0e13" stroke-width="6"/><circle cx="16" cy="16" r="11" fill="none" stroke="#ff4fa3" stroke-width="3"/><path d="M16 2 V10 M16 22 V30 M2 16 H10 M22 16 H30" stroke="#0b0e13" stroke-width="5"/><path d="M16 3 V10 M16 22 V29 M3 16 H10 M22 16 H29" stroke="#ff4fa3" stroke-width="2.5"/></svg>`;
+document.getElementById("ctable").innerHTML=[
+  [curRed,"Default · red arrow","Start page, menus, wardrobe."],
+  [curGl,"On click · glitch flash","A split-second glitch, then back to red."],
+  [hand,"Hand · tasks","Dragging SOP cards, picking items, tapping rooms on the map."],
+  [spin,"Spinner · waiting","Intermission, waiting for the host, timers."],
+  [target,"Target · sabotage + vote","Choosing who to sabotage or who to name at the all-hands."]
+].map(([s,t,d])=>`<div class="crow">${s.replace('width="32" height="32" ','')}<div><b>${t}</b><br><span class="hint">${d}</span></div></div>`).join("");
+
+/* ================= MAP + GHOSTS ================= */
+/* default, faceless-name interns: designations only, no real names or traits, so no one in the cohort can be linked to them */
+const GHOSTS=[
+ {n:"USER_???",a:{skin:3,hair:0,hairC:6,top:7,topS:0,bot:0,botS:0,hat:0,extra:4,acc:6},where:"Seen most in the Break Room",line:"I clocked in. I don't remember clocking out."},
+ {n:"ATTEMPT_01",a:{skin:6,hair:6,hairC:6,top:7,topS:3,bot:0,botS:1,hat:0,extra:0,acc:6},where:"Drifts near the Server Room",line:"Did you read your badge? Read it again."},
+ {n:"NULL",a:{skin:1,hair:8,hairC:6,top:7,topS:2,bot:0,botS:0,hat:3,extra:0,acc:7},where:"Appears in the Studio during intermission",line:"The coffee step never ends. Leave it out."}];
+const room=(pts,fill,label,lx,ly)=>`<polygon points="${pts}" fill="${fill}" stroke="${E}" stroke-width="6" stroke-linejoin="round"/><text x="${lx}" y="${ly}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="17" letter-spacing="2" fill="rgba(11,14,19,.5)">${label}</text>`;
+const onMap=(p,x,y,o={})=>sprite(p.a,{cell:10,label:p.n,holo:o.holo,attrs:` x="${x-24}" y="${y-74}" width="48" height="81"`})+`<text x="${x}" y="${y+18}" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="13" fill="${o.holo?"#5ff2ff":"#fff"}" stroke="${E}" stroke-width="3" paint-order="stroke">${p.n}${o.holo?" · GLITCHING":""}</text>`+(o.tool!=null?`<g transform="translate(${x+16} ${y-14}) scale(.5)">${pix(TOOLS[o.tool].m,TOOLS[o.tool].p,4).replace("<svg",'<svg width="40" height="40"')}</g>`:"");
+document.getElementById("map").innerHTML=`<svg viewBox="0 0 800 330" role="img" aria-label="Office map with pixel interns">
+<defs><pattern id="ck" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="28" height="28" fill="#d9d2c3"/><rect width="14" height="14" fill="#c9c1b0"/><rect x="14" y="14" width="14" height="14" fill="#c9c1b0"/></pattern>
+<pattern id="wd" width="40" height="16" patternUnits="userSpaceOnUse"><rect width="40" height="16" fill="#c9a77a"/><path d="M0 15.5 H40 M20 0 V16" stroke="#a9875a" stroke-width="1.5"/></pattern>
+<pattern id="gr" width="22" height="22" patternUnits="userSpaceOnUse"><rect width="22" height="22" fill="#5d636b"/><path d="M0 21.5 H22 M21.5 0 V22" stroke="#4a5058" stroke-width="1.5"/></pattern></defs>
+<rect width="800" height="330" fill="#1a1f27"/><rect x="24" y="20" width="752" height="290" rx="20" fill="#3a4048" stroke="${E}" stroke-width="6"/>
+<rect x="40" y="262" width="720" height="38" fill="#8d939a"/>
+${room("40,90 90,36 230,36 230,262 40,262","url(#wd)","BREAK ROOM",135,250)}
+${room("290,30 510,30 550,70 550,262 250,262 250,70","url(#ck)","THE STUDIO",400,250)}
+${room("570,36 710,36 760,86 760,262 570,262","url(#gr)","SERVER ROOM",665,250)}
+${[[310,90],[490,90],[310,190],[490,190]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="22" fill="#3f6fc6" stroke="${E}" stroke-width="4"/>`).join("")}
+<rect x="96" y="40" width="130" height="24" rx="4" fill="#d9dee5" stroke="${E}" stroke-width="4"/>
+${[0,1,2].map(i=>`<rect x="${586+i*30}" y="60" width="24" height="110" rx="3" fill="#2a2f3a" stroke="${E}" stroke-width="4"/>`).join("")}
+${onMap(PRESETS[0],365,170,{tool:4})}${onMap(PRESETS[1],435,170,{tool:0})}${onMap(PRESETS[2],400,236,{tool:3})}
+${onMap(PRESETS[3],140,200,{holo:true})}${onMap(PRESETS[6],690,224,{tool:2})}
+${GHOSTS.map((g,i)=>`<g class="gwalk" id="gh${i}" opacity="0" transform="translate(0 0)">${sprite(g.a,{cell:10,holo:true,ghost:true,holoC:"#e9ecff",attrs:' x="-24" y="-74" width="48" height="81"'})}<text x="0" y="18" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="12" fill="#e9ecff" stroke="${E}" stroke-width="3" paint-order="stroke">${g.n}</text></g>`).join("")}
+</svg>`;
+const SPOTS=[[110,150],[180,120],[300,140],[480,230],[520,140],[640,200],[720,130],[200,226]];
+GHOSTS.forEach((g,i)=>{const el=document.getElementById("gh"+i);const hop=()=>{el.setAttribute("opacity","0");setTimeout(()=>{const [x,y]=SPOTS[Math.floor(Math.random()*SPOTS.length)];el.setAttribute("transform",`translate(${x} ${y})`);el.setAttribute("opacity",String(.55+Math.random()*.35))},950)};setTimeout(()=>{hop();setInterval(hop,3800+i*1300)},i*1200)});
+document.getElementById("ghosts").innerHTML=GHOSTS.map(g=>`<article class="ghost"><div class="gs">${sprite(g.a,{cell:10,holo:true,ghost:true,holoC:"#e9ecff"})}</div><div style="display:grid;gap:4px"><b>${g.n}</b><span class="hint">${g.where}</span><q>${g.line}</q></div></article>`).join("");
+
+/* role strip */
+document.getElementById("roles").innerHTML=[
+ [sprite(PRESETS[0].a,{cell:10}),"Pixel Intern","The player character. Every player builds one."],
+ [screenhead("#2f5fe0","#5ff2ff","happy"),"Screen-Head","Instructor for the system: glitches and Contrarians."],
+ [meeple("#1f8a3b","happy"),"Meeple","Instructor for Cooperatives and teamwork."],
+ [pix(TOOLS[4].m,TOOLS[4].p),"Office objects","Pixel tools you carry, each with one ability."],
+ [curRed.replace('width="32" height="32" ',''),"Red cursor","Your pointer on the start page and menus. Glitches on click."],
+ [sprite(PRESETS[3].a,{cell:10,holo:true}),"Hologram","How glitched or stuck interns look on the map."],
+ [sprite(GHOSTS[1].a,{cell:10,holo:true,ghost:true,holoC:"#e9ecff"}),"Wandering ghosts","Three default interns who glitched out. They drift through the office."]
+].map(([s,t,d])=>`<div>${s}<b>${t}</b><span class="hint">${d}</span></div>`).join("");
+})();
+</script>
+
+</body></html>
