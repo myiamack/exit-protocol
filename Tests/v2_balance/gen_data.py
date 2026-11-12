@@ -42,9 +42,10 @@ def setr6(cfg):
     if 'R6' in cfg:
         c=dict(cfg); v=c.pop('R6'); r=list(zip(S_OLD,C)); r[5]=('grit',v); c['ROUNDS']=r; return c
     return cfg
-out=json.load(open('data.json')) if os.path.exists('data.json') else {}
-keys=sys.argv[1:] or list(JOBS)
-for k in keys:
-    if k in out: continue
-    j=JOBS[k]; cfg=setr6(j[0]); seed=j[2] if len(j)>2 else SEED
-    out[k]=ev(cfg,j[1],seed); json.dump(out,open('data.json','w')); print(k,flush=True)
+if __name__ == "__main__":
+    out=json.load(open('data.json')) if os.path.exists('data.json') else {}
+    keys=sys.argv[1:] or list(JOBS)
+    for k in keys:
+        if k in out: continue
+        j=JOBS[k]; cfg=setr6(j[0]); seed=j[2] if len(j)>2 else SEED
+        out[k]=ev(cfg,j[1],seed); json.dump(out,open('data.json','w')); print(k,flush=True)
