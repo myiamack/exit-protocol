@@ -408,7 +408,7 @@ function go(n){stopTimer();S.panel=false;if(n!==2)S.wardFrom=null;if(n===2&&S.st
 /* Fit the map inside the scroll area above the bottom bar, and scroll it fully into view once per screen. */
 /* On map screens the attribute bar sticks to the top (class "mapscreen"), so the map gets the space below it. */
 function fitWorld(){const wrap=$(".wrap"),w=$("#world"),hud=$("#hud");if(!wrap||!w)return;
-  const hudH=hud&&!hud.hidden?hud.offsetHeight+14:0;
+  const hudH=hud&&!hud.hidden&&wrap.contains(hud)?hud.offsetHeight+14:0;
   w.style.height=Math.max(300,Math.min(640,wrap.clientHeight-hudH-28))+"px";
   if(W.fitFor===S.step)return;W.fitFor=S.step;
   const need=w.offsetTop+w.offsetHeight+14-wrap.clientHeight;if(need>wrap.scrollTop)wrap.scrollTo({top:need})}
@@ -822,6 +822,9 @@ function render(){
   if(S.step===7&&!S.sop.pile.length&&!S.sop.built.length)S.sop.pile=shuffle([...SOP,DECOY]);
   stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();
   document.body.classList.toggle("mapscreen",!!$("#world"));
+  /* Map screens: the name bar and stat bar get their own rows above the scroll area, so nothing scrolls under them. */
+  {const top=$("#topbar"),hud=$("#hud"),wrap=$(".wrap");if($("#world")){if(hud.parentNode!==document.body){document.body.insertBefore(top,wrap);document.body.insertBefore(hud,wrap)}}
+   else if(hud.parentNode!==wrap){wrap.insertBefore(top,wrap.firstChild);wrap.insertBefore(hud,$("#steps"))}}
   if($("#world")){fitWorld();initWorld()}else W.fitFor=null;
   if(S.step===4&&!S.arrived&&S.arr==="elev")runElevator();
   if(S.step===4&&!S.arrived&&S.arr==="admin"&&!S.doorsDone)setTimeout(()=>{S.doorsDone=true},1600);
