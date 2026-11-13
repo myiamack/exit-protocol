@@ -658,13 +658,13 @@ const ELEV={id:"elevator",n:"Elevator",x:30,y:620,w:160,h:180};
 const HALL={x:470,y:650,w:1680,h:120};
 const SIDE={x:1840,y:740,w:100,h:580};
 const WROOMS=[
- {id:"reception",n:"Reception",pts:[[170,560],[470,560],[520,610],[520,860],[170,860]],fill:"#d7d2c8",lab:[330,600],spots:[[300,760],[420,700]],open:true},
+ {id:"reception",n:"Reception",pts:[[170,560],[470,560],[520,610],[520,860],[170,860]],fill:"#d7d2c8",lab:[330,600],spots:[[300,760],[440,760]],open:true},
  {id:"kitchen",n:"Kitchen",pts:[[540,300],[760,300],[760,200],[920,200],[920,600],[540,600]],fill:"url(#wtile)",lab:[730,575],doors:[{x:660,y:560,w:160,h:130,side:"n"}],spots:[[640,450],[840,300]]},
- {id:"allskate",n:"All Skate",pts:[[1040,120],[1440,120],[1540,220],[1540,600],[960,600],[960,200]],fill:"url(#wcarpet)",lab:[1250,575],doors:[{x:1160,y:560,w:180,h:130,side:"n"},{x:1528,y:410,w:84,h:130,side:"e"}],spots:[[1060,260],[1460,300],[1250,220]]},
- {id:"hightea",n:"High Tea",pts:[[1600,280],[1900,280],[1980,360],[1980,600],[1600,600]],fill:"url(#wwood)",lab:[1790,575],doors:[{x:1700,y:560,w:160,h:130,side:"n"}],spots:[[1680,380],[1900,460]]},
- {id:"wellness",n:"Wellness Room",pts:[[540,820],[880,820],[880,1120],[620,1120],[540,1040]],fill:"#9cc7a6",lab:[720,860],doors:[{x:630,y:730,w:160,h:130,side:"s"}],spots:[[640,980],[800,1060]]},
- {id:"conf",n:"Conference Room",pts:[[930,820],[1460,820],[1460,1150],[1410,1200],[980,1200],[930,1150]],fill:"#55729e",lab:[1195,860],doors:[{x:1115,y:730,w:160,h:130,side:"s"}],spots:[[980,1120],[1400,900]]},
- {id:"breakout",n:"Breakout Room",pts:[[1510,820],[1790,820],[1750,1080],[1510,1080]],fill:"url(#wgrid)",lab:[1640,860],doors:[{x:1550,y:730,w:160,h:130,side:"s"}],spots:[[1560,1020],[1700,960]]}];
+ {id:"allskate",n:"All Skate",pts:[[1040,120],[1440,120],[1540,220],[1540,600],[960,600],[960,200]],fill:"url(#wcarpet)",lab:[1250,575],doors:[{x:1160,y:560,w:180,h:130,side:"n"},{x:1528,y:410,w:84,h:130,side:"e"}],spots:[[1040,300],[1460,300],[1200,300]]},
+ {id:"hightea",n:"High Tea",pts:[[1600,280],[1900,280],[1980,360],[1980,600],[1600,600]],fill:"url(#wwood)",lab:[1790,575],doors:[{x:1700,y:560,w:160,h:130,side:"n"}],spots:[[1780,410],[1900,520]]},
+ {id:"wellness",n:"Wellness Room",pts:[[540,820],[880,820],[880,1120],[620,1120],[540,1040]],fill:"#9cc7a6",lab:[720,860],doors:[{x:630,y:730,w:160,h:130,side:"s"}],spots:[[640,1040],[800,1060]]},
+ {id:"conf",n:"Conference Room",pts:[[930,820],[1460,820],[1460,1150],[1410,1200],[980,1200],[930,1150]],fill:"#55729e",lab:[1195,860],doors:[{x:1115,y:730,w:160,h:130,side:"s"}],spots:[[980,1120],[1420,1050]]},
+ {id:"breakout",n:"Breakout Room",pts:[[1510,820],[1790,820],[1750,1080],[1510,1080]],fill:"url(#wgrid)",lab:[1640,860],doors:[{x:1550,y:730,w:160,h:130,side:"s"}],spots:[[1700,1020],[1700,960]]}];
 const LOCKS=[{lvl:3,x:1840,y:1300,w:100,dir:"h",label:"ACCESS · LVL 3"},{lvl:4,x:2130,y:650,h:120,dir:"v",label:"LVL 4"}];
 const RNAME=Object.fromEntries([...WROOMS.map(r=>[r.id,r.n]),["hall","Hallway"],["elevator","Elevator"],["side","East Corridor"]]);
 function inPoly(x,y,p){let c=false;for(let i=0,j=p.length-1;i<p.length;j=i++){const [xi,yi]=p[i],[xj,yj]=p[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c}return c}
@@ -757,10 +757,13 @@ function worldHTML(mode){return `<div class="world" id="world" data-mode="${mode
   <div class="minimap${S.mmHidden?" min":""}" id="mmap" role="button" tabindex="0" title="Show or hide the map (M)">${mmapInner()}</div>
   <div class="joy" id="joy" aria-label="Move: drag inside the circle, or use arrow keys / WASD"><div class="knob" id="knob"></div></div>
   <button class="usebtn" id="usebtn" disabled>USE</button>
-  ${S.panel?`<div class="wpanel"><button class="xclose" id="closeP" aria-label="Close">✕</button>${S.panel==="ghost"?ghostPanel():roomPanel()}</div>`:""}
+  ${S.panel?`<div class="wpanel"><button class="xclose" id="closeP" aria-label="Close">✕</button>${S.panel==="ghost"?ghostPanel():S.panel==="npc"?rookPanel():roomPanel()}</div>`:""}
   <div class="wact" id="wact" hidden></div>
   <div class="whelp"><span class="kb">Move: arrow keys / WASD · Act: E · Map: M</span><span class="tc">Move: joystick · Act: USE</span></div>
   </div>`}
+/* Rook from Team Wren stands in the hallway. Walk up and press E to talk. */
+const ROOK={x:1690,y:745};
+function rookPanel(){return `<div class="panel"><span class="label">Rook · Team Wren</span><p>"Same trial as you this round. Good luck in there."</p><span class="hint">Other teams are on this floor too.</span></div>`}
 function ghostPanel(){const g=GHOSTS[S.nearGhost||0];return `<div class="panel" style="border-color:#e9ecff"><span class="label" style="color:#e9ecff">${g.n} · wandering ghost</span><p style="font-family:var(--px);color:#e9ecff">“${esc(g.line)}”</p><span class="hint">It flickers and is gone.</span></div>`}
 let W={raf:0,vx:0,vy:0,keys:{},tapT:{},last:0,ghostT:0,ghostPos:[]};
 const TAP_MS=110;   // one quick tap moves about 33px (300 px/s)
@@ -802,6 +805,7 @@ function initWorld(){
 }
 function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
   if(W.near>=0)return{label:"Listen",ok:true,cls:"ghost",act:"ghost"};
+  if(Math.hypot(S.pos.x-ROOK.x,S.pos.y-ROOK.y)<90)return{label:"Talk",ok:true,act:"npc"};
   const r=S.wroom;
   if(r==="kitchen")return{label:"Look",ok:true,act:"room"};
   if(r==="breakout")return mode==="floor"&&S.type==="contra"&&!ME.sabotageLocked?{label:"Sabotage",ok:true,cls:"red",act:"room"}:{label:"Inspect",ok:true,act:"room"};
@@ -812,7 +816,7 @@ function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
   if(r==="wellness")return{label:"Breathe",ok:true,act:"room"};
   return{label:"USE",ok:false};
 }
-function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"?"ghost":"room";S.panelAt={room:S.wroom,x:S.pos.x,y:S.pos.y};render()}
+function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"||a.act==="npc"?a.act:"room";S.panelAt={room:S.wroom,x:S.pos.x,y:S.pos.y};render()}
 addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT")return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"){if(S.panel){S.panel=false;if(!useAction().ok){render();return}}doUse()}/* E with a popup open: close it, open the new interaction */if(k==="m"&&!e.repeat)toggleMinimap()});
 /* Escape closes any open popup, same as its X: room and ghost panels, and the whisper box. Works wherever focus is. */
 addEventListener("keydown",e=>{if(e.key!=="Escape"&&e.key!=="Esc")return;const w=$("#whisper");if(!w.hidden)w.hidden=true;if(S.panel){S.panel=false;render()}});
