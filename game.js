@@ -783,6 +783,8 @@ function initWorld(){
     /* ghosts */
     if(t-W.ghostT>2800){W.ghostT=t;W.ghostPos.forEach((p,i)=>{if(Math.random()<.5){p.on=!p.on;if(p.on){const r=WROOMS[Math.floor(Math.random()*WROOMS.length)],sp=r.spots[Math.floor(Math.random()*r.spots.length)];p.x=sp[0];p.y=sp[1]}ghosts[i].setAttribute("opacity",p.on?".7":"0");ghosts[i].setAttribute("transform",`translate(${p.x} ${p.y})`)}})}
     let near=-1;W.ghostPos.forEach((p,i)=>{if(p.on&&Math.hypot(p.x-S.pos.x,p.y-S.pos.y)<120)near=i});S.nearGhost=near>=0?near:S.nearGhost;W.near=near;
+    /* Popups close when the player walks away: a room popup when leaving the room, others after moving ~140px. */
+    if(S.panel&&S.panelAt){const at=S.panelAt,away=S.panel==="room"?S.wroom!==at.room:Math.hypot(S.pos.x-at.x,S.pos.y-at.y)>140;if(away){S.panel=false;S.panelAt=null;const el=$(".wpanel");if(el)el.remove()}}
     const act=useAction();use.textContent=act.label;use.disabled=!act.ok;use.className="usebtn "+(act.cls||"");
     const hint=act.ok?"Press E: "+act.label:"";if(wact&&wact.dataset.t!==hint){wact.dataset.t=hint;wact.textContent=hint;wact.hidden=!hint}
   };
@@ -800,7 +802,7 @@ function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
   if(r==="wellness")return{label:"Breathe",ok:true,act:"room"};
   return{label:"USE",ok:false};
 }
-function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"?"ghost":"room";render()}
+function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"?"ghost":"room";S.panelAt={room:S.wroom,x:S.pos.x,y:S.pos.y};render()}
 addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT")return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"){if(S.panel){S.panel=false;if(!useAction().ok){render();return}}doUse()}/* E with a popup open: close it, open the new interaction */if(k==="m"&&!e.repeat)toggleMinimap()});
 /* Escape closes any open popup, same as its X: room and ghost panels, and the whisper box. Works wherever focus is. */
 addEventListener("keydown",e=>{if(e.key!=="Escape"&&e.key!=="Esc")return;const w=$("#whisper");if(!w.hidden)w.hidden=true;if(S.panel){S.panel=false;render()}});
