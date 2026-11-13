@@ -60,7 +60,6 @@
           game.accuse(p, target);
         }
       }
-      game.endGlitchReport();
     },
 
     /* Gift window: Cooperative bots always gift if they can; others 25%. 2 if affordable, else 1.

@@ -25,6 +25,7 @@
       this.sabotages = [];    // { actor, target, drain, cost }
       this.accusations = [];  // { accuser, target, correct }
       this.gifts = [];        // { giver, receiver, pts, cost, refused, cancelled }
+      this.completed = new Set();   // one-time Game actions already run this round
     }
     static get LEVELS() { return LEVELS; }
     static get STEPS() { return STEPS; }

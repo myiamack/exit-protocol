@@ -1,12 +1,26 @@
 /* Game: runs the rounds in step order and applies every rule.
-   The screen (or a test script) calls these methods in this order each level:
-   startNextRound > sabotage* > setTrialResult / vote > payTrialCosts > accuse* > endGlitchReport
-   > gift* > lockIn > computeEarnings > cashOut* > placePoints > finishRound.
-   Level 7: startNextRound > placePoints > results. */
+   Game enforces the step order. A call in the wrong step is refused with a reason.
+   Player actions (sabotage, accuse, gift, cashOut) return { ok: false, reason }.
+   Engine calls (payTrialCosts, lockIn, ...) throw an Error with the reason.
+   Order each level 1 to 6 (advance() moves to the next step):
+     openFloor:    sabotage*                                  > advance
+     trial:        setTrialResult / startVote, payTrialCosts  > advance
+     glitchReport: accuse*, endGlitchReport                   > advance
+     giftWindow:   gift*                                      > advance
+     lockIn:       lockIn                                     > advance
+     statsUpdate:  computeEarnings, cashOut*, place points, finishRound
+   Then startNextRound. Level 7: startNextRound > place points > results. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
   const POINTS = { win: 4, lose: 2, glitched: 1, correctAccusation: 1, final: 3 };
+
+  const STEP_NAME = { openFloor: "Open Floor", trial: "Trial", glitchReport: "Glitch Report",
+                      giftWindow: "Gift window", lockIn: "Lock-in", statsUpdate: "Stats Update",
+                      graduation: "Graduation" };
+
+  // What must happen before advance() may leave each step.
+  const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };
 
   class Game {
     constructor({ teams, rng = Math.random, host = false }) {
@@ -22,7 +36,35 @@
     teamOf(p) { return this.teams.find(t => t.has(p)); }
     get over() { return this.level === 7 && this.round && this.round.done; }
 
+    /* ----- step order ----- */
+    get step() { return this.round ? this.round.step : null; }
+    stepName() { return STEP_NAME[this.step] || "no round"; }
+    didRun(action) { return !!this.round && this.round.completed.has(action); }
+
+    /* null if this is the right step, else the reason. */
+    wrongStep(step) {
+      if (this.step === step) return null;
+      return "Not allowed now. That happens in " + STEP_NAME[step] + "; the game is in " + this.stepName() + ".";
+    }
+    mustBe(step) { const why = this.wrongStep(step); if (why) throw new Error(why); }
+    once(action) {
+      if (this.didRun(action)) throw new Error(action + " already ran this round.");
+      this.round.completed.add(action);
+    }
+
+    /* Move to the next step. Refused if the current step is not finished. */
+    advance() {
+      if (!this.round) throw new Error("No round yet. Call startNextRound.");
+      if (this.round.isFinal) throw new Error("Graduation is the last step.");
+      if (this.step === "statsUpdate") throw new Error("Stats Update is the last step. Call finishRound, then startNextRound.");
+      const need = REQUIRED[this.step];
+      if (need && !this.didRun(need)) throw new Error("Finish " + this.stepName() + " first (" + need + ").");
+      return this.round.nextStep();
+    }
+
     startNextRound() {
+      if (this.level >= 7) throw new Error("The game is over.");
+      if (this.round && !this.didRun("finishRound")) throw new Error("Finish this round first (finishRound).");
       this.level += 1;
       this.round = new EP.Round(this.level);
       this.players.forEach(p => p.resetRoundFlags());
@@ -34,13 +76,25 @@
     }
 
     /* 1. Open Floor */
-    sabotage(actor, target) { return EP.Sabotage.apply(this.round, actor, target, this.teamOf(actor)); }
+    sabotage(actor, target) {
+      const why = this.wrongStep("openFloor");
+      if (why) return { ok: false, reason: why };
+      return EP.Sabotage.apply(this.round, actor, target, this.teamOf(actor));
+    }
 
     /* 2. Trial. Engine-scored trials: the screen or host sets each team's result.
        Judged trials with no host: use a Vote. */
-    setTrialResult(team, won) { team.won = !!won; }
-    startVote() { return new EP.Vote(this.teams, this.rng); }
+    setTrialResult(team, won) {
+      this.mustBe("trial");
+      if (this.didRun("payTrialCosts")) throw new Error("Trial costs are already paid.");
+      team.won = !!won;
+    }
+    startVote() { this.mustBe("trial"); return new EP.Vote(this.teams, this.rng); }
     payTrialCosts() {
+      this.mustBe("trial");
+      const missing = this.teams.find(t => t.won === null);
+      if (missing) throw new Error("No trial result for " + missing.name + ".");
+      this.once("payTrialCosts");
       const out = new Map();
       for (const p of this.players) {
         const r = p.payTrial(this.round.attr, this.round.cost);
@@ -50,17 +104,29 @@
     }
 
     /* 3. Glitch Report */
-    accuse(accuser, target) { return EP.Accusation.apply(this.round, accuser, target, this.teamOf(accuser)); }
+    accuse(accuser, target) {
+      const why = this.wrongStep("glitchReport") || (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null);
+      if (why) return { ok: false, reason: why };
+      return EP.Accusation.apply(this.round, accuser, target, this.teamOf(accuser));
+    }
     endGlitchReport() {
+      this.mustBe("glitchReport");
+      this.once("endGlitchReport");
       // Exploit: +1 for each Contrarian who sabotaged this round and was not caught.
       for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.addPathProgress();
     }
 
     /* 4. Gift window */
-    gift(giver, receiver, pts) { return EP.Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts); }
+    gift(giver, receiver, pts) {
+      const why = this.wrongStep("giftWindow");
+      if (why) return { ok: false, reason: why };
+      return EP.Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts);
+    }
 
     /* 5. Lock-in: glitches count, reboot, Empathy. */
     lockIn() {
+      this.mustBe("lockIn");
+      this.once("lockIn");
       const locked = [];
       for (const team of this.teams) {
         for (const p of team.members) {
@@ -76,9 +142,10 @@
 
     /* 6. Stats Update */
     computeEarnings() {
+      this.mustBe("statsUpdate");
+      this.once("computeEarnings");
       const out = new Map();
       for (const team of this.teams) {
-        if (team.won === null) throw new Error("No trial result for " + team.name);
         for (const p of team.members) {
           if (p.isStuck()) continue;
           const lines = [];
@@ -95,19 +162,35 @@
       }
       return out;
     }
-    cashOut(p) { return p.cashOut(); }   // adds 1 to p.earned
+    /* Cash Out adds 1 to p.earned. Only after earnings, before the round ends. */
+    cashOut(p) {
+      const why = this.wrongStep("statsUpdate") ||
+                  (!this.didRun("computeEarnings") ? "Earnings come first." : null) ||
+                  (this.didRun("finishRound") ? "The round is over." : null) ||
+                  (!p.canCashOut() ? "Cash Out needs an Independent with full backup, once per game." : null);
+      if (why) return { ok: false, reason: why };
+      p.cashOut();
+      return { ok: true };
+    }
     finishRound() {
+      this.mustBe("statsUpdate");
+      if (!this.didRun("computeEarnings")) throw new Error("Compute earnings first.");
+      const unplaced = this.players.find(p => !p.isStuck() && p.earned > 0);
+      if (unplaced) throw new Error(unplaced.name + " has not placed their points.");
+      this.once("finishRound");
       for (const p of this.players) if (!p.isStuck()) p.refillBackup();
     }
 
     /* Level 7 */
     results() {
+      this.mustBe("graduation");
       this.round.done = true;
       return this.players.map(p => ({ player: p, ending: p.ending(), wins: p.wins() }));
     }
   }
 
   Game.POINTS = POINTS;
+  Game.STEP_NAME = STEP_NAME;
   EP.Game = Game;
   if (typeof module !== "undefined" && module.exports) module.exports = Game;
 })(typeof globalThis !== "undefined" ? globalThis : this);

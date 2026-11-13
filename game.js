@@ -805,7 +805,7 @@ function bind(){
   if(S.step===9){
     $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;S.place[k]=(S.place[k]||0)+1;render()});
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
-    on("#cashOut",()=>{if(G.cashOut(ME)){S.cashed=true;render()}});
+    on("#cashOut",()=>{if(G.cashOut(ME).ok){S.cashed=true;render()}});
     on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,found:{L:S.found.L,id:S.found.id}};endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
     on("#restart",()=>{endSession();S=fresh();render()});
   }
@@ -815,16 +815,20 @@ function lockPoints(){S.got=ME.earned;ME.placePoints(S.place);S.place={};G.finis
 function applyOpenFloorEnd(){
   if(S.of.applied)return;S.of.applied=true;
   EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now
+  G.advance();                // Open Floor > Trial
 }
 function checkSop(){stopTimer();const s=S.sop;s.checked=true;s.score=SOP.filter((t,i)=>s.built[i]===t).length;s.decoyOut=!s.built.includes(DECOY);if(s.decoyOut)S.found.loop=1;S.win=s.score>=5&&s.decoyOut;render()}
 function payCost(){
   if(S.paid)return;S.paid=true;
   G.setTrialResult(MYTEAM,S.win);EP.Bots.trial(G,RNG);   // other teams: engine result
   S.pay=G.payTrialCosts().get(ME);
+  G.advance();                // Trial > Glitch Report
 }
 function endAccusations(){
   S.acc.done=true;
-  EP.Bots.accusations(G,RNG);   // bots accuse, then Exploit credit
+  EP.Bots.accusations(G,RNG);   // bots accuse
+  G.endGlitchReport();          // Exploit credit
+  G.advance();                  // Glitch Report > Gift window
   startGW();
 }
 function startGW(){
@@ -835,7 +839,9 @@ function startGW(){
 }
 function closeGW(){
   S.gw.closed=true;
+  G.advance();                // Gift window > Lock-in
   G.lockIn();
+  G.advance();                // Lock-in > Stats Update
   S.earnLines=G.computeEarnings().get(ME)||[];
   EP.Bots.statsUpdate(G);   // bots cash out and place points
   render();

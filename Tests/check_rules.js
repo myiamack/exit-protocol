@@ -36,11 +36,17 @@ for (let g = 0; g < GAMES; g++) {
   for (let level = 1; level <= 6; level++) {
     game.startNextRound();
     EP.Bots.openFloor(game, rng);      // 1. Open Floor
+    game.advance();
     EP.Bots.trial(game, rng);          // 2. Trial result (50% win)
     game.payTrialCosts();              //    Trial cost
+    game.advance();
     EP.Bots.accusations(game, rng);    // 3. Glitch Report
+    game.endGlitchReport();            //    Exploit credit
+    game.advance();
     EP.Bots.gifts(game, rng);          // 4. Gift window
+    game.advance();
     game.lockIn();                     // 5. Lock-in
+    game.advance();
     game.computeEarnings();            // 6. Stats Update
     EP.Bots.statsUpdate(game);
     game.finishRound();
