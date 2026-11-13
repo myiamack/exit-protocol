@@ -94,10 +94,10 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 If game.js scores any trial differently, show me and ask before changing it.
 
 ### Round step order (levels 1 to 6)
-1. **Open Floor:** Contrarians may sabotage.
+1. **Open Floor:** Contrarians may sabotage. Any player may gift a teammate.
 2. **Trial:** every non-Stuck player pays the cost from the tested attribute. **Glitching players pay too.** Backup covers any shortfall.
 3. **Glitch Report:** accusations.
-4. **Gift window** (about 30 seconds): gifts to Glitching teammates.
+4. **Gift window** (about 30 seconds): gifts to any teammate (see Gifts).
 5. **Lock-in:** any player still below 0 glitches. Reboot. Empathy.
 6. **Stats Update:** earn points, place them, refill backup by 1.
 
@@ -115,6 +115,14 @@ If game.js scores any trial differently, show me and ask before changing it.
 - Drain: 2 points from the target's trial attribute for this round. Only 1 if the target's Composure is 6 or more.
 - Backup covers a drain below 0, same as any shortfall.
 - The victim is told privately.
+
+### Gifts
+- Any player can gift any teammate during Open Floor or the gift window, whatever the receiver's status (OK, At risk or Glitching). Every teammate gets a gift button.
+- Receiver Glitching: points go to the glitching attribute. Receiver not Glitching: points go to their lowest attribute.
+- Ties go in this order: Focus, Collaboration, Initiative, Grit, Composure.
+- The receiver does not pick the attribute.
+- Cost by type, Independent refusal and refund, and overflow refund are unchanged (see Types).
+- Lifeline counts only a gift that cancels a glitch (the receiver was Glitching before the gift and is not after it).
 
 ### Accusations
 - One per player per round, against a teammate.

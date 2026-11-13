@@ -3,7 +3,7 @@
    Player actions (sabotage, accuse, gift, cashOut) return { ok: false, reason }.
    Engine calls (payTrialCosts, lockIn, ...) throw an Error with the reason.
    Order each level 1 to 6 (advance() moves to the next step):
-     openFloor:    sabotage*                                  > advance
+     openFloor:    sabotage*, gift*                           > advance
      trial:        setTrialResult / startVote, payTrialCosts  > advance
      glitchReport: accuse*, endGlitchReport                   > advance
      giftWindow:   gift*                                      > advance
@@ -116,9 +116,10 @@
       for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.addPathProgress();
     }
 
-    /* 4. Gift window */
+    /* Gifts: Open Floor or the gift window. */
     gift(giver, receiver, pts) {
-      const why = this.wrongStep("giftWindow");
+      const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+        "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
       if (why) return { ok: false, reason: why };
       return EP.Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts);
     }

@@ -1,4 +1,6 @@
-/* Gift: sent during the gift window to a Glitching teammate. */
+/* Gift: sent to any teammate during Open Floor or the gift window, whatever their status.
+   Points go to the glitching attribute if the receiver is Glitching, else to their lowest attribute
+   (ties: Focus, Collaboration, Initiative, Grit, Composure). The receiver does not pick. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
@@ -17,7 +19,6 @@
       if (giver === receiver) return "You cannot gift yourself.";
       if (!team.has(receiver)) return "Teammates only.";
       if (receiver.isStuck()) return "Stuck players cannot receive gifts.";
-      if (!receiver.isGlitching()) return "Gifts go only to Glitching teammates.";
       if (giver.backup < Gift.cost(giver, pts)) return "Not enough backup.";
       return null;
     }
@@ -34,14 +35,16 @@
         return { ok: true, ...rec };
       }
 
+      const wasGlitching = receiver.isGlitching();
+      const target = receiver.giftTarget();
       giver.backup -= cost;
       const overflow = receiver.receiveGift(pts);
       if (overflow) {
         giver.backup = Math.min(EP.Player.BACKUP_CAP, giver.backup + overflow * Gift.refundPerPoint(giver));
       }
-      const cancelled = !receiver.isGlitching();
+      const cancelled = wasGlitching && !receiver.isGlitching();   // only a real rescue counts
       if (cancelled && giver.type === "coop") giver.addPathProgress();   // Lifeline
-      const rec = { giver, receiver, pts, cost, refused: false, cancelled, overflow };
+      const rec = { giver, receiver, pts, cost, refused: false, cancelled, overflow, target };
       round.gifts.push(rec);
       return { ok: true, ...rec };
     }

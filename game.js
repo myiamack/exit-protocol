@@ -150,7 +150,7 @@ const FAC=[
   ["Work style is secret. Remind players: never tell anyone your type or your numbers.","Everyone ends with 24 total points and 3 backup hearts."],
   ["Intermission in All Skate. Teams of 4. Move players between teams if needed, then start Level 1."],
   ["Reveal: Boot Up tests Grit. Every player pays 2 Grit after the trial."],
-  ["Open Floor: players walk the office. Breakout Room = sabotage a teammate (Contrarians). High Tea = network with a guest for a hint. All Skate = reflect and plan. Conference Room has the emergency button. Gifts wait for the gift window.","Live game: ~3 minutes. Demo timer: 90 seconds."],
+  ["Open Floor: players walk the office. Breakout Room = sabotage a teammate (Contrarians). High Tea = network with a guest for a hint. All Skate = reflect and plan. Conference Room has the emergency button. Kitchen = gift any teammate (also in the gift window).","Live game: ~3 minutes. Demo timer: 90 seconds."],
   ["Teams play the SOP challenge (coffee). In the live game you mark each team Win or Loss."],
   ["All-hands meeting in the Conference Room. Each player may accuse one teammate.","Then open the 30-second gift window. Glitches lock in when it closes."],
   ["Win = 4 points, Loss = 2, glitched = 1. Bonuses: correct accusation +1, Skim, Cash Out. Players place points before the next trial is revealed. Backup refills by 1."]];
@@ -501,7 +501,7 @@ V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge</span></div><div class="panel"><span class="label">Workshops</span><span>LW2A Know Your Lens · LW2B Team Agreement · BW2B · W2B</span></div></div>`;
 
 function roomPanel(){const t=T();const lockd=S.of.applied||S.step!==6;const r=S.room;
-  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gifts happen in the gift window, right after the trial. Only Glitching teammates can receive them.</p><p class="hint">Your cost as a ${t.n}: ${S.type==="indep"?"1 point costs 2 hearts, 2 points cost 3. You cannot accept gifts.":"1 heart per point."}</p></div>`;
+  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gift any teammate here during Open Floor, or in the gift window after the trial.</p><p class="hint">Your cost as a ${t.n}: ${S.type==="indep"?"1 point costs 2 hearts, 2 points cost 3. You cannot accept gifts.":"1 heart per point."}</p>${lockd?`<p class="hint">${GIFT_RULE}</p>`:giftRoster()}${!lockd&&S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}</div>`;
   if(r==="breakout"){if(S.type!=="contra"||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. The room feels like someone just left.</p></div>`;
     const cost=EP.Sabotage.cost(ME);
     return `<div class="panel"><span class="label">Breakout Room · Sabotage a teammate (Contrarian only)</span><p class="hint">This one costs ${cost} heart${cost>1?"s":""}. Drains 2 from the target's ${AN[R().attr]} (1 if their Composure is 6+). Each extra sabotage this round costs 2.</p><div class="roster">${MYTEAM.mates(ME).map(p=>{const why=EP.Sabotage.check(ME,p,MYTEAM);return `<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===p.name).av,{head:true,label:p.name})}${esc(p.name)}</span><span class="row" style="gap:6px">${flag(p.flag())}<button class="btn red sm" data-sab="${esc(p.name)}" ${why?`disabled title="${esc(why)}"`:""}>Sabotage</button></span></div>`}).join("")}</div>${S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}${ME.sabotageLocked?`<span class="hint">You were caught. No more sabotage this game.</span>`:""}</div>`}
@@ -509,9 +509,9 @@ function roomPanel(){const t=T();const lockd=S.of.applied||S.step!==6;const r=S.
   if(r==="wellness")return `<div class="panel"><span class="label">Wellness Room</span><p>Quiet in here. Take a breath before the trial. (No game effect yet.)</p></div>`;
   if(r==="conf")return `<div class="panel"><span class="label">Conference Room · Emergency button</span><p>${S.step===8?"The all-hands meeting is in session.":"The button is locked. It lights up after the trial, when the all-hands meeting is called."}</p></div>`;
   if(r==="reception")return `<div class="panel"><span class="label">Reception · Check in</span><p>The front desk prints your badge again. <b>ATTEMPT 02</b>. You only remember one.</p><span class="okmsg">Anomaly logged: WATCHER.</span></div>`;
-  return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. ${S.type==="contra"?"Slip into the Breakout Room to sabotage a teammate. ":""}Gifts wait for the gift window after the trial. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>`;
+  return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. ${S.type==="contra"?"Slip into the Breakout Room to sabotage a teammate. ":""}Gift a teammate in the Kitchen now, or in the gift window after the trial. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>`;
 }
-V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${S.of.applied?"Open Floor is over. Press Next to return to the trial.":"Kitchen = gift rules · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
+V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${S.of.applied?"Open Floor is over. Press Next to return to the trial.":"Kitchen = gift a teammate · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
 ${worldHTML("floor")}`;
 
 V[7]=()=>{const s=S.sop;const hit=G.round.sabotages.filter(x=>x.target===ME).reduce((n,x)=>n+x.drain,0);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
@@ -534,12 +534,16 @@ ${a.done?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.
 :`<div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Who drained your team this round? Correct: +1 point. Wrong: you lose 1 point.</span>`}</div>
 ${a.done?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${g.closed?flag(status()):`<span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span>`}</div>
   ${g.received.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
-  ${!g.closed&&!MYTEAM.mates(ME).some(q=>q.isGlitching()&&!q.isStuck())?`<p class="hint">Only Glitching teammates (an attribute below 0) can receive a gift. No teammate is Glitching right now, so there is no one to gift. At risk is a warning, not a glitch.</p>`:""}
-  ${!g.closed?`<div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.flag())}${q.isGlitching()&&!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${EP.Gift.check(ME,q,MYTEAM,n)?"disabled":""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`:""}
+  ${!g.closed?giftRoster():""}
   ${g.sent.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
   ${g.closed?`<p>${ME.glitchedThisRound?`<b style="color:var(--pink)">Glitch locked in.</b> Reboot: points taken evenly from your other attributes to bring it back to 1. Backup hearts set to 0. Glitches: ${ME.glitches}/2.`:"Window closed. No glitch for you this round."}</p>`:`<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0 when it closes becomes a glitch.</span>`}
 </div>`:""}`};
 
+/* Gift buttons for every teammate (Open Floor and gift window). Stuck players are spectators. */
+const GIFT_RULE="Points go to their glitching attribute if they are Glitching, otherwise to their lowest attribute. You don't pick the attribute.";
+function giftRoster(){return `<p class="hint">${GIFT_RULE}</p><div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.flag())}${!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n),why=EP.Gift.check(ME,q,MYTEAM,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${why?`disabled title="${esc(why)}"`:""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`}
+function giftMsg(q,pts,r){return r.refused?`${q.name} refused your gift. Nothing was spent.`:`You sent ${q.name} ${pts} point${pts>1?"s":""} (−${r.cost} heart${r.cost>1?"s":""}).${r.cancelled?` ${q.name} is safe.`:""}${r.cancelled&&S.type==="coop"?" Lifeline complete.":""}`}
+function bindGifts(onMsg){$$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;onMsg(giftMsg(q,pts,r));keepTimer()})}
 function placeLeft(){return (ME?ME.earned:0)-Object.values(S.place).reduce((a,b)=>a+b,0)}
 V[9]=()=>{const left=placeLeft();const t=T();const got=S.done?S.got:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
 return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
@@ -598,7 +602,7 @@ const ADMIN_LINES=[
   "You'll see things on this floor that aren't on the org chart. Don't follow them. Listen to them.",
   "Your work style has been assigned. Your orientation lead will brief you now."];
 const ROLE_BRIEF={
-  coop:{lead:2,lines:["Hey, Cooperative! I'm Meep. On this floor you're the glue.","Your gifts cost only 1 heart per point. Use them in the gift window when a teammate starts glitching.","Watch out: you're slow to take Initiative. It caps at 4. And when a teammate's glitch locks in, you lose a heart too.","Your secret path is Lifeline. Cancel 1 teammate glitch with a gift and you win your own way, even if the floor goes badly."],face:"Collaboration +2 · Composure +2",weak:"Initiative caps at 4",watch:"A teammate's locked glitch costs you a heart."},
+  coop:{lead:2,lines:["Hey, Cooperative! I'm Meep. On this floor you're the glue.","Your gifts cost only 1 heart per point. Gift any teammate during Open Floor or the gift window. A gift can pull a glitching teammate back to safety.","Watch out: you're slow to take Initiative. It caps at 4. And when a teammate's glitch locks in, you lose a heart too.","Your secret path is Lifeline. Cancel 1 teammate glitch with a gift and you win your own way, even if the floor goes badly."],face:"Collaboration +2 · Composure +2",weak:"Initiative caps at 4",watch:"A teammate's locked glitch costs you a heart."},
   indep:{lead:3,lines:["Signal received, Independent. I'm Projection.","You're strongest at Focus and Grit. You'll carry trials others can't.","Collaboration costs you more. 1 gift point costs 2 hearts, 2 points cost 3. And you can't accept gifts.","Your secret path is Auditor. Make 1 correct accusation yourself. Once per game, with full backup, you can Cash Out 2 hearts for 1 point."],face:"Focus +2 · Grit +2",weak:"Collaboration caps at 4",watch:"Someone on your team may be sabotaging."},
   contra:{lead:1,lines:["So. You don't trust the system either. Good. I'm SYS-ADMIN 02.","From the Breakout Room you can sabotage a teammate. The first one each round costs 1 heart and drains 2 points.","At every all-hands, each teammate can accuse one person. Get caught and you can't sabotage again, and Exploit is lost.","Your secret path is Exploit: 2 sabotage rounds nobody catches. Each uncaught round also pays +1 point, up to 2. Stay calm. Your Composure caps at 4."],face:"Initiative +2 · Grit +2",weak:"Composure caps at 4",watch:"Don't be the one who's always near the Breakout Room."}};
 function vnBox(who,role,portrait,line,i,n,extra=""){return `<div class="vn"><div class="vnp">${portrait}</div><div class="vnt"><div class="vnh"><b>${who}</b><span class="chip b">${role}</span></div><p class="vnl">${esc(line)}</p>${extra}<div class="vnf"><span class="dots">${Array.from({length:n},(_,j)=>`<i class="${j<=i?"on":""}"></i>`).join("")}</span><span class="label">Press Continue</span></div></div></div>`}
@@ -820,6 +824,7 @@ function bind(){
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){
     if(!S.of.applied)$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;keepTimer()});
+    bindGifts(m=>{S.of.msg=m});
     $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;keepTimer()});
     if(!S.of.applied)tick("left",S.of,()=>{applyOpenFloorEnd();go(7)});
   }
@@ -833,8 +838,7 @@ function bind(){
   if(S.step===8){
     on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;const r=G.accuse(ME,MATE(v));if(!r.ok)return;S.acc.target=v;S.acc.result=r.correct;endAccusations()});
     on("#skipAcc",()=>{S.acc.target="";S.acc.result=null;endAccusations()});
-    $$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;
-      S.gw.sent.push(r.refused?`${q.name} refused your gift. Nothing was spent.`:`You sent ${q.name} ${pts} point${pts>1?"s":""} (−${r.cost} heart${r.cost>1?"s":""}).${r.cancelled?` ${q.name} is safe.`:""}${r.cancelled&&S.type==="coop"?" Lifeline complete.":""}`);keepTimer()});
+    bindGifts(m=>S.gw.sent.push(m));
     if(S.acc.done&&!S.gw.closed)tick("left",S.gw,closeGW);
   }
   if(S.step===9){
