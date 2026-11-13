@@ -702,7 +702,8 @@ function worldHTML(mode){return `<div class="world" id="world" data-mode="${mode
   <div class="whelp">Move: joystick or arrow keys / WASD · Act: USE or E</div>
   </div>`}
 function ghostPanel(){const g=GHOSTS[S.nearGhost||0];return `<div class="panel" style="border-color:#e9ecff"><span class="label" style="color:#e9ecff">${g.n} · wandering ghost</span><p style="font-family:var(--px);color:#e9ecff">“${esc(g.line)}”</p><span class="hint">It flickers and is gone.</span></div>`}
-let W={raf:0,vx:0,vy:0,keys:{},last:0,ghostT:0,ghostPos:[]};
+let W={raf:0,vx:0,vy:0,keys:{},tapT:{},last:0,ghostT:0,ghostPos:[]};
+const TAP_MS=110;   // one quick tap moves about 33px (300 px/s)
 function stopWorld(){cancelAnimationFrame(W.raf);W.raf=0}
 function initWorld(){
   stopWorld();const view=$("#wview"),svg=$("#wsvg"),me=$("#wme"),inner=$("#wmeinner"),mm=$("#mmme"),joy=$("#joy"),knob=$("#knob"),use=$("#usebtn");if(!view)return;
@@ -716,7 +717,9 @@ function initWorld(){
   use.onclick=doUse;
   let bob=0,face=1;
   const frame=t=>{W.raf=requestAnimationFrame(frame);const dt=Math.min(.05,(t-(W.last||t))/1000);W.last=t;
-    let vx=W.vx,vy=W.vy;const k=W.keys;if(k.ArrowLeft||k.a)vx=-1;if(k.ArrowRight||k.d)vx=1;if(k.ArrowUp||k.w)vy=-1;if(k.ArrowDown||k.s)vy=1;
+    /* A key counts as held while down, and for at least TAP_MS after a quick tap, so one tap moves one step. */
+    const held=n=>W.keys[n]||t-(W.tapT[n]??-1e9)<TAP_MS;
+    let vx=W.vx,vy=W.vy;if(held("ArrowLeft")||held("a"))vx=-1;if(held("ArrowRight")||held("d"))vx=1;if(held("ArrowUp")||held("w"))vy=-1;if(held("ArrowDown")||held("s"))vy=1;
     const m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}const sp=300;
     if(m>.05){const nx=S.pos.x+vx*sp*dt,ny=S.pos.y+vy*sp*dt;if(canStand(nx,S.pos.y))S.pos.x=nx;if(canStand(S.pos.x,ny))S.pos.y=ny;bob+=dt*14;if(Math.abs(vx)>.2)face=vx<0?-1:1}else bob=0;
     me.setAttribute("transform",`translate(${S.pos.x.toFixed(1)} ${S.pos.y.toFixed(1)})`);
@@ -746,7 +749,7 @@ function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
   return{label:"USE",ok:false};
 }
 function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"?"ghost":"room";render()}
-addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT")return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){W.keys[k]=true;e.preventDefault()}if(k==="e"&&!S.panel)doUse()});
+addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT")return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"&&!S.panel)doUse()});
 /* Escape closes any open popup, same as its X: room and ghost panels, and the whisper box. Works wherever focus is. */
 addEventListener("keydown",e=>{if(e.key!=="Escape"&&e.key!=="Esc")return;const w=$("#whisper");if(!w.hidden)w.hidden=true;if(S.panel){S.panel=false;render()}});
 addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;W.keys[k]=false});
