@@ -153,6 +153,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 
 ### Host
 - Host is optional. The System Administrator stays as a story role.
+- Only the host sees the Host Script button. For solo testing, Ctrl+Shift+H shows or hides it.
 - Host present: host does every host duty (starts rounds, runs timers, enters trial results, leads the debrief).
 - No host: the engine does them. Judged trials use the player vote.
 - **Build no-host mode first.** It is required either way.
