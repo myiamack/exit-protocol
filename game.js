@@ -548,8 +548,8 @@ const GIFT_RULE="They choose Accept or Decline. Accepted points go to their glit
 function giftRoster(){return `<p class="hint">${GIFT_RULE}</p><div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.flag())}${!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n),why=EP.Gift.check(ME,q,MYTEAM,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${why?`disabled title="${esc(why)}"`:""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`}
 const plural=(n,w)=>`${n} ${w}${n===1?"":"s"}`;
 function giftMsg(q,pts,g){
-  if(g.status==="refused")return `${q.name} refused your gift. Independents can't accept gifts. Nothing was spent.`;
-  if(g.status==="declined")return `${q.name} declined your gift. Your ${plural(g.cost,"heart")} came back.`;
+  /* An automatic refusal (Independent) reads exactly like a normal decline. Never mention the type. */
+  if(g.status==="refused"||g.status==="declined")return `${q.name} declined your gift. Your hearts came back.`;
   if(g.status==="pending")return `Waiting for ${q.name} to answer. If they don't answer before this step ends, your hearts come back.`;
   return `${q.name} accepted your ${plural(pts,"point")} (−${plural(g.cost,"heart")}).${g.cancelled?` ${q.name} is safe.`:""}${g.cancelled&&S.type==="coop"?" Lifeline complete.":""}${g.overflow?` ${plural(g.overflow,"point")} had nowhere to go and came back to you.`:""}`}
 function bindGifts(onMsg){$$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;EP.Bots.answer(G,r.gift,RNG);onMsg(giftMsg(q,pts,r.gift));keepTimer()})}
