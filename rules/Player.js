@@ -127,21 +127,25 @@
     }
 
     /* Where a gift point goes. Glitching: the glitching attribute (lowest first if two are below 0).
-       Not glitching: the lowest attribute. Ties: Focus, Collaboration, Initiative, Grit, Composure.
-       The receiver does not pick. */
+       Not glitching: the lowest attribute that still has room below its max.
+       Ties: Focus, Collaboration, Initiative, Grit, Composure. The receiver does not pick.
+       Returns null if every attribute is at its max. */
     giftTarget() {
-      const pool = this.isGlitching() ? KEYS.filter(k => this.attrs[k] < 0) : KEYS;
-      return GIFT_TIE_ORDER.filter(k => pool.includes(k))
-                           .reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m));
+      const pool = this.isGlitching() ? KEYS.filter(k => this.attrs[k] < 0)
+                                      : KEYS.filter(k => this.attrs[k] < this.max(k));
+      const order = GIFT_TIE_ORDER.filter(k => pool.includes(k));
+      if (!order.length) return null;
+      return order.reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m));
     }
 
-    /* Points past 0 stay in that attribute. Returns points that hit the max (overflow). */
+    /* Points past 0 stay in that attribute. If it fills up, the next point goes to the
+       lowest attribute that still has room. Returns points with nowhere to go (overflow, refunded). */
     receiveGift(pts) {
       let target = this.giftTarget();
       let overflow = 0;
       for (let i = 0; i < pts; i++) {
-        if (this.isGlitching()) target = this.giftTarget();
-        if (this.attrs[target] < this.max(target)) this.attrs[target] += 1;
+        if (this.isGlitching() || target === null || this.attrs[target] >= this.max(target)) target = this.giftTarget();
+        if (target !== null && this.attrs[target] < this.max(target)) this.attrs[target] += 1;
         else overflow += 1;
       }
       return overflow;

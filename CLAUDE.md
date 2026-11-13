@@ -120,6 +120,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 - Any player can gift any teammate during Open Floor or the gift window, whatever the receiver's status (OK, At risk or Glitching). Every teammate gets a gift button.
 - Receiver Glitching: points go to the glitching attribute. Receiver not Glitching: points go to their lowest attribute.
 - Ties go in this order: Focus, Collaboration, Initiative, Grit, Composure.
+- Maxed attribute: if the lowest attribute is at its max, the points go to the lowest attribute that still has room (same tie order). If every attribute is at its max, the giver is refunded.
 - The receiver does not pick the attribute.
 - Cost by type, Independent refusal and refund, and overflow refund are unchanged (see Types).
 - Lifeline counts only a gift that cancels a glitch (the receiver was Glitching before the gift and is not after it).

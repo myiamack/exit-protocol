@@ -48,6 +48,30 @@ const set = (p, a) => { p.attrs = { ...a }; };
   expect("Glitching: points go to the glitching attribute (Grit -1 -> 1)", r.attrs.grit === 1, JSON.stringify(r.attrs));
   expect("Glitch cancelled, Lifeline credited to a Cooperative giver", res.cancelled && g.pathDone, g.pathProgress);
 }
+{ // Maxed attribute: the lowest attribute is at its max, so the gift goes to the lowest one with room
+  const { ps: [g, r], team, round } = setup();
+  // Cooperative: Initiative is the weak attribute, max 4
+  set(r, { focus: 6, initiative: 4, collab: 7, composure: 5, grit: 5 });
+  EP.Gift.apply(round, g, r, team, 1);
+  if (EP.Gift.accept) EP.Gift.accept(round, round.gifts[round.gifts.length - 1]);
+  expect("Lowest (Initiative 4) is maxed: point goes to Grit, lowest with room (tie with Composure goes to Grit)",
+         r.attrs.initiative === 4 && r.attrs.grit === 6 && r.attrs.composure === 5, JSON.stringify(r.attrs));
+}
+{ // An attribute fills up partway through a 2-point gift
+  const { ps: [g, r], team, round } = setup();
+  set(r, { focus: 6, initiative: 3, collab: 7, composure: 5, grit: 5 });
+  EP.Gift.apply(round, g, r, team, 2);
+  if (EP.Gift.accept) EP.Gift.accept(round, round.gifts[round.gifts.length - 1]);
+  expect("2 points: Initiative 3 -> 4 (max), second point goes to Grit", r.attrs.initiative === 4 && r.attrs.grit === 6, JSON.stringify(r.attrs));
+}
+{ // Every attribute at max: the giver is refunded
+  const { ps: [g, r], team, round } = setup();
+  set(r, { focus: 10, initiative: 4, collab: 10, composure: 10, grit: 10 });
+  const before = g.backup;
+  EP.Gift.apply(round, g, r, team, 2);
+  if (EP.Gift.accept) EP.Gift.accept(round, round.gifts[round.gifts.length - 1]);
+  expect("All attributes maxed: nothing lands and the giver gets the backup back", r.total() === 44 && g.backup === before, "backup " + before + " -> " + g.backup);
+}
 { // Independent receiver still refuses; giver keeps backup
   const { ps: [g, , ind], team, round } = setup();
   const before = g.backup;
