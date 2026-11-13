@@ -163,7 +163,7 @@ const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
   type:null,base:{focus:1,initiative:1,collab:1,composure:1,grit:1},
   inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
-  of:{left:90,applied:false,msg:""},mmHidden:false,
+  of:{left:90,applied:false,msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
   sop:{pile:[],built:[],checked:false,score:0,decoyOut:false,inTime:true,left:60},
   win:null,pay:null,paid:false,acc:{target:"",done:false,result:null},gw:{left:20,started:false,closed:false,received:[],sent:[]},
   earnLines:[],cashed:false,got:0,place:{},done:false,timer:null});
@@ -194,7 +194,7 @@ const nameKey=em=>String(em||"").trim().toLowerCase();
 function savedName(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}}
 function saveName(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}}
 function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
-function startLevel(){if(!G.round)G.startNextRound();go(5)}
+function startLevel(){if(!G.round)G.startNextRound();S.prog.level=Math.max(S.prog.level,G.level);go(5)}
 const R=()=>G&&G.round?G.round:new EP.Round(1);
 
 /* ---------- helpers ---------- */
@@ -437,7 +437,7 @@ function badgeCard(){const idn=String(((S.name.length*37)+S.email.length*11)%900
    <span class="wide"><span class="k">Employee ID</span><br><button class="idline ${S.found.id?"found":""}" id="idline" style="color:#13294b">060-${idn} · <span class="flick">ATTEMPT 02</span></button></span>
    <span class="wide"><span class="k">Display name</span><br><span class="v">${esc(shownName())}</span></span>
    <span><span class="k">Team</span><br><span class="v">Kestrel</span></span><span><span class="k">Cohort</span><br><span class="v">Cycle 60</span></span>
-   <span><span class="k">Level</span><br><span class="v">${S.step>=5?1:0}</span></span><span><span class="k">XP</span><div class="xp"><i style="width:${Math.round(S.maxStep/9*100)}%"></i></div></span>
+   <span><span class="k">Level</span><br><span class="v">${S.prog.level}</span></span><span><span class="k">XP · ${S.prog.done} of 7 levels</span><div class="xp"><i style="width:${Math.round(S.prog.done/7*100)}%"></i></div></span>
   </div></div><div class="row" style="justify-content:center"><button class="btn outline" id="toWardrobe">Change look</button><button class="btn outline" id="toName">Change name</button></div>`}
 function packet(){return `<div style="display:grid;gap:12px">
   <div class="memo"><span class="label">Onboarding packet · Cycle 60</span><p>You've been given a second chance: a 14-week tech internship. Everything here looks normal. Learn fast, support your team and pass each review. Complete all 7 phases and pass your final <b>Performance Review</b> to exit. Interns who don't qualify are kept on for another contract.</p>
@@ -879,7 +879,7 @@ function bind(){
     $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;S.place[k]=(S.place[k]||0)+1;render()});
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
     on("#cashOut",()=>{if(G.cashOut(ME).ok){S.cashed=true;render()}});
-    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name};/* anomalies and the Glitch Report start over at 0 of 3 */endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
+    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog}};/* anomalies and the Glitch Report start over at 0 of 3 */endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
     on("#restart",signOut);
   }
 }
@@ -890,7 +890,7 @@ function sopPress(b,fn){
   b.onpointerdown=e=>{if(e.pointerType==="touch"||e.button!==0||b.disabled)return;e.preventDefault();sopDownAt=performance.now();fn()};
   b.onclick=e=>{if(e.detail>0&&performance.now()-sopDownAt<1000)return;fn()}}
 function keepTimer(){const t=S.timer;S.timer=null;clearInterval(t);render()}
-function lockPoints(){S.got=ME.earned;ME.placePoints(S.place);S.place={};G.finishRound();S.done=true;render()}
+function lockPoints(){S.prog.done=Math.max(S.prog.done,R().n);S.got=ME.earned;ME.placePoints(S.place);S.place={};G.finishRound();S.done=true;render()}
 function applyOpenFloorEnd(){
   if(S.of.applied)return;S.of.applied=true;
   EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now
