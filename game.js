@@ -622,17 +622,17 @@ const HALL={x:470,y:650,w:1680,h:120};
 const SIDE={x:1840,y:740,w:100,h:580};
 const WROOMS=[
  {id:"reception",n:"Reception",pts:[[170,560],[470,560],[520,610],[520,860],[170,860]],fill:"#d7d2c8",lab:[330,600],spots:[[300,760],[420,700]],open:true},
- {id:"kitchen",n:"Kitchen",pts:[[540,300],[760,300],[760,200],[920,200],[920,600],[540,600]],fill:"url(#wtile)",lab:[730,575],door:{x:690,y:560,w:100,h:130,side:"n"},spots:[[640,450],[840,300]]},
- {id:"allskate",n:"All Skate",pts:[[1040,120],[1440,120],[1540,220],[1540,600],[960,600],[960,200]],fill:"url(#wcarpet)",lab:[1250,575],door:{x:1180,y:560,w:140,h:130,side:"n"},spots:[[1060,260],[1460,300],[1250,220]]},
- {id:"hightea",n:"High Tea",pts:[[1600,280],[1900,280],[1980,360],[1980,600],[1600,600]],fill:"url(#wwood)",lab:[1790,575],door:{x:1730,y:560,w:100,h:130,side:"n"},spots:[[1680,380],[1900,460]]},
- {id:"wellness",n:"Wellness Room",pts:[[540,820],[880,820],[880,1120],[620,1120],[540,1040]],fill:"#9cc7a6",lab:[720,860],door:{x:660,y:730,w:100,h:130,side:"s"},spots:[[640,980],[800,1060]]},
- {id:"conf",n:"Conference Room",pts:[[930,820],[1460,820],[1460,1150],[1410,1200],[980,1200],[930,1150]],fill:"#55729e",lab:[1195,860],door:{x:1140,y:730,w:110,h:130,side:"s"},spots:[[980,1120],[1400,900]]},
- {id:"breakout",n:"Breakout Room",pts:[[1510,820],[1790,820],[1750,1080],[1510,1080]],fill:"url(#wgrid)",lab:[1640,860],door:{x:1580,y:730,w:100,h:130,side:"s"},spots:[[1560,1020],[1700,960]]}];
+ {id:"kitchen",n:"Kitchen",pts:[[540,300],[760,300],[760,200],[920,200],[920,600],[540,600]],fill:"url(#wtile)",lab:[730,575],doors:[{x:660,y:560,w:160,h:130,side:"n"}],spots:[[640,450],[840,300]]},
+ {id:"allskate",n:"All Skate",pts:[[1040,120],[1440,120],[1540,220],[1540,600],[960,600],[960,200]],fill:"url(#wcarpet)",lab:[1250,575],doors:[{x:1160,y:560,w:180,h:130,side:"n"},{x:1528,y:410,w:84,h:130,side:"e"}],spots:[[1060,260],[1460,300],[1250,220]]},
+ {id:"hightea",n:"High Tea",pts:[[1600,280],[1900,280],[1980,360],[1980,600],[1600,600]],fill:"url(#wwood)",lab:[1790,575],doors:[{x:1700,y:560,w:160,h:130,side:"n"}],spots:[[1680,380],[1900,460]]},
+ {id:"wellness",n:"Wellness Room",pts:[[540,820],[880,820],[880,1120],[620,1120],[540,1040]],fill:"#9cc7a6",lab:[720,860],doors:[{x:630,y:730,w:160,h:130,side:"s"}],spots:[[640,980],[800,1060]]},
+ {id:"conf",n:"Conference Room",pts:[[930,820],[1460,820],[1460,1150],[1410,1200],[980,1200],[930,1150]],fill:"#55729e",lab:[1195,860],doors:[{x:1115,y:730,w:160,h:130,side:"s"}],spots:[[980,1120],[1400,900]]},
+ {id:"breakout",n:"Breakout Room",pts:[[1510,820],[1790,820],[1750,1080],[1510,1080]],fill:"url(#wgrid)",lab:[1640,860],doors:[{x:1550,y:730,w:160,h:130,side:"s"}],spots:[[1560,1020],[1700,960]]}];
 const LOCKS=[{lvl:3,x:1840,y:1300,w:100,dir:"h",label:"ACCESS · LVL 3"},{lvl:4,x:2130,y:650,h:120,dir:"v",label:"LVL 4"}];
 const RNAME=Object.fromEntries([...WROOMS.map(r=>[r.id,r.n]),["hall","Hallway"],["elevator","Elevator"],["side","East Corridor"]]);
 function inPoly(x,y,p){let c=false;for(let i=0,j=p.length-1;i<p.length;j=i++){const [xi,yi]=p[i],[xj,yj]=p[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c}return c}
 const inRect=(x,y,r)=>x>r.x&&x<r.x+r.w&&y>r.y&&y<r.y+r.h;
-function walkable(x,y){if(inRect(x,y,ELEV)||inRect(x,y,HALL)||inRect(x,y,SIDE))return true;for(const r of WROOMS){if(inPoly(x,y,r.pts))return true;if(r.door&&inRect(x,y,r.door))return true}return false}
+function walkable(x,y){if(inRect(x,y,ELEV)||inRect(x,y,HALL)||inRect(x,y,SIDE))return true;for(const r of WROOMS){if(inPoly(x,y,r.pts))return true;if((r.doors||[]).some(d=>inRect(x,y,d)))return true}return false}
 function canStand(x,y){return [[0,0],[PR,0],[-PR,0],[0,PR],[0,-PR]].every(([dx,dy])=>walkable(x+dx,y+dy))}
 function roomAt(x,y){for(const r of WROOMS)if(inPoly(x,y,r.pts))return r.id;if(inRect(x,y,ELEV))return "elevator";if(inRect(x,y,SIDE)&&y>780)return "side";return "hall"}
 const P=pts=>pts.map(p=>p.join(",")).join(" ");
@@ -662,6 +662,11 @@ function wFurniture(){const E="#0b0e13",st=`stroke="${E}" stroke-width="5" strok
   f+=[600,900,1200,1500,1800,2050].map(x=>`<rect x="${x-60}" y="${HALL.y+8}" width="120" height="8" rx="4" fill="#fffef5"/>`).join("")+[[980,656],[1560,656]].map(([x,y])=>`<rect x="${x}" y="${y-6}" width="60" height="10" fill="#13294b" stroke="${E}" stroke-width="2"/>`).join("")+
   `<rect x="1866" y="1180" width="48" height="10" rx="4" fill="#fffef5"/><rect x="1866" y="900" width="48" height="10" rx="4" fill="#fffef5"/>`;
   return f}
+/* Doorways: open floor cut through the wall, thick frame posts, and a gold threshold strip at each end. */
+function doorSVG(d){const E="#0b0e13",G="#f2b84b";
+  if(d.side==="e")return `<rect x="${d.x+2}" y="${d.y}" width="${d.w-4}" height="${d.h}" fill="#eef1f3"/><path d="M${d.x+6} ${d.y} H${d.x+d.w-6} M${d.x+6} ${d.y+d.h} H${d.x+d.w-6}" stroke="${E}" stroke-width="8"/><rect x="${d.x+8}" y="${d.y+4}" width="6" height="${d.h-8}" fill="${G}"/><rect x="${d.x+d.w-14}" y="${d.y+4}" width="6" height="${d.h-8}" fill="${G}"/>`;
+  const y=d.side==="n"?594:764;
+  return `<rect x="${d.x}" y="${y}" width="${d.w}" height="62" fill="#eef1f3"/><path d="M${d.x} ${y+6} V${y+56} M${d.x+d.w} ${y+6} V${y+56}" stroke="${E}" stroke-width="8"/><rect x="${d.x+4}" y="${y+2}" width="${d.w-8}" height="6" fill="${G}"/><rect x="${d.x+4}" y="${y+54}" width="${d.w-8}" height="6" fill="${G}"/>`}
 function worldSVG(){const E="#0b0e13";
   return `<svg id="wsvg" width="${WW}" height="${WH}" viewBox="0 0 ${WW} ${WH}" role="img" aria-label="Floor 60">
   <defs><pattern id="wcarpet" width="40" height="40" patternUnits="userSpaceOnUse"><rect width="40" height="40" fill="#5b6b8a"/><path d="M0 20 H40 M20 0 V40" stroke="#52617e" stroke-width="2"/></pattern>
@@ -675,7 +680,7 @@ function worldSVG(){const E="#0b0e13";
   <rect x="${HALL.x}" y="${HALL.y}" width="${HALL.w}" height="${HALL.h}" fill="url(#whall)"/><rect x="${SIDE.x}" y="${SIDE.y}" width="${SIDE.w}" height="${SIDE.h}" fill="url(#whallv)"/>
   <rect x="${ELEV.x}" y="${ELEV.y}" width="${ELEV.w}" height="${ELEV.h}" fill="#dfe4e8" stroke="${E}" stroke-width="10"/><path d="M40 640 V780 M180 640 V780" stroke="#a9b2bf" stroke-width="6"/><rect x="60" y="600" width="100" height="18" rx="4" fill="#0b0e13"/><text x="110" y="614" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="14" fill="#e0394d">▲ 60</text>
   ${WROOMS.map(r=>`<polygon points="${P(r.pts)}" fill="${r.fill}" stroke="${E}" stroke-width="12" stroke-linejoin="round"/>`).join("")}
-  ${WROOMS.filter(r=>r.door).map(r=>{const d=r.door;return d.side==="n"?`<rect x="${d.x}" y="594" width="${d.w}" height="62" fill="#eef1f3"/><path d="M${d.x} 600 V650 M${d.x+d.w} 600 V650" stroke="${E}" stroke-width="6"/>`:`<rect x="${d.x}" y="764" width="${d.w}" height="62" fill="#eef1f3"/><path d="M${d.x} 770 V820 M${d.x+d.w} 770 V820" stroke="${E}" stroke-width="6"/>`}).join("")}
+  ${WROOMS.flatMap(r=>r.doors||[]).map(doorSVG).join("")}
   <rect x="466" y="656" width="60" height="108" fill="#eef1f3"/>
   ${LOCKS.map(l=>l.dir==="h"?`<rect x="${l.x}" y="${l.y}" width="${l.w}" height="22" fill="#3e4650" stroke="${E}" stroke-width="5"/><rect x="${l.x+l.w/2-6}" y="${l.y+4}" width="12" height="12" rx="3" fill="#e0394d"/><text x="${l.x+l.w/2}" y="${l.y-14}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="18" fill="#e0394d">${l.label}</text>`:`<rect x="${l.x}" y="${l.y}" width="22" height="${l.h}" fill="#3e4650" stroke="${E}" stroke-width="5"/><rect x="${l.x+5}" y="${l.y+l.h/2-6}" width="12" height="12" rx="3" fill="#e0394d"/><text x="${l.x-12}" y="${l.y+l.h/2+6}" text-anchor="end" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="18" fill="#e0394d">${l.label}</text>`).join("")}
   <g>${wFurniture()}</g>
