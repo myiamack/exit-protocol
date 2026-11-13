@@ -223,6 +223,7 @@
   }
 
   Player.BACKUP_CAP = BACKUP_CAP;
+  Player.AT_RISK_COST = AT_RISK_COST;
   EP.Player = Player;
   if (typeof module !== "undefined" && module.exports) module.exports = Player;
 })(typeof globalThis !== "undefined" ? globalThis : this);

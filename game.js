@@ -532,17 +532,17 @@ ${a.done?`<div class="panel"><div class="row" style="justify-content:space-betwe
 </div>`:""}`};
 
 function placeLeft(){return (ME?ME.earned:0)-Object.values(S.place).reduce((a,b)=>a+b,0)}
-V[9]=()=>{const left=placeLeft();const t=T();const got=S.done?S.got:ME.earned;
+V[9]=()=>{const left=placeLeft();const t=T();const got=S.done?S.got:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
 return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
 <div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${[...S.earnLines,...(S.cashed?["Cash Out: +1"]:[])].map(esc).join(" · ")}</span></div>
 ${!S.done&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 backup hearts for +1 point. Only works with full backup.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
 ${S.done?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
-<p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing. Level 2 costs 3.</p>
+<p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?` Level ${nx.n} costs ${nx.cost}.`:""}</p>
 <div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(S.place[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!(S.place[a.k])?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${(!left||v>=maxOf(a.k))?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
-<div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means an attribute couldn't cover a cost of 4, even with backup.</span></div>
+<div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means one of your attributes, even with the backup hearts that could cover it, could not pay a cost of ${EP.Player.AT_RISK_COST}. This ${EP.Player.AT_RISK_COST} is a fixed safety check for every level. It is not the next trial's cost.</span></div>
 <div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>
 <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":ME.pathLost?"Exploit path lost (caught).":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div></div>
-${S.done?`<div class="locked"><div><span class="label">Next · Level 2</span><h3>Sprint 1</h3><span class="hint">Sep 8–25 · Trial cost 3 · Attribute revealed at the briefing</span></div><span class="tag m">LOCKED</span></div><div class="row"><button class="btn blue" id="replay">Replay Level 1</button><button class="btn soft" id="restart">Back to sign-in</button></div>`:""}`};
+${S.done?`<div class="locked"><div><span class="label">Next · Level ${nx?nx.n:""}</span><h3>${nx?nx.name:""}</h3><span class="hint">Sep 8–25 · Trial cost ${nx?nx.cost:""} · Attribute revealed at the briefing</span></div><span class="tag m">LOCKED</span></div><div class="row"><button class="btn blue" id="replay">Replay Level 1</button><button class="btn soft" id="restart">Back to sign-in</button></div>`:""}`};
 
 /* ================= ARRIVAL (elevator → ADMIN_0 → role lead → spawn) ================= */
 function adminFig(){return `<g transform="translate(440 210)">
