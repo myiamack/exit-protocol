@@ -187,6 +187,13 @@ function newSession(){
   G=new EP.Game({teams:[MYTEAM,...others],rng:RNG});
 }
 function endSession(){G=null;ME=null;MYTEAM=null}
+/* Sign out keeps only the display name, saved under the email. Look, tool and progress reset.
+   The name comes back on the next sign-in with the same email. */
+const NAMES={};
+const nameKey=em=>String(em||"").trim().toLowerCase();
+function savedName(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}}
+function saveName(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}}
+function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
 function startLevel(){if(!G.round)G.startNextRound();go(5)}
 const R=()=>G&&G.round?G.round:new EP.Round(1);
 
@@ -815,7 +822,7 @@ function bind(){
     $("#signForm").onsubmit=e=>{e.preventDefault();const em=$("#em").value.trim(),jc=$("#jc").value.trim().toUpperCase();S.email=em;S.code=jc;
       if(!/^[^@\s]+@icstars\.org$/i.test(em)){$("#signErr").textContent="Use your i.c.stars email (ends in @icstars.org). This game is for the i.c.stars community only.";return}
       if(jc!=="CYCLE60"){$("#signErr").textContent="That join code doesn't match an open game. Check with your host.";return}
-      go(1)};
+      S.name=savedName(em)||S.name;go(1)};
   }
   if(S.step===1){
     on("#play",()=>go(2));on("#wardrobe",()=>go(2));
@@ -866,7 +873,7 @@ function bind(){
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
     on("#cashOut",()=>{if(G.cashOut(ME).ok){S.cashed=true;render()}});
     on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,found:{L:S.found.L,id:S.found.id}};endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
-    on("#restart",()=>{endSession();S=fresh();render()});
+    on("#restart",signOut);
   }
 }
 /* SOP cards: a mouse or pen press counts on button-down, so a fast click that slips off the card is never lost.
@@ -922,7 +929,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 function ghostHop(){$$(".gwalk").forEach(el=>{if(Math.random()<.45)return;el.setAttribute("opacity","0");setTimeout(()=>{const [x,y]=GSPOTS[Math.floor(Math.random()*GSPOTS.length)];el.setAttribute("transform",`translate(${x} ${y})`);el.setAttribute("opacity",String(.5+Math.random()*.35))},900)})}
 setInterval(ghostHop,2600);setTimeout(ghostHop,400);
 document.addEventListener("click",e=>{const g=e.target.closest&&e.target.closest(".gwalk");if(!g||g.getAttribute("opacity")==="0")return;const gh=GHOSTS[+g.dataset.ghost];const w=$("#whisper");w.innerHTML=`<b>${gh.n}</b> whispers: “${esc(gh.line)}”`;w.hidden=false;clearTimeout(w._t);w._t=setTimeout(()=>w.hidden=true,6000)});
-$("#navBack").onclick=()=>{if(!canBack())return;if(S.step===1&&S.menu!=="map"){S.menu="map";render();return}go(S.step-1)};
+$("#navBack").onclick=()=>{if(!canBack())return;if(S.step===1&&S.menu!=="map"){S.menu="map";render();return}if(S.step===1){signOut();return}go(S.step-1)};
 $("#navNext").onclick=goForward;
 $("#facBtn").onclick=e=>{const v=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",v);$("#fac").hidden=!v};
 /* Host Script: only the host sees the button. Solo testing: Ctrl+Shift+H turns host view on or off. */
