@@ -142,6 +142,8 @@ const CLUES=[
   {id:"L",kind:"ERROR",where:"Sign-in screen",found:"The title ends in a capital L. Systems don't make typos by accident.",hint:"Something on the very first screen was spelled wrong."},
   {id:"id",kind:"WATCHER",where:"Your badge",found:"Your intern ID says ATTEMPT 02. You have been here before.",hint:"Your badge flickered. Did you read it closely?"},
   {id:"loop",kind:"LOOP",where:"SOP trial",found:"One SOP step told you to repeat forever. You left it out.",hint:"One step in the procedure didn't belong."}];
+/* Anomalies: the 3 CLUES above are the only ones that count. Ghosts give hints only. */
+const anomaliesFound=()=>CLUES.filter(c=>S.found[c.id]).length;
 const STEPS=["Sign in","Menu","Wardrobe","Work style","Arrival","Briefing","Open Floor","Trial","Glitch Report","Stats Update"];
 const FAC=[
   ["Players sign in with their i.c.stars email and the join code you give them.","Do NOT mention a simulation. If anyone asks about the capital L, say: \"Please report any issues to IT.\""],
@@ -390,7 +392,7 @@ function chrome(){
   const h=$("#hud");
   if(!ME||S.step<4||cin){h.hidden=true}else{h.hidden=false;
   h.innerHTML=A.map(a=>{const v=ME.attrs[a.k];return `<div class="attr ${isBonus(a.k)?"bonus":""}"><div class="top"><span>${a.n}</span><span class="v ${v<0?"neg":""}">${v}/${maxOf(a.k)}</span></div><span class="trk"><i style="width:${Math.max(0,v)/maxOf(a.k)*100}%"></i></span></div>`}).join("")+
-  `<div class="side"><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Backup</span><span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span></div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Status</span>${flag(status())}</div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Anomalies</span><span class="label" style="color:var(--pink)">${Object.keys(S.found).length}/5</span></div></div>`;}
+  `<div class="side"><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Backup</span><span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span></div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Status</span>${flag(status())}</div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Anomalies</span><span class="label" style="color:var(--pink)">${anomaliesFound()}/${CLUES.length}</span></div></div>`;}
   updateNav();
 }
 /* The Wardrobe name box edits S.draft. S.name changes only on Save. */
