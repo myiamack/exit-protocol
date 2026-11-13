@@ -531,7 +531,7 @@ ${hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you.
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Your team wins with 5+ correct and nothing extra.</p>
 <div class="sop"><div><span class="label">Available steps</span><div class="pile">${s.pile.map((t,i)=>`<button class="scard" data-pile="${i}" ${s.checked?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
 <div><span class="label">Team SOP</span><div class="built">${s.built.map((t,i)=>`<button class="scard ${s.checked?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${s.checked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}: ${s.score} of 6 correct${s.decoyOut?", decoy left out":", decoy included"}${s.inTime?"":", time ran out"}.</b><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
+${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}: ${s.score} of 6 correct${!s.built.length?", no steps placed":s.decoyOut?", decoy left out":", decoy included"}${s.inTime?"":", time ran out"}.</b><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
 :`<div class="row"><button class="btn green" id="check" ${s.built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
 
 V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
@@ -896,7 +896,7 @@ function applyOpenFloorEnd(){
   EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now
   G.advance();                // Open Floor > Trial
 }
-function checkSop(){stopTimer();const s=S.sop;s.checked=true;s.score=SOP.filter((t,i)=>s.built[i]===t).length;s.decoyOut=!s.built.includes(DECOY);if(s.decoyOut)S.found.loop=1;S.win=s.score>=5&&s.decoyOut;render()}
+function checkSop(){stopTimer();const s=S.sop;s.checked=true;s.score=SOP.filter((t,i)=>s.built[i]===t).length;s.decoyOut=s.built.length>0&&!s.built.includes(DECOY);/* nothing placed: no LOOP */if(s.decoyOut)S.found.loop=1;S.win=s.score>=5&&s.decoyOut;render()}
 function payCost(){
   if(S.paid)return;S.paid=true;
   G.setTrialResult(MYTEAM,S.win);EP.Bots.trial(G,RNG);   // other teams: engine result
