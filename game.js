@@ -805,8 +805,8 @@ function bind(){
   }
   if(S.step===7){
     const s=S.sop;
-    $$("[data-pile]").forEach(b=>b.onclick=()=>{s.built.push(s.pile.splice(+b.dataset.pile,1)[0]);keepTimer()});
-    $$("[data-built]").forEach(b=>b.onclick=()=>{s.pile.push(s.built.splice(+b.dataset.built,1)[0]);keepTimer()});
+    $$("[data-pile]").forEach(b=>sopPress(b,()=>{s.built.push(s.pile.splice(+b.dataset.pile,1)[0]);keepTimer()}));
+    $$("[data-built]").forEach(b=>sopPress(b,()=>{s.pile.push(s.built.splice(+b.dataset.built,1)[0]);keepTimer()}));
     on("#check",checkSop);on("#reset",()=>{s.pile=shuffle([...SOP,DECOY]);s.built=[];keepTimer()});
     if(!s.checked)tick("left",s,()=>{s.inTime=false;checkSop()});
   }
@@ -825,6 +825,12 @@ function bind(){
     on("#restart",()=>{endSession();S=fresh();render()});
   }
 }
+/* SOP cards: a mouse or pen press counts on button-down, so a fast click that slips off the card is never lost.
+   The click that follows a press is ignored, so nothing counts twice. Keyboard (Enter/Space) and touch taps use click. */
+let sopDownAt=-1e9;
+function sopPress(b,fn){
+  b.onpointerdown=e=>{if(e.pointerType==="touch"||e.button!==0||b.disabled)return;e.preventDefault();sopDownAt=performance.now();fn()};
+  b.onclick=e=>{if(e.detail>0&&performance.now()-sopDownAt<1000)return;fn()}}
 function keepTimer(){const t=S.timer;S.timer=null;clearInterval(t);render()}
 function lockPoints(){S.got=ME.earned;ME.placePoints(S.place);S.place={};G.finishRound();S.done=true;render()}
 function applyOpenFloorEnd(){
