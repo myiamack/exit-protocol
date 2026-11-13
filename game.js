@@ -633,7 +633,18 @@ const RNAME=Object.fromEntries([...WROOMS.map(r=>[r.id,r.n]),["hall","Hallway"],
 function inPoly(x,y,p){let c=false;for(let i=0,j=p.length-1;i<p.length;j=i++){const [xi,yi]=p[i],[xj,yj]=p[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c}return c}
 const inRect=(x,y,r)=>x>r.x&&x<r.x+r.w&&y>r.y&&y<r.y+r.h;
 function walkable(x,y){if(inRect(x,y,ELEV)||inRect(x,y,HALL)||inRect(x,y,SIDE))return true;for(const r of WROOMS){if(inPoly(x,y,r.pts))return true;if((r.doors||[]).some(d=>inRect(x,y,d)))return true}return false}
-function canStand(x,y){return [[0,0],[PR,0],[-PR,0],[0,PR],[0,-PR]].every(([dx,dy])=>walkable(x+dx,y+dy))}
+/* Furniture the character cannot walk through: [x,y,w,h], matching the drawings in wFurniture().
+   Wall-mounted items (screens, whiteboard, welcome sign) are not listed. */
+const BLOCKS=[
+  /* reception: curved desk, chairs, plant */ [220,690,70,42],[290,668,80,40],[370,690,70,42],[200,800,112,34],[460,800,40,40],
+  /* kitchen: L counter, sink, stove top, fridge, table, stools, vending */ [560,320,180,20],[560,320,20,260],[620,330,40,22],[780,215,120,34],[860,260,48,90],[680,420,150,70],[689,499,142,22],[860,420,44,100],
+  /* all skate: desks with chairs, beanbags */ ...[[1040,230],[1200,230],[1360,230],[1040,330],[1360,330],[1040,470],[1360,470]].map(([x,y])=>[x,y,120,66]),[1170,388,60,44],[1270,388,60,44],
+  /* high tea: tables, chairs, bookshelf, tea counter */ [1648,358,84,84],[1838,388,84,84],[1610,384,36,32],[1734,384,36,32],[1672,322,36,32],[1800,414,36,32],[1924,414,36,32],[1862,352,36,32],[1620,296,140,26],[1800,300,150,44],
+  /* wellness: couches, ottoman, plants */ [580,880,56,130],[656,880,56,130],[754,966,92,68],[826,836,48,48],[576,1056,48,48],
+  /* conference: table and chair rows */ [1000,930,390,160],[1022,896,316,26],[1022,1098,316,26],
+  /* breakout: round table, sofa */ [1586,916,88,88],[1530,1020,140,40]];
+const blocked=(x,y)=>BLOCKS.some(([bx,by,bw,bh])=>x>bx&&x<bx+bw&&y>by&&y<by+bh);
+function canStand(x,y){return [[0,0],[PR,0],[-PR,0],[0,PR],[0,-PR]].every(([dx,dy])=>walkable(x+dx,y+dy)&&!blocked(x+dx,y+dy))}
 function roomAt(x,y){for(const r of WROOMS)if(inPoly(x,y,r.pts))return r.id;if(inRect(x,y,ELEV))return "elevator";if(inRect(x,y,SIDE)&&y>780)return "side";return "hall"}
 const P=pts=>pts.map(p=>p.join(",")).join(" ");
 function wFurniture(){const E="#0b0e13",st=`stroke="${E}" stroke-width="5" stroke-linejoin="round"`,st3=`stroke="${E}" stroke-width="3.5"`;let f="";
@@ -728,7 +739,8 @@ function initWorld(){
     const held=n=>W.keys[n]||t-(W.tapT[n]??-1e9)<TAP_MS;
     let vx=W.vx,vy=W.vy;if(held("ArrowLeft")||held("a"))vx=-1;if(held("ArrowRight")||held("d"))vx=1;if(held("ArrowUp")||held("w"))vy=-1;if(held("ArrowDown")||held("s"))vy=1;
     const m=Math.hypot(vx,vy);if(m>1){vx/=m;vy/=m}const sp=300;
-    if(m>.05){const nx=S.pos.x+vx*sp*dt,ny=S.pos.y+vy*sp*dt;if(canStand(nx,S.pos.y))S.pos.x=nx;if(canStand(S.pos.x,ny))S.pos.y=ny;bob+=dt*14;if(Math.abs(vx)>.2)face=vx<0?-1:1}else bob=0;
+    if(m>.05){const nx=S.pos.x+vx*sp*dt,ny=S.pos.y+vy*sp*dt;const stuck=!canStand(S.pos.x,S.pos.y);   // if ever inside furniture, let the player walk out
+      if(stuck||canStand(nx,S.pos.y))S.pos.x=nx;if(stuck||canStand(S.pos.x,ny))S.pos.y=ny;bob+=dt*14;if(Math.abs(vx)>.2)face=vx<0?-1:1}else bob=0;
     me.setAttribute("transform",`translate(${S.pos.x.toFixed(1)} ${S.pos.y.toFixed(1)})`);
     inner.setAttribute("transform",`translate(0 ${(-Math.abs(Math.sin(bob))*5).toFixed(1)}) scale(${face} 1)`);
     const vw=view.clientWidth,vh=view.clientHeight,sc=vw<640?.62:.9;
