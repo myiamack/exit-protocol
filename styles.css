@@ -121,6 +121,7 @@ input::placeholder{color:#5e6a7c}
 .small{display:flex;align-items:center;justify-content:space-between;gap:8px;height:42px;border:3px solid var(--edge);border-radius:10px;padding:0 14px 0 8px;font-family:var(--cond);font-weight:700;font-size:1.2rem;letter-spacing:.06em;text-transform:uppercase;background:var(--frame3);color:var(--ink)}
 .small[aria-pressed="true"]{background:var(--sky);color:var(--edge)}
 .small:disabled{opacity:.45;cursor:not-allowed}
+.small .soon{font-size:.75rem;letter-spacing:.06em;border:2px solid currentColor;border-radius:6px;padding:0 6px;margin-left:6px;vertical-align:middle}
 .small svg{width:28px;height:28px;flex:none}
 .small .badge{position:absolute}
 .ver{font-family:var(--mono);font-size:.8rem;color:var(--muted);padding-left:6px}
