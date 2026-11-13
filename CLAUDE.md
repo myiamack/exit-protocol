@@ -132,6 +132,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 
 ### Accusations
 - One per player per round, against a teammate.
+- Every round the all-hands asks: "Suspect a teammate? Accuse or Skip." Never say or imply that sabotage happened. Victims still get their private notice.
 - Correct: +1 point, added at Stats Update. Counts toward Auditor for Independents.
 - Wrong: accuser loses 1 point from their highest attribute. Can cause a glitch.
 - A Contrarian caught by any correct accusation loses 0 points, cannot sabotage again, and loses Exploit.
