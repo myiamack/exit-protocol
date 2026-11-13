@@ -26,14 +26,15 @@ const [contra, mate] = players;
 game.startNextRound();
 expect("Round starts in Open Floor", game.step === "openFloor", game.step);
 refusedResult("Accuse during Open Floor", game.accuse(mate, contra));
-refusedResult("Gift during Open Floor", game.gift(mate, contra, 1));
 throws("Pay trial costs during Open Floor", () => game.payTrialCosts());
 expect("Sabotage during Open Floor is allowed", game.sabotage(contra, mate).ok);
+expect("Gift during Open Floor is allowed", game.gift(players[2], mate, 1).ok);
 
 game.advance();
 expect("Advance moves to Trial", game.step === "trial", game.step);
 refusedResult("Sabotage during Trial", game.sabotage(contra, mate));
 refusedResult("Accuse during Trial", game.accuse(mate, contra));
+refusedResult("Gift during Trial", game.gift(players[2], mate, 1));
 throws("Pay costs before every team has a result", () => game.payTrialCosts());
 throws("Advance before trial costs are paid", () => game.advance());
 teams.forEach(t => game.setTrialResult(t, true));

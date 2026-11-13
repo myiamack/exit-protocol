@@ -4,6 +4,7 @@
   const EP = root.EP || (root.EP = {});
 
   const KEYS = ["focus", "initiative", "collab", "composure", "grit"];
+  const GIFT_TIE_ORDER = ["focus", "collab", "initiative", "grit", "composure"];
 
   const TYPES = {
     coop:   { name: "Cooperative", bonus: ["collab", "composure"], pen: "initiative", path: "Lifeline", goal: 1 },
@@ -125,13 +126,21 @@
       for (let i = 0; i < n; i++) this.lose(this.highestKey(), 1);
     }
 
-    /* Gift points go into the glitching attribute (lowest first if two are below 0).
-       Points past 0 stay in that attribute. Returns points that hit the max (overflow). */
+    /* Where a gift point goes. Glitching: the glitching attribute (lowest first if two are below 0).
+       Not glitching: the lowest attribute. Ties: Focus, Collaboration, Initiative, Grit, Composure.
+       The receiver does not pick. */
+    giftTarget() {
+      const pool = this.isGlitching() ? KEYS.filter(k => this.attrs[k] < 0) : KEYS;
+      return GIFT_TIE_ORDER.filter(k => pool.includes(k))
+                           .reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m));
+    }
+
+    /* Points past 0 stay in that attribute. Returns points that hit the max (overflow). */
     receiveGift(pts) {
-      let target = this.lowestKey();
+      let target = this.giftTarget();
       let overflow = 0;
       for (let i = 0; i < pts; i++) {
-        if (this.isGlitching()) target = this.lowestKey();
+        if (this.isGlitching()) target = this.giftTarget();
         if (this.attrs[target] < this.max(target)) this.attrs[target] += 1;
         else overflow += 1;
       }
