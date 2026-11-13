@@ -18,7 +18,7 @@
   const MAX = 10, PEN_MAX = 4;
   const BACKUP_START = 3, BACKUP_CAP = 3;
   const AT_RISK_COST = 4;
-  const GRAD_TOTAL = 22, GRAD_MIN = 2;
+  const GRAD_TOTAL = 24, GRAD_MIN = 2;
   const SKIM_MAX = 2, CASHOUT_USES = 1, CASHOUT_COST = 2;
 
   class Player {
@@ -237,6 +237,8 @@
 
   Player.BACKUP_CAP = BACKUP_CAP;
   Player.AT_RISK_COST = AT_RISK_COST;
+  Player.GRAD_TOTAL = GRAD_TOTAL;
+  Player.GRAD_MIN = GRAD_MIN;
   EP.Player = Player;
   if (typeof module !== "undefined" && module.exports) module.exports = Player;
 })(typeof globalThis !== "undefined" ? globalThis : this);

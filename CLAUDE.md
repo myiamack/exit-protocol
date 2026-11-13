@@ -157,7 +157,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 - **Build no-host mode first.** It is required either way.
 
 ### Graduation (round 7)
-- Graduate: total of all 5 attributes 22 or more, every attribute 2 or more, not Stuck.
+- Graduate: total of all 5 attributes 24 or more (was 22, changed after playtest round 2), every attribute 2 or more, not Stuck.
 - A second path completed at any point also counts as a win.
 
 ## Bot behavior for the prototype
