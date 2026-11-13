@@ -541,6 +541,7 @@ V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">A
 <span>&gt; your ${AN[k]}: ${p.before} → ${p.after}${p.backupUsed?` (backup hearts used: ${p.backupUsed})`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>
 ${CLUES.map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
 <span>&gt; please continue working normally.</span></div>
+${a.done?caughtNotices():""}
 ${a.done&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. No more sabotage this game, and Exploit is lost.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
 <div class="panel"><span class="label">Accusation · one per player · teammates only</span>
 ${a.done?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${S.type==="indep"?" Auditor complete.":""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. You lost 1 point from your highest attribute.`:"You skipped your accusation."}</p>`
@@ -569,6 +570,9 @@ function incomingGifts(){return G.round.gifts.map((x,i)=>{if(x.receiver!==ME||x.
   if(x.status==="declined")return `<span class="hint">You declined ${who}'s gift. It went back to them.</span>`;
   return `<span class="hint">${who}'s gift expired with no answer. It went back to them.</span>`}).join("")}
 function bindIncoming(){$$("[data-ans]").forEach(b=>b.onclick=()=>{const gft=G.round.gifts[+b.dataset.ans];if(!G.answerGift(gft,b.dataset.yes==="1").ok)return;keepTimer()})}
+/* All-hands: as soon as accusations resolve, announce any teammate caught sabotaging. (If you were caught, your own notice shows instead.) */
+function caughtNotices(){const caught=[...new Set(G.round.accusations.filter(x=>x.correct&&MYTEAM.has(x.target)&&x.target!==ME).map(x=>x.target))];
+  return caught.map(q=>`<div class="toast"><b>&gt; CAUGHT:</b> ${esc(q.name)} was caught sabotaging. No more sabotage for them this game.</div>`).join("")}
 function placeLeft(){return (ME?ME.earned:0)-Object.values(S.place).reduce((a,b)=>a+b,0)}
 V[9]=()=>{const left=placeLeft();const t=T();const got=S.done?S.got:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
 return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
