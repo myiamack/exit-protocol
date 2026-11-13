@@ -9,7 +9,7 @@ body{margin:0}
   --red:#e0394d; --red2:#a8172f; --blue:#3a74ff; --blue2:#1f3fae; --gold:#f2b84b; --ok:#4fe08a; --ok2:#1fa956; --pink:#ff4fa3; --bad:#ff5b6e;
   --cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"Barlow",system-ui,sans-serif;
-  --px:"Pixelify Sans",ui-monospace,monospace;
+  --px:var(--mono);
   --mono:"Share Tech Mono",ui-monospace,Menlo,monospace;
   --code:"VT323",ui-monospace,monospace;
   color-scheme:dark;
