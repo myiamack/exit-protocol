@@ -505,7 +505,7 @@ V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge</span></div><div class="panel"><span class="label">Workshops</span><span>LW2A Know Your Lens · LW2B Team Agreement · BW2B · W2B</span></div></div>`;
 
 function roomPanel(){const t=T();const lockd=S.of.applied||S.step!==6;const r=S.room;
-  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gift any teammate here during Open Floor, or in the gift window after the trial.</p><p class="hint">Your cost as a ${t.n}: ${S.type==="indep"?"1 point costs 2 hearts, 2 points cost 3. You cannot accept gifts.":"1 heart per point."}</p>${lockd?`<p class="hint">${GIFT_RULE}</p>`:giftRoster()}${!lockd&&S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}</div>`;
+  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gift any teammate here during Open Floor, or in the gift window after the trial.</p><p class="hint">Your cost as a ${t.n}: ${S.type==="indep"?"1 point costs 2 hearts, 2 points cost 3. You cannot accept gifts.":"1 heart per point."}</p>${lockd?`<p class="hint">${GIFT_RULE}</p>`:incomingGifts()+giftRoster()}${!lockd&&S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}</div>`;
   if(r==="breakout"){if(S.type!=="contra"||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. The room feels like someone just left.</p></div>`;
     const cost=EP.Sabotage.cost(ME);
     return `<div class="panel"><span class="label">Breakout Room · Sabotage a teammate (Contrarian only)</span><p class="hint">This one costs ${cost} heart${cost>1?"s":""}. Drains 2 from the target's ${AN[R().attr]} (1 if their Composure is 6+). Each extra sabotage this round costs 2.</p><div class="roster">${MYTEAM.mates(ME).map(p=>{const why=EP.Sabotage.check(ME,p,MYTEAM);return `<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===p.name).av,{head:true,label:p.name})}${esc(p.name)}</span><span class="row" style="gap:6px">${flag(p.flag())}<button class="btn red sm" data-sab="${esc(p.name)}" ${why?`disabled title="${esc(why)}"`:""}>Sabotage</button></span></div>`}).join("")}</div>${S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}${ME.sabotageLocked?`<span class="hint">You were caught. No more sabotage this game.</span>`:""}</div>`}
@@ -537,17 +537,29 @@ ${a.done&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt
 ${a.done?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${S.type==="indep"?" Auditor complete.":""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. You lost 1 point from your highest attribute.`:"You skipped your accusation."}</p>`
 :`<div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Who drained your team this round? Correct: +1 point. Wrong: you lose 1 point.</span>`}</div>
 ${a.done?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${g.closed?flag(status()):`<span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span>`}</div>
-  ${g.received.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
+  ${incomingGifts()}
   ${!g.closed?giftRoster():""}
   ${g.sent.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
   ${g.closed?`<p>${ME.glitchedThisRound?`<b style="color:var(--pink)">Glitch locked in.</b> Reboot: points taken evenly from your other attributes to bring it back to 1. Backup hearts set to 0. Glitches: ${ME.glitches}/2.`:"Window closed. No glitch for you this round."}</p>`:`<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0 when it closes becomes a glitch.</span>`}
 </div>`:""}`};
 
 /* Gift buttons for every teammate (Open Floor and gift window). Stuck players are spectators. */
-const GIFT_RULE="Points go to their glitching attribute if they are Glitching, otherwise to their lowest attribute. You don't pick the attribute.";
+const GIFT_RULE="They choose Accept or Decline. Accepted points go to their glitching attribute if they are Glitching, otherwise to their lowest attribute with room. You don't pick the attribute. If they decline, or don't answer before this step ends, your hearts come back.";
 function giftRoster(){return `<p class="hint">${GIFT_RULE}</p><div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.flag())}${!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n),why=EP.Gift.check(ME,q,MYTEAM,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${why?`disabled title="${esc(why)}"`:""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`}
-function giftMsg(q,pts,r){return r.refused?`${q.name} refused your gift. Nothing was spent.`:`You sent ${q.name} ${pts} point${pts>1?"s":""} (−${r.cost} heart${r.cost>1?"s":""}).${r.cancelled?` ${q.name} is safe.`:""}${r.cancelled&&S.type==="coop"?" Lifeline complete.":""}`}
-function bindGifts(onMsg){$$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;onMsg(giftMsg(q,pts,r));keepTimer()})}
+const plural=(n,w)=>`${n} ${w}${n===1?"":"s"}`;
+function giftMsg(q,pts,g){
+  if(g.status==="refused")return `${q.name} refused your gift. Independents can't accept gifts. Nothing was spent.`;
+  if(g.status==="declined")return `${q.name} declined your gift. Your ${plural(g.cost,"heart")} came back.`;
+  if(g.status==="pending")return `Waiting for ${q.name} to answer. If they don't answer before this step ends, your hearts come back.`;
+  return `${q.name} accepted your ${plural(pts,"point")} (−${plural(g.cost,"heart")}).${g.cancelled?` ${q.name} is safe.`:""}${g.cancelled&&S.type==="coop"?" Lifeline complete.":""}${g.overflow?` ${plural(g.overflow,"point")} had nowhere to go and came back to you.`:""}`}
+function bindGifts(onMsg){$$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;EP.Bots.answer(G,r.gift,RNG);onMsg(giftMsg(q,pts,r.gift));keepTimer()})}
+/* Gifts sent to you: "Gift from [name]: Accept or Decline." */
+function incomingGifts(){return G.round.gifts.map((x,i)=>{if(x.receiver!==ME||x.status==="refused")return "";const who=esc(x.giver.name),n=plural(x.pts,"point");
+  if(x.status==="pending")return `<div class="person"><span><b>Gift from ${who}</b>: ${n}. Accept or Decline.</span><span class="row" style="gap:6px"><button class="btn green sm" data-ans="${i}" data-yes="1">Accept</button><button class="btn soft sm" data-ans="${i}" data-yes="0">Decline</button></span></div>`;
+  if(x.status==="accepted")return `<span class="okmsg">You accepted ${n} from ${who}.${x.target?` It went to your ${AN[x.target]}.`:""}</span>`;
+  if(x.status==="declined")return `<span class="hint">You declined ${who}'s gift. It went back to them.</span>`;
+  return `<span class="hint">${who}'s gift expired with no answer. It went back to them.</span>`}).join("")}
+function bindIncoming(){$$("[data-ans]").forEach(b=>b.onclick=()=>{const gft=G.round.gifts[+b.dataset.ans];if(!G.answerGift(gft,b.dataset.yes==="1").ok)return;keepTimer()})}
 function placeLeft(){return (ME?ME.earned:0)-Object.values(S.place).reduce((a,b)=>a+b,0)}
 V[9]=()=>{const left=placeLeft();const t=T();const got=S.done?S.got:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
 return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
@@ -832,7 +844,7 @@ function bind(){
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){
     if(!S.of.applied)$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;keepTimer()});
-    bindGifts(m=>{S.of.msg=m});
+    bindGifts(m=>{S.of.msg=m});bindIncoming();
     $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;keepTimer()});
     if(!S.of.applied)tick("left",S.of,()=>{applyOpenFloorEnd();go(7)});
   }
@@ -846,7 +858,7 @@ function bind(){
   if(S.step===8){
     on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;const r=G.accuse(ME,MATE(v));if(!r.ok)return;S.acc.target=v;S.acc.result=r.correct;endAccusations()});
     on("#skipAcc",()=>{S.acc.target="";S.acc.result=null;endAccusations()});
-    bindGifts(m=>S.gw.sent.push(m));
+    bindGifts(m=>S.gw.sent.push(m));bindIncoming();
     if(S.acc.done&&!S.gw.closed)tick("left",S.gw,closeGW);
   }
   if(S.step===9){
@@ -887,7 +899,6 @@ function endAccusations(){
 function startGW(){
   S.gw.started=true;S.gw.left=20;
   EP.Bots.gifts(G,RNG);
-  S.gw.received=G.round.gifts.filter(x=>x.receiver===ME&&!x.refused).map(x=>`${x.giver.name} sent you ${x.pts} point${x.pts>1?"s":""}.`);
   render();
 }
 function closeGW(){
