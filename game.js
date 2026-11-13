@@ -156,7 +156,7 @@ const FAC=[
   ["Teams play the SOP challenge (coffee). In the live game you mark each team Win or Loss."],
   ["All-hands meeting in the Conference Room. Each player may accuse one teammate.","Then open the 30-second gift window. Glitches lock in when it closes."],
   ["Win = 4 points, Loss = 2, glitched = 1. Bonuses: correct accusation +1, Skim, Cash Out. Players place points before the next trial is revealed. Backup refills by 1."]];
-const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not guaranteed."],["From: IT","We are aware of a typo on the sign-in screen. It is not a typo."],["From: Facilities","The Break Room coffee machine has been restocked. Again. And again. And again."]];
+const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not guaranteed."],["From: IT","We are aware of a typo on the sign-in screen. It is not a typo."],["From: Facilities","The Kitchen coffee machine has been restocked. Again. And again. And again."]];
 
 /* ---------- state ---------- */
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
