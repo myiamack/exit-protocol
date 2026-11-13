@@ -191,6 +191,7 @@ const R=()=>G&&G.round?G.round:new EP.Round(1);
 const $=s=>document.querySelector(s);const $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const shownName=()=>S.name||"Guest";   // one name source for the top bar and My Badge
 const T=()=>TYPES[S.type];
 const isBonus=k=>S.type&&T().bonus.includes(k);
 const maxOf=k=>S.type&&T().pen===k?4:10;
@@ -375,7 +376,7 @@ function chrome(){
   setRain(S.step===0?1:S.step===1?.18:.06);
   document.body.classList.toggle("menucur",S.step<=2);
   $("#topbar").hidden=S.step===0;
-  $("#whoName").textContent=S.name||S.email.split("@")[0]||"guest";
+  $("#whoName").textContent=shownName();
   $("#where").textContent=inGame?"Level 1 · Boot Up":STEPS[S.step];
   $("#stage").classList.toggle("boxed",S.step>=3);
   $("#steps").hidden=S.step<=1||(S.step===4&&!S.arrived);
@@ -422,7 +423,7 @@ function screenContent(){
 function badgeCard(){const idn=String(((S.name.length*37)+S.email.length*11)%900+100);
   return `<div class="badgecard"><div class="bc-pic">${avatarSVG(S.av,{label:"Badge photo"})}</div><div class="bc-data">
    <span class="wide"><span class="k">Employee ID</span><br><button class="idline ${S.found.id?"found":""}" id="idline" style="color:#13294b">060-${idn} · <span class="flick">ATTEMPT 02</span></button></span>
-   <span class="wide"><span class="k">Display name</span><br><span class="v">${esc(S.name||"Not set")}</span></span>
+   <span class="wide"><span class="k">Display name</span><br><span class="v">${esc(shownName())}</span></span>
    <span><span class="k">Team</span><br><span class="v">Kestrel</span></span><span><span class="k">Cohort</span><br><span class="v">Cycle 60</span></span>
    <span><span class="k">Level</span><br><span class="v">${S.step>=5?1:0}</span></span><span><span class="k">XP</span><div class="xp"><i style="width:${Math.round(S.maxStep/9*100)}%"></i></div></span>
   </div></div><div class="row" style="justify-content:center"><button class="btn outline" id="toWardrobe">Change look</button><button class="btn outline" id="toName">Change name</button></div>`}
