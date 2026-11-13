@@ -1,7 +1,7 @@
 /* Balance check for the rules classes. Plays bot games with the final rules.
    Run from the repo folder:  node Tests/check_rules.js
-   Target (Python sim, final rules, Contrarians accuse): about 78% overall graduation,
-   each type about 83% win, all types within about 5 points. */
+   Target after playtest round 2 (grad total 24, Exploit 3, At risk 3): about 52.3% overall graduation,
+   gap between types about 2.1 points (seed 1). */
 const path = require("path");
 ["Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
@@ -65,7 +65,7 @@ for (let g = 0; g < GAMES; g++) {
 }
 
 console.log("Games: " + GAMES + "  (16 players, 4 teams, 50% trial wins, 1-in-3 guessing)\n");
-console.log("Overall graduation:  " + pct("grad") + "   target about 78%");
+console.log("Overall graduation:  " + pct("grad") + "   target about 52.3%");
 console.log("Stuck:               " + pct("stuck") + "\n");
 console.log("Type          Win      Graduate   Second path");
 for (const [t, n] of [["coop", "Cooperative"], ["indep", "Independent"], ["contra", "Contrarian"]]) {
