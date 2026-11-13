@@ -106,7 +106,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 - A gift that brings the attribute to 0 or more cancels the glitch.
 - Lock-in: glitch count +1. Reboot: take points evenly from the other attributes until the glitched one reaches 1. Any shortfall the others cannot cover is forgiven. Backup set to 0.
 - Second locked glitch: **Stuck**. Spectator for the rest of the game. Cannot be sabotaged.
-- At risk flag: shown if any attribute, plus the backup that could cover it, cannot pay a cost of 4. The check is fixed at 4 for every level. It is not the next trial's cost. The flag updates live, after every change.
+- At risk flag: shown if any attribute, plus the backup that could cover it, cannot pay a cost of 3. The check is fixed at 3 for every level (was 4, changed after playtest round 2). It is not the next trial's cost. The flag updates live, after every change.
 - Other players see only flags (Glitching, At risk, Stuck), not numbers.
 
 ### Sabotage (Contrarian only)
