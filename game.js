@@ -438,7 +438,7 @@ function packet(){return `<div style="display:grid;gap:12px">
   <div class="cols"><div class="panel"><span class="chip b">5 attributes</span><p>Focus, Initiative, Collaboration, Composure and Grit. Each review tests one and costs points from it.</p></div>
   <div class="panel"><span class="chip r">3 backup hearts</span><p>They cover you when an attribute runs short. Refill 1 per round.</p></div>
   <div class="panel"><span class="chip p">Glitches</span><p>Below 0 and you glitch. A teammate's gift can save you. Glitch twice and you're stuck.</p></div>
-  <div class="panel"><span class="chip g">To exit</span><p>By Level 7: 22+ total points, every attribute 2+, not stuck.</p></div></div>
+  <div class="panel"><span class="chip g">To exit</span><p>By Level 7: ${EP.Player.GRAD_TOTAL}+ total points, every attribute ${EP.Player.GRAD_MIN}+, not stuck.</p></div></div>
   <div class="panel tw"><table class="levels"><thead><tr><th>Level</th><th>Phase</th><th>Tests</th><th>Cost</th></tr></thead><tbody>
   ${ROUNDS.map(r=>`<tr><td class="n">${r.n}</td><td>${r.name}</td><td>${r.a?(r.n===1?AN[r.a]:"Revealed at briefing"):"Final review"}</td><td class="n">${r.n===1?r.c:r.c?"?":"0"}</td></tr>`).join("")}
   </tbody></table></div></div>`}
@@ -496,8 +496,8 @@ ${worldHTML("lobby")}
   <div class="panel"><span class="label">Secret path · ${t.path} <span class="tag s">${t.n}</span></span><p>${t.pathDesc}</p><span class="hint">Progress ${ME.pathProgress} / ${t.goal}. Only you can see this.</span></div>
   <div class="panel"><span class="label">Graduation check (Level 7)</span>${gradChecks()}</div>
 </div>`};
-function gradChecks(){const tot=total(),low=ME.lowest();
-  return `<div class="check"><span class="${tot>=22?"y":"x"}">${tot>=22?"✓":"✗"}</span><span>Total points ${tot} (need 22+)</span></div><div class="check"><span class="${low>=2?"y":"x"}">${low>=2?"✓":"✗"}</span><span>Lowest attribute ${low} (need 2+)</span></div><div class="check"><span class="${ME.glitches<2?"y":"x"}">${ME.glitches<2?"✓":"✗"}</span><span>Glitches ${ME.glitches} (stuck at 2)</span></div>`}
+function gradChecks(){const tot=total(),low=ME.lowest(),GT=EP.Player.GRAD_TOTAL,GM=EP.Player.GRAD_MIN;
+  return `<div class="check"><span class="${tot>=GT?"y":"x"}">${tot>=GT?"✓":"✗"}</span><span>Total points ${tot} (need ${GT}+)</span></div><div class="check"><span class="${low>=GM?"y":"x"}">${low>=GM?"✓":"✗"}</span><span>Lowest attribute ${low} (need ${GM}+)</span></div><div class="check"><span class="${ME.glitches<2?"y":"x"}">${ME.glitches<2?"✓":"✗"}</span><span>Glitches ${ME.glitches} (stuck at 2)</span></div>`}
 
 V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="margin-top:8px">Boot Up: Team Week</h2></div>
 <div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, Team Kestrel</p><p>Your first client, a national medical supply company, has sent a Request for Proposal. Before Sprint 1 starts on Sep 8, your team must show it can take the lead: write a Standard Operating Procedure everyone can follow.</p></div>
