@@ -351,7 +351,7 @@ function goForward(){
   switch(S.step){
     case 0:$("#signForm").requestSubmit();return;
     case 1:go(2);return;
-    case 2:S.name=S.name.trim();go(3);return;
+    case 2:S.name=S.name.trim();if(S.wardFrom==="badge"){S.menu="badge";go(1)}else go(3);return;
     case 3:if(S.maxStep<5)newSession();go(4);return;
     case 4:if(!S.arrived){arrivalAdvance();return}startLevel();return;
     case 6:applyOpenFloorEnd();go(7);return;
@@ -391,7 +391,7 @@ function chrome(){
   `<div class="side"><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Backup</span><span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span></div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Status</span>${flag(status())}</div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Anomalies</span><span class="label" style="color:var(--pink)">${Object.keys(S.found).length}/5</span></div></div>`;}
   updateNav();
 }
-function go(n){stopTimer();S.panel=false;S.step=n;S.maxStep=Math.max(S.maxStep,n);$(".wrap").scrollTo({top:0});render()}
+function go(n){stopTimer();S.panel=false;if(n!==2)S.wardFrom=null;S.step=n;S.maxStep=Math.max(S.maxStep,n);$(".wrap").scrollTo({top:0});render()}
 /* Fit the map inside the scroll area above the bottom bar, and scroll it fully into view once per screen. */
 function fitWorld(){const wrap=$(".wrap"),w=$("#world");if(!wrap||!w)return;
   w.style.height=Math.max(360,Math.min(640,wrap.clientHeight-28))+"px";
@@ -770,7 +770,7 @@ function bind(){
     $$("[data-dnext]").forEach(b=>b.onclick=()=>{const i=+b.dataset.dnext;DPOS[i]=(DPOS[i]+1)%DIALOGS[i].lines.length;render()});
     $$("[data-menu]").forEach(b=>b.onclick=()=>{S.menu=b.dataset.menu;render()});
     on("#idline",()=>{S.found.id=1;render()});
-    on("#toWardrobe",()=>go(2));on("#toName",()=>{go(2);setTimeout(()=>{const n=$("#nm");if(n)n.focus()},50)});
+    on("#toWardrobe",()=>{go(2);S.wardFrom="badge"});on("#toName",()=>{go(2);S.wardFrom="badge";setTimeout(()=>{const n=$("#nm");if(n)n.focus()},50)});
   }
   if(S.step===2){
     const nm=$("#nm");
