@@ -201,6 +201,7 @@ const R=()=>G&&G.round?G.round:new EP.Round(1);
 const $=s=>document.querySelector(s);const $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const aOrAn=w=>(/^[aeiou]/i.test(w)?"an ":"a ")+w;   // "an Independent", "a Contrarian"
 const shownName=()=>S.name||"Guest";   // one name source for the top bar and My Badge
 const T=()=>TYPES[S.type];
 const isBonus=k=>S.type&&T().bonus.includes(k);
@@ -513,7 +514,7 @@ V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge</span></div><div class="panel"><span class="label">Workshops</span><span>LW2A Know Your Lens · LW2B Team Agreement · BW2B · W2B</span></div></div>`;
 
 function roomPanel(){const t=T();const lockd=S.of.applied||S.step!==6;const r=S.room;
-  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gift any teammate here during Open Floor, or in the gift window after the trial.</p><p class="hint">Your cost as a ${t.n}: ${S.type==="indep"?"1 point costs 2 hearts, 2 points cost 3. You cannot accept gifts.":"1 heart per point."}</p>${lockd?`<p class="hint">${GIFT_RULE}</p>`:incomingGifts()+giftRoster()}${!lockd&&S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}</div>`;
+  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gift any teammate here during Open Floor, or in the gift window after the trial.</p><p class="hint">Your cost as ${aOrAn(t.n)}: ${S.type==="indep"?"1 point costs 2 hearts, 2 points cost 3. You cannot accept gifts.":"1 heart per point."}</p>${lockd?`<p class="hint">${GIFT_RULE}</p>`:incomingGifts()+giftRoster()}${!lockd&&S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}</div>`;
   if(r==="breakout"){if(S.type!=="contra"||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. The room feels like someone just left.</p></div>`;
     const cost=EP.Sabotage.cost(ME);
     return `<div class="panel"><span class="label">Breakout Room · Sabotage a teammate (Contrarian only)</span><p class="hint">This one costs ${cost} heart${cost>1?"s":""}. Drains 2 from the target's ${AN[R().attr]} (1 if their Composure is 6+). Each extra sabotage this round costs 2.</p><div class="roster">${MYTEAM.mates(ME).map(p=>{const why=EP.Sabotage.check(ME,p,MYTEAM);return `<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===p.name).av,{head:true,label:p.name})}${esc(p.name)}</span><span class="row" style="gap:6px">${flag(p.flag())}<button class="btn red sm" data-sab="${esc(p.name)}" ${why?`disabled title="${esc(why)}"`:""}>Sabotage</button></span></div>`}).join("")}</div>${S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}${ME.sabotageLocked?`<span class="hint">You were caught. No more sabotage this game.</span>`:""}</div>`}
