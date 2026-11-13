@@ -30,7 +30,7 @@ const AN=Object.fromEntries(A.map(a=>[a.k,a.n]));
 const TYPE_TEXT={
   coop:{blurb:"You lift the team. Strong at working with others and staying calm. Slower to jump in first.",pathDesc:"Cancel 1 teammate glitch with a gift in the gift window."},
   indep:{blurb:"You lock in and push through. Strong focus and grit. Teamwork costs you more.",pathDesc:"Make 1 correct accusation yourself."},
-  contra:{blurb:"You question the system. Quick to act and hard to stop. Easier to rattle. Can sabotage.",pathDesc:"Get through 2 sabotage rounds without being caught."}};
+  contra:{blurb:"You question the system. Quick to act and hard to stop. Easier to rattle. Can sabotage.",pathDesc:"Get through 3 sabotage rounds without being caught."}};
 const TYPES=Object.fromEntries(Object.entries(EP.Player.TYPES).map(([k,r])=>[k,{...r,n:r.name,...TYPE_TEXT[k]}]));
 const ROUNDS=EP.Round.LEVELS.map(l=>({n:l.n,name:l.name,a:l.attr,c:l.cost}));
 const E="#0b0e13";
@@ -242,7 +242,7 @@ const DIALOGS=[
    "Some interns don't trust the system. We call them Contrarians.",
    "A Contrarian can sabotage a teammate: the first one each round costs 1 heart and drains 2 points from the target.",
    "At the all-hands, every intern can accuse one teammate. Guess right and you earn a point. Guess wrong and you lose one.",
-   "Two sabotage rounds nobody catches, and the Contrarian wins their own way. Not that I'd know anything about that."],glitchAt:-1},
+   "Three sabotage rounds nobody catches, and the Contrarian wins their own way. Not that I'd know anything about that."],glitchAt:-1},
  {who:"TEAM LEAD MEEP",role:"Cooperative",tag:"Teamwork",draw:f=>meeple("#1f8a3b",f),lines:[
    "Hey! I'm here for the Cooperatives: the interns who win by lifting each other up.",
    "You're strongest at Collaboration and Composure. Your gifts only cost 1 heart per point.",
@@ -620,7 +620,7 @@ const ADMIN_LINES=[
 const ROLE_BRIEF={
   coop:{lead:2,lines:["Hey, Cooperative! I'm Meep. On this floor you're the glue.","Your gifts cost only 1 heart per point. Gift any teammate during Open Floor or the gift window. A gift can pull a glitching teammate back to safety.","Watch out: you're slow to take Initiative. It caps at 4. And when a teammate's glitch locks in, you lose a heart too.","Your secret path is Lifeline. Cancel 1 teammate glitch with a gift and you win your own way, even if the floor goes badly."],face:"Collaboration +2 · Composure +2",weak:"Initiative caps at 4",watch:"A teammate's locked glitch costs you a heart."},
   indep:{lead:3,lines:["Signal received, Independent. I'm Projection.","You're strongest at Focus and Grit. You'll carry trials others can't.","Collaboration costs you more. 1 gift point costs 2 hearts, 2 points cost 3. And you can't accept gifts.","Your secret path is Auditor. Make 1 correct accusation yourself. Once per game, with full backup, you can Cash Out 2 hearts for 1 point."],face:"Focus +2 · Grit +2",weak:"Collaboration caps at 4",watch:"Someone on your team may be sabotaging."},
-  contra:{lead:1,lines:["So. You don't trust the system either. Good. I'm SYS-ADMIN 02.","From the Breakout Room you can sabotage a teammate. The first one each round costs 1 heart and drains 2 points.","At every all-hands, each teammate can accuse one person. Get caught and you can't sabotage again, and Exploit is lost.","Your secret path is Exploit: 2 sabotage rounds nobody catches. Each uncaught round also pays +1 point, up to 2. Stay calm. Your Composure caps at 4."],face:"Initiative +2 · Grit +2",weak:"Composure caps at 4",watch:"Don't be the one who's always near the Breakout Room."}};
+  contra:{lead:1,lines:["So. You don't trust the system either. Good. I'm SYS-ADMIN 02.","From the Breakout Room you can sabotage a teammate. The first one each round costs 1 heart and drains 2 points.","At every all-hands, each teammate can accuse one person. Get caught and you can't sabotage again, and Exploit is lost.","Your secret path is Exploit: 3 sabotage rounds nobody catches. Each uncaught round also pays +1 point, up to 2. Stay calm. Your Composure caps at 4."],face:"Initiative +2 · Grit +2",weak:"Composure caps at 4",watch:"Don't be the one who's always near the Breakout Room."}};
 function vnBox(who,role,portrait,line,i,n,extra=""){return `<div class="vn"><div class="vnp">${portrait}</div><div class="vnt"><div class="vnh"><b>${who}</b><span class="chip b">${role}</span></div><p class="vnl">${esc(line)}</p>${extra}<div class="vnf"><span class="dots">${Array.from({length:n},(_,j)=>`<i class="${j<=i?"on":""}"></i>`).join("")}</span><span class="label">Press Continue</span></div></div></div>`}
 function roleBrief(){const rb=ROLE_BRIEF[S.type],d=DIALOGS[rb.lead],t=T();
   const dossier=`<div class="dossier"><span><b>Strengths</b>${rb.face}</span><span><b>Weakness</b>${rb.weak}</span><span><b>Gifts</b>${S.type==="indep"?"1 point = 2 hearts, 2 = 3":"1 heart per point"}</span><span><b>Secret path</b>${t.path}</span><span class="w"><b>Watch for</b>${rb.watch}</span></div>`;
