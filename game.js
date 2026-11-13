@@ -26,11 +26,13 @@ addEventListener("resize",()=>{if(sized){sizeRain();if(!rainOn)staticRain()}});
 /* ---------- data ---------- */
 const A=[{k:"focus",n:"Focus"},{k:"initiative",n:"Initiative"},{k:"collab",n:"Collaboration"},{k:"composure",n:"Composure"},{k:"grit",n:"Grit"}];
 const AN=Object.fromEntries(A.map(a=>[a.k,a.n]));
-const TYPES={
-  coop:{n:"Cooperative",bonus:["collab","composure"],pen:"initiative",gift:1,path:"Lifeline",pathDesc:"Cancel 2 teammate glitches with gift-window gifts.",goal:2,blurb:"You lift the team. Strong at working with others and staying calm. Slower to jump in first."},
-  indep:{n:"Independent",bonus:["focus","grit"],pen:"collab",gift:2,path:"Auditor",pathDesc:"Be on a team that makes 2 correct accusations.",goal:2,blurb:"You lock in and push through. Strong focus and grit. Teamwork costs you more."},
-  contra:{n:"Contrarian",bonus:["initiative","grit"],pen:"composure",gift:1,path:"Exploit",pathDesc:"Complete 3 sabotages that are not caught that round.",goal:3,blurb:"You question the system. Quick to act and hard to stop. Easier to rattle. Can sabotage."}};
-const ROUNDS=[{n:1,name:"Boot Up",a:"initiative",c:2},{n:2,name:"Sprint 1",a:"focus",c:3},{n:3,name:"The Mirror",a:"composure",c:3},{n:4,name:"Geek Week",a:"focus",c:4},{n:5,name:"Sprint 2",a:"collab",c:4},{n:6,name:"Sprint 3",a:"grit",c:6},{n:7,name:"Graduation",a:null,c:0}];
+/* Rule data lives in rules/*.js. These tables only add display text. */
+const TYPE_TEXT={
+  coop:{blurb:"You lift the team. Strong at working with others and staying calm. Slower to jump in first.",pathDesc:"Cancel 1 teammate glitch with a gift in the gift window."},
+  indep:{blurb:"You lock in and push through. Strong focus and grit. Teamwork costs you more.",pathDesc:"Make 1 correct accusation yourself."},
+  contra:{blurb:"You question the system. Quick to act and hard to stop. Easier to rattle. Can sabotage.",pathDesc:"Get through 2 sabotage rounds without being caught."}};
+const TYPES=Object.fromEntries(Object.entries(EP.Player.TYPES).map(([k,r])=>[k,{...r,n:r.name,...TYPE_TEXT[k]}]));
+const ROUNDS=EP.Round.LEVELS.map(l=>({n:l.n,name:l.name,a:l.attr,c:l.cost}));
 const E="#0b0e13";
 const st=`stroke="${E}" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"`;
 /* ================= PIXEL INTERN ENGINE ================= */
@@ -132,8 +134,7 @@ const GHOSTS=[
  {n:"ATTEMPT_01",a:{body:1,skin:6,hair:6,hairC:6,top:7,topS:3,bot:0,botS:1,hat:0,extra:0,acc:6},line:"The coffee step that never ends... leave it out."},
  {n:"NULL",a:{body:0,skin:1,hair:8,hairC:6,top:7,topS:2,bot:0,botS:0,hat:3,extra:0,acc:7},line:"Someone on Team Wren keeps slipping into the Breakout Room."}];
 const GSPOTS=[[110,170],[190,120],[300,150],[500,140],[400,215],[650,160],[720,210],[130,440],[200,380],[330,430],[470,440],[630,450],[710,380]];
-const OTHERS=[{t:"Team Wren",p:["Rook","Ivy","Sol","Kai"]},{t:"Team Finch",p:["Tess","Omar","Bea","Lin"]}];
-const SABOTEUR="Rook";
+const OTHERS=[{t:"Team Wren",p:["Rook","Ivy","Sol","Kai"]},{t:"Team Finch",p:["Tess","Omar","Bea","Lin"]},{t:"Team Heron",p:["Nia","Theo","Ruth","Ash"]}];
 const SOP=["Fill the reservoir with cold water","Place a paper filter in the basket","Add 2 tablespoons of ground coffee per cup","Close the lid and press Start","Wait until brewing finishes","Pour into a mug and serve"];
 const DECOY="Repeat step 1 until performance is satisfactory";
 const CLUES=[
@@ -147,23 +148,44 @@ const FAC=[
   ["About 5 minutes in the wardrobe. Names: letters, numbers and spaces only. No real names."],
   ["Work style is secret. Remind players: never tell anyone your type or your numbers.","Everyone ends with 24 total points and 3 backup hearts."],
   ["Intermission in All Skate. Teams of 4. Move players between teams if needed, then start Level 1."],
-  ["Reveal: Boot Up tests Initiative. Every player pays 2 Initiative after the trial."],
-  ["Open Floor: players walk the office. Kitchen = gifts. Breakout Room = sabotage (Contrarians). High Tea = network with a guest for a hint. All Skate = reflect and plan. Conference Room has the emergency button.","Live game: ~3 minutes. Demo timer: 90 seconds."],
+  ["Reveal: Boot Up tests Grit. Every player pays 2 Grit after the trial."],
+  ["Open Floor: players walk the office. Breakout Room = sabotage a teammate (Contrarians). High Tea = network with a guest for a hint. All Skate = reflect and plan. Conference Room has the emergency button. Gifts wait for the gift window.","Live game: ~3 minutes. Demo timer: 90 seconds."],
   ["Teams play the SOP challenge (coffee). In the live game you mark each team Win or Loss."],
-  ["All-hands meeting in the Conference Room. Each team may accuse one player from another team.","Then open the 30-second gift window. Glitches lock in when it closes."],
-  ["Win = 4 points, Loss = 2, glitched = 1. Players place them before the next trial is revealed. Backup refills by 1."]];
+  ["All-hands meeting in the Conference Room. Each player may accuse one teammate.","Then open the 30-second gift window. Glitches lock in when it closes."],
+  ["Win = 4 points, Loss = 2, glitched = 1. Bonuses: correct accusation +1, Skim, Cash Out. Players place points before the next trial is revealed. Backup refills by 1."]];
 const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not guaranteed."],["From: IT","We are aware of a typo on the sign-in screen. It is not a typo."],["From: Facilities","The Break Room coffee machine has been restocked. Again. And again. And again."]];
 
 /* ---------- state ---------- */
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",tab:"body",
-  type:null,base:{focus:1,initiative:1,collab:1,composure:1,grit:1},attrs:null,backup:3,glitches:0,status:"OK",
-  lifeline:0,auditor:0,exploit:0,caught:false,inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
-  of:{left:90,sabotaged:null,giftLog:[]},sabHit:0,
+  type:null,base:{focus:1,initiative:1,collab:1,composure:1,grit:1},
+  inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
+  of:{left:90,applied:false,msg:""},
   sop:{pile:[],built:[],checked:false,score:0,decoyOut:false,inTime:true,left:60},
-  win:null,pay:null,paid:false,acc:{target:"",done:false,correct:null},gw:{left:20,started:false,closed:false,offer:false,offerDone:false,dexSaved:false},
-  earned:0,toPlace:0,place:{},log:[],glitchedThisRound:false,done:false,timer:null});
+  win:null,pay:null,paid:false,acc:{target:"",done:false,result:null},gw:{left:20,started:false,closed:false,received:[],sent:[]},
+  earnLines:[],cashed:false,got:0,place:{},done:false,timer:null});
 let S=fresh();
+
+/* ---------- rules engine session ----------
+   G is the Game object from rules/Game.js. It owns every rule number.
+   ME is your Player. S above only holds screen state. */
+let G=null,ME=null,MYTEAM=null;
+const RNG=Math.random;
+const MATE=n=>G&&G.players.find(p=>p.name===n);
+function newSession(){
+  ME=new EP.Player({id:0,name:S.name,type:S.type,spend:Object.fromEntries(A.map(a=>[a.k,S.base[a.k]-1]))});
+  // 16 players: 8 Cooperative, 5 Independent, 3 Contrarian. You take one slot of your type.
+  const pool=[...Array(8).fill("coop"),...Array(5).fill("indep"),...Array(3).fill("contra")];
+  pool.splice(pool.indexOf(S.type),1);
+  const types=shuffle(pool);let id=1;
+  const mk=n=>EP.Bots.makePlayer(id++,n,types.pop());
+  MYTEAM=new EP.Team({id:0,name:"Team Kestrel",members:[ME,...TEAM.map(p=>mk(p.n))]});
+  const others=OTHERS.map((o,i)=>new EP.Team({id:i+1,name:o.t,members:o.p.map(mk)}));
+  G=new EP.Game({teams:[MYTEAM,...others],rng:RNG});
+}
+function endSession(){G=null;ME=null;MYTEAM=null}
+function startLevel(){if(!G.round)G.startNextRound();go(5)}
+const R=()=>G&&G.round?G.round:new EP.Round(1);
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);const $$=s=>[...document.querySelectorAll(s)];
@@ -171,19 +193,14 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
 const T=()=>TYPES[S.type];
 const isBonus=k=>S.type&&T().bonus.includes(k);
-const maxOf=k=>S.type&&T().pen===k?7:10;
+const maxOf=k=>S.type&&T().pen===k?4:10;
 const baseMax=k=>maxOf(k)-(isBonus(k)?2:0);
 const spent=()=>Object.values(S.base).reduce((a,b)=>a+b,0)-5;
-const total=()=>A.reduce((s,a)=>s+S.attrs[a.k],0);
+const total=()=>ME.total();
 const fmt=x=>Math.floor(Math.max(0,x)/60)+":"+String(Math.max(0,x)%60).padStart(2,"0");
 function shade(h,f){const n=parseInt(h.slice(1),16);const r=Math.min(255,Math.round(((n>>16)&255)*f)),g=Math.min(255,Math.round(((n>>8)&255)*f)),b=Math.min(255,Math.round((n&255)*f));return "#"+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}
 function cleanName(v){return v.replace(/[^A-Za-z0-9 ]/g,"").replace(/\s{2,}/g," ").replace(/^\s+/,"").slice(0,16)}
-function computeStatus(costAhead){
-  if(S.glitches>=2)return "Stuck";
-  if(A.some(a=>S.attrs[a.k]<0))return S.gw.closed?"Glitched":"Glitching";
-  for(const a of A){const avail=S.attrs[a.k]+(isBonus(a.k)?S.backup:Math.floor(S.backup/2));if(avail<costAhead)return "At risk"}
-  return "OK";
-}
+const status=()=>ME?ME.flag():"OK";
 const flag=s=>`<span class="flag ${s==="At risk"?"risk":s}">${s}</span>`;
 const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3.2 12A5.3 5.3 0 0 1 12 4.6 5.3 5.3 0 0 1 20.8 12Z" fill="${on?"#e0394d":"#3a1520"}" stroke="#0b0e13" stroke-width="2.4" stroke-linejoin="round"/>${on?'<path d="M7 8.5a2.5 2.5 0 0 1 3-1.5" stroke="#ffb3bd" stroke-width="1.8" fill="none" stroke-linecap="round"/>':""}</svg>`;
 function stopTimer(){clearInterval(S.timer);S.timer=null}
@@ -219,18 +236,18 @@ const DIALOGS=[
    "If the window closes and you're still below zero, the glitch locks in. Glitch twice and you're stuck. Like m— like m— l1k3 m3."],glitchAt:3},
  {who:"SYS-ADMIN 02",role:"Contrarian",tag:"Secret",draw:f=>screenhead("#d8323f","#ff5b6e",f==="talk"?"sly":f),lines:[
    "Some interns don't trust the system. We call them Contrarians.",
-   "Once per round, a Contrarian can sabotage someone on another team: it costs 1 heart and drains 2 points from the target.",
-   "At the all-hands, each team gets one vote to name the saboteur. Guess right and your team earns a point. Guess wrong and you lose one.",
-   "Three sabotages nobody catches, and the Contrarian wins their own way. Not that I'd know anything about that."],glitchAt:-1},
+   "A Contrarian can sabotage a teammate: the first one each round costs 1 heart and drains 2 points from the target.",
+   "At the all-hands, every intern can accuse one teammate. Guess right and you earn a point. Guess wrong and you lose one.",
+   "Two sabotage rounds nobody catches, and the Contrarian wins their own way. Not that I'd know anything about that."],glitchAt:-1},
  {who:"TEAM LEAD MEEP",role:"Cooperative",tag:"Teamwork",draw:f=>meeple("#1f8a3b",f),lines:[
    "Hey! I'm here for the Cooperatives: the interns who win by lifting each other up.",
    "You're strongest at Collaboration and Composure. Your gifts only cost 1 heart per point.",
-   "Your secret path is called Lifeline: save 2 teammates from glitching with gift-window gifts.",
+   "Your secret path is called Lifeline: save 1 teammate from glitching with a gift-window gift.",
    "Nobody exits alone in here. Watch your team's status flags, and send help before the window closes."],glitchAt:-1},
  {who:"PROJECTION_IND",role:"Independent",tag:"Solo",draw:f=>holoTeacher(f),lines:[
    "Signal received. I'm here for the Independents: interns who lock in and push through on their own.",
-   "You're strongest at Focus and Grit. Collaboration costs you more, so your gifts cost 2 hearts per point.",
-   "Your secret path is called Auditor: be on a team that makes 2 correct accusations.",
+   "You're strongest at Focus and Grit. Collaboration costs you more, so your gifts cost extra hearts.",
+   "Your secret path is called Auditor: make 1 correct accusation yourself.",
    "Trust the data, not the noise. Watch who stays quiet when points go missing."],glitchAt:-1}];
 const DPOS=DIALOGS.map(()=>0);
 function dialogsHTML(){return `<div class="dialogs">${DIALOGS.map((d,i)=>{const p=DPOS[i],gl=p===d.glitchAt;return `<article class="dlg" data-d="${i}"><div class="top"><b>${d.who}</b><span class="chip ${i===1?"p":i===2?"g":i===3?"b":"r"}">${d.tag}</span></div>
@@ -335,8 +352,8 @@ function goForward(){
     case 0:$("#signForm").requestSubmit();return;
     case 1:go(2);return;
     case 2:S.name=S.name.trim();go(3);return;
-    case 3:if(S.maxStep<5){S.attrs={};A.forEach(a=>S.attrs[a.k]=S.base[a.k]+(isBonus(a.k)?2:0))}go(4);return;
-    case 4:if(!S.arrived){arrivalAdvance();return}go(5);return;
+    case 3:if(S.maxStep<5)newSession();go(4);return;
+    case 4:if(!S.arrived){arrivalAdvance();return}startLevel();return;
     case 6:applyOpenFloorEnd();go(7);return;
     case 7:payCost();go(8);return;
     case 9:lockPoints();return;
@@ -369,9 +386,9 @@ function chrome(){
   const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&S.sop.checked)&&!(S.step===6&&S.of.applied);
   $("#banner").hidden=!showB;if(showB)$("#bannerT").textContent=bl;
   const h=$("#hud");
-  if(!S.attrs||S.step<4||cin){h.hidden=true}else{h.hidden=false;
-  h.innerHTML=A.map(a=>{const v=S.attrs[a.k];return `<div class="attr ${isBonus(a.k)?"bonus":""}"><div class="top"><span>${a.n}</span><span class="v ${v<0?"neg":""}">${v}/${maxOf(a.k)}</span></div><span class="trk"><i style="width:${Math.max(0,v)/maxOf(a.k)*100}%"></i></span></div>`}).join("")+
-  `<div class="side"><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Backup</span><span class="hearts">${[0,1,2].map(i=>HEART(i<S.backup)).join("")}</span></div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Status</span>${flag(S.status)}</div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Anomalies</span><span class="label" style="color:var(--pink)">${Object.keys(S.found).length}/5</span></div></div>`;}
+  if(!ME||S.step<4||cin){h.hidden=true}else{h.hidden=false;
+  h.innerHTML=A.map(a=>{const v=ME.attrs[a.k];return `<div class="attr ${isBonus(a.k)?"bonus":""}"><div class="top"><span>${a.n}</span><span class="v ${v<0?"neg":""}">${v}/${maxOf(a.k)}</span></div><span class="trk"><i style="width:${Math.max(0,v)/maxOf(a.k)*100}%"></i></span></div>`}).join("")+
+  `<div class="side"><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Backup</span><span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span></div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Status</span>${flag(status())}</div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Anomalies</span><span class="label" style="color:var(--pink)">${Object.keys(S.found).length}/5</span></div></div>`;}
   updateNav();
 }
 function go(n){stopTimer();S.panel=false;S.step=n;S.maxStep=Math.max(S.maxStep,n);render();window.scrollTo({top:0,behavior:"smooth"})}
@@ -451,11 +468,11 @@ V[2]=()=>{const t=S.tab,a=S.av;let left="",nm="",tag="Equipped";
 
 V[3]=()=>{const left=15-spent();return `<div><span class="chip p">Secret</span><h2 style="margin-top:8px">Pick your work style</h2><p class="hint" style="margin-top:6px">Only you and the host see this. Other players only see your character, name, team and status.</p></div>
 <div class="types">${Object.entries(TYPES).map(([k,t])=>`<button class="type" data-type="${k}" aria-pressed="${S.type===k}" ${S.maxStep>=5?"disabled":""}><h3>${t.n}</h3><span style="opacity:.9">${t.blurb}</span>
-  <span class="row" style="gap:6px">${t.bonus.map(b=>`<span class="tag b">+2 ${AN[b]}</span>`).join("")}<span class="tag p">${AN[t.pen]} max 7</span></span>
+  <span class="row" style="gap:6px">${t.bonus.map(b=>`<span class="tag b">+2 ${AN[b]}</span>`).join("")}<span class="tag p">${AN[t.pen]} max 4</span></span>
   <span style="opacity:.9;font-size:.92rem"><b>Secret path · ${t.path}:</b> ${t.pathDesc}</span></button>`).join("")}</div>
 ${S.type?`<div class="row" style="justify-content:space-between"><h3>Spend your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} of 15 left</span></div>
-<p class="hint">Every attribute starts at 1. Bonus attributes get +2 after you confirm. Max is 10 (your weak attribute caps at 7).</p>
-<div class="buy">${A.map(a=>{const v=S.base[a.k];return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">+2 bonus</span>':""}${T().pen===a.k?'<span class="tag p">max 7</span>':""}</span>
+<p class="hint">Every attribute starts at 1. Bonus attributes get +2 after you confirm. Max is 10 (your weak attribute caps at 4).</p>
+<div class="buy">${A.map(a=>{const v=S.base[a.k];return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">+2 bonus</span>':""}${T().pen===a.k?'<span class="tag p">max 4</span>':""}</span>
   <span class="step"><button class="minus" data-dec="${a.k}" aria-label="Lower ${a.n}" ${v<=1?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-inc="${a.k}" aria-label="Raise ${a.n}" ${(v>=baseMax(a.k)||!left)?"disabled":""}>+</button></span>
   <span class="fin">final ${v+(isBonus(a.k)?2:0)}</span></div>`}).join("")}</div>`:""}`};
 
@@ -463,66 +480,68 @@ function personRow(p,me){return `<div class="person"><span class="who">${avatarS
 V[4]=()=>{const t=T();if(!S.arrived)return elevatorScene();return `<div class="row" style="justify-content:space-between"><div><span class="chip b">Lobby · Code ${esc(S.code)}</span><h2 style="margin-top:8px">Floor 60 · Find your team</h2></div><span class="hint">Your team is waiting in All Skate. Explore while the intermission runs.</span></div>
 ${worldHTML("lobby")}
 <div class="cols">
-  <div class="panel"><span class="label">Team Kestrel</span><div class="roster">${personRow({n:S.name,av:S.av,st:S.status},true)}${TEAM.map(p=>personRow(p)).join("")}</div></div>
-  <div class="panel"><span class="label">Secret path · ${t.path} <span class="tag s">${t.n}</span></span><p>${t.pathDesc}</p><span class="hint">Progress 0 / ${t.goal}. Only you can see this.</span></div>
+  <div class="panel"><span class="label">Team Kestrel</span><div class="roster">${personRow({n:S.name,av:S.av,st:status()},true)}${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>
+  <div class="panel"><span class="label">Secret path · ${t.path} <span class="tag s">${t.n}</span></span><p>${t.pathDesc}</p><span class="hint">Progress ${ME.pathProgress} / ${t.goal}. Only you can see this.</span></div>
   <div class="panel"><span class="label">Graduation check (Level 7)</span>${gradChecks()}</div>
 </div>`};
-function gradChecks(){const tot=total(),low=Math.min(...A.map(a=>S.attrs[a.k]));
-  return `<div class="check"><span class="${tot>=22?"y":"x"}">${tot>=22?"✓":"✗"}</span><span>Total points ${tot} (need 22+)</span></div><div class="check"><span class="${low>=2?"y":"x"}">${low>=2?"✓":"✗"}</span><span>Lowest attribute ${low} (need 2+)</span></div><div class="check"><span class="${S.glitches<2?"y":"x"}">${S.glitches<2?"✓":"✗"}</span><span>Glitches ${S.glitches} (stuck at 2)</span></div>`}
+function gradChecks(){const tot=total(),low=ME.lowest();
+  return `<div class="check"><span class="${tot>=22?"y":"x"}">${tot>=22?"✓":"✗"}</span><span>Total points ${tot} (need 22+)</span></div><div class="check"><span class="${low>=2?"y":"x"}">${low>=2?"✓":"✗"}</span><span>Lowest attribute ${low} (need 2+)</span></div><div class="check"><span class="${ME.glitches<2?"y":"x"}">${ME.glitches<2?"✓":"✗"}</span><span>Glitches ${ME.glitches} (stuck at 2)</span></div>`}
 
 V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="margin-top:8px">Boot Up: Team Week</h2></div>
 <div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, Team Kestrel</p><p>Your first client, a national medical supply company, has sent a Request for Proposal. Before Sprint 1 starts on Sep 8, your team must show it can take the lead: write a Standard Operating Procedure everyone can follow.</p></div>
-<div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>Initiative</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>2 points</h3></div><div class="panel"><span class="label">Your Initiative</span><h3>${S.attrs.initiative}${isBonus("initiative")?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${S.attrs.initiative>=2?"You can cover this.":"You'll need backup hearts to cover this."}</span></div></div>
+<div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>${AN[R().attr]}</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>${R().cost} points</h3></div><div class="panel"><span class="label">Your ${AN[R().attr]}</span><h3>${ME.attrs[R().attr]}${isBonus(R().attr)?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${ME.attrs[R().attr]>=R().cost?"You can cover this.":"You'll need backup hearts to cover this."}</span></div></div>
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge</span></div><div class="panel"><span class="label">Workshops</span><span>LW2A Know Your Lens · LW2B Team Agreement · BW2B · W2B</span></div></div>`;
 
 function roomPanel(){const t=T();const lockd=S.of.applied||S.step!==6;const r=S.room;
-  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Send a gift</span><p class="hint">${lockd?"Gifts open during Open Floor.":`Gifts cost backup hearts: ${t.gift} per point for a ${t.n}.`}</p><div class="roster">${TEAM.map(p=>`<div class="person"><span class="who">${avatarSVG(p.av,{head:true,label:p.n})}${p.n}</span><span class="row" style="gap:6px"><button class="btn green sm" data-gift="${p.n}" data-pts="1" ${(lockd||S.backup<t.gift)?"disabled":""}>Gift 1</button><button class="btn green sm" data-gift="${p.n}" data-pts="2" ${(lockd||S.backup<t.gift*2)?"disabled":""}>Gift 2</button></span></div>`).join("")}</div>${S.of.giftLog.length?`<span class="okmsg">${S.of.giftLog.map(esc).join("<br>")}</span>`:""}</div>`;
-  if(r==="breakout"){if(S.type!=="contra"||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. You can still read half a name: "R—". The room feels like someone just left.</p></div>`;
-    return `<div class="panel"><span class="label">Breakout Room · Sabotage (Contrarian only)</span><p class="hint">Costs 1 heart. Drains 2 from the target's trial attribute (1 if their Composure is 6+). Once per round.</p>${OTHERS.map(o=>`<b>${o.t}</b><div class="roster">${o.p.map(n=>`<div class="person"><span class="who" style="padding-left:8px">${n}</span><button class="btn red sm" data-sab="${n}" ${(S.of.sabotaged||S.backup<1||S.caughtEver)?"disabled":""}>Sabotage</button></div>`).join("")}</div>`).join("")}${S.of.sabotaged?`<span class="okmsg">You drained ${esc(S.of.sabotaged)}. They won't know it was you.</span>`:""}</div>`}
+  if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gifts happen in the gift window, right after the trial. Only Glitching teammates can receive them.</p><p class="hint">Your cost as a ${t.n}: ${S.type==="indep"?"1 point costs 2 hearts, 2 points cost 3. You cannot accept gifts.":"1 heart per point."}</p></div>`;
+  if(r==="breakout"){if(S.type!=="contra"||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. The room feels like someone just left.</p></div>`;
+    const cost=EP.Sabotage.cost(ME);
+    return `<div class="panel"><span class="label">Breakout Room · Sabotage a teammate (Contrarian only)</span><p class="hint">This one costs ${cost} heart${cost>1?"s":""}. Drains 2 from the target's ${AN[R().attr]} (1 if their Composure is 6+). Each extra sabotage this round costs 2.</p><div class="roster">${MYTEAM.mates(ME).map(p=>{const why=EP.Sabotage.check(ME,p,MYTEAM);return `<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===p.name).av,{head:true,label:p.name})}${esc(p.name)}</span><span class="row" style="gap:6px">${flag(p.flag())}<button class="btn red sm" data-sab="${esc(p.name)}" ${why?`disabled title="${esc(why)}"`:""}>Sabotage</button></span></div>`}).join("")}</div>${S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}${ME.sabotageLocked?`<span class="hint">You were caught. No more sabotage this game.</span>`:""}</div>`}
   if(r==="hightea")return `<div class="panel"><span class="label">High Tea · Network with a guest</span><p class="hint">Today's guest is a program sponsor who once sat where you're sitting. You pour the tea and introduce yourself.</p><div class="memo"><p>"When I wrote my first SOP, I put in a step that never ended. A good procedure has no step that sends you in circles. If a step never ends, it doesn't belong."</p></div><p class="hint">Guests share stories, not answers. Prep 3:30 · Tea 4:00 · Debrief 5:00.</p></div>`;
   if(r==="wellness")return `<div class="panel"><span class="label">Wellness Room</span><p>Quiet in here. Take a breath before the trial. (No game effect yet.)</p></div>`;
   if(r==="conf")return `<div class="panel"><span class="label">Conference Room · Emergency button</span><p>${S.step===8?"The all-hands meeting is in session.":"The button is locked. It lights up after the trial, when the all-hands meeting is called."}</p></div>`;
   if(r==="reception")return `<div class="panel"><span class="label">Reception · Check in</span><p>The front desk prints your badge again. <b>ATTEMPT 02</b>. You only remember one.</p><span class="okmsg">Anomaly logged: WATCHER.</span></div>`;
-  return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. Then visit the Kitchen to send gifts${S.type==="contra"?" or slip into the Breakout Room to sabotage":""}. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow(p)).join("")}</div></div>`;
+  return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. ${S.type==="contra"?"Slip into the Breakout Room to sabotage a teammate. ":""}Gifts wait for the gift window after the trial. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>`;
 }
-V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${S.of.applied?"Open Floor is over. Press Next to return to the trial.":"Kitchen = gifts · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
+V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${S.of.applied?"Open Floor is over. Press Next to return to the trial.":"Kitchen = gift rules · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
 ${worldHTML("floor")}`;
 
-V[7]=()=>{const s=S.sop;return `<div><span class="chip r">The Trial · Initiative</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
-${S.sabHit?`<div class="toast"><b>&gt; ALERT:</b> someone on another team sabotaged you. Initiative −${S.sabHit}. Remember this at the all-hands.</div>`:""}
+V[7]=()=>{const s=S.sop;const hit=G.round.sabotages.filter(x=>x.target===ME).reduce((n,x)=>n+x.drain,0);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
+${hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[R().attr]} −${hit}. Remember this at the all-hands.</div>`:""}
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Your team wins with 5+ correct and nothing extra.</p>
 <div class="sop"><div><span class="label">Available steps</span><div class="pile">${s.pile.map((t,i)=>`<button class="scard" data-pile="${i}" ${s.checked?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
 <div><span class="label">Team SOP</span><div class="built">${s.built.map((t,i)=>`<button class="scard ${s.checked?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${s.checked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}: ${s.score} of 6 correct${s.decoyOut?", decoy left out":", decoy included"}${s.inTime?"":", time ran out"}.</b><span class="hint">Every player now pays 2 Initiative. Press Next for the all-hands meeting.</span></div>`
+${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}: ${s.score} of 6 correct${s.decoyOut?", decoy left out":", decoy included"}${s.inTime?"":", time ran out"}.</b><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press Next for the all-hands meeting.</span></div>`
 :`<div class="row"><button class="btn green" id="check" ${s.built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
 
-V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc;return `<div class="meeting">All-hands meeting</div>
+V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
 <div class="report shake"><span class="h">&gt; GLITCH REPORT: irregularities detected in your environment</span>
-<span>&gt; trial: Team Kestrel ${S.win?"WIN":"LOSS"} · cost paid: Initiative −2</span>
-<span>&gt; your Initiative: ${p.before} → ${p.after}${p.backupUsed?` (backup hearts used: ${p.backupUsed})`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>
+<span>&gt; trial: Team Kestrel ${S.win?"WIN":"LOSS"} · cost paid: ${AN[k]} −${R().cost}</span>
+<span>&gt; your ${AN[k]}: ${p.before} → ${p.after}${p.backupUsed?` (backup hearts used: ${p.backupUsed})`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>
 ${CLUES.map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
 <span>&gt; please continue working normally.</span></div>
-${S.of.sabotaged?`<div class="toast">${S.caught?`<b>&gt; CAUGHT:</b> another team correctly accused you. You lose 2 points and can't sabotage again.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage on ${esc(S.of.sabotaged)}. Exploit progress ${S.exploit}/3.`}</div>`:""}
-<div class="panel"><span class="label">Team vote · one accusation per team</span>
-${a.done?`<p>${a.correct?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. Everyone on your team gets +1 point.`:a.target?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage. You lose 1 point (taken from your highest attribute in this demo).`:"Your team skipped the vote."}</p>`
-:`<div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a player"><option value="">Choose a player…</option>${OTHERS.flatMap(o=>o.p).map(n=>`<option ${a.target===n?"selected":""}>${n}</option>`).join("")}</select><button class="btn red sm" id="accuse">Vote</button><button class="btn soft sm" id="skipAcc">Skip vote</button></div><span class="hint">Who drained your team this round?</span>`}</div>
-${a.done?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${g.closed?flag(S.status):`<span class="hearts">${[0,1,2].map(i=>HEART(i<S.backup)).join("")}</span>`}</div>
-  ${!g.dexSaved&&!g.closed?`<div class="person"><span class="who">${avatarSVG(TEAM[1].av,{head:true,label:"Dex"})}Dex</span><span class="row" style="gap:6px">${flag("Glitching")}<button class="btn green sm" id="saveDex" ${S.backup<T().gift?"disabled":""}>Gift 1 point (${T().gift} heart${T().gift>1?"s":""})</button></span></div>`:""}
-  ${g.dexSaved?`<span class="okmsg">You saved Dex from glitching.${S.type==="coop"?` Lifeline ${S.lifeline}/2.`:""}</span>`:""}
-  ${g.offer&&!g.offerDone?`<div class="popup"><b>Gift from Juno: 2 points.</b><span>Accept and pick where they go, or decline.</span><div class="row">${A.map(x=>`<button class="btn soft sm" data-acc="${x.k}">${x.n}${S.attrs[x.k]<0?" (negative)":""}</button>`).join("")}<button class="btn red sm" id="decline">Decline</button></div></div>`:""}
-  ${g.closed?`<p>${S.glitchedThisRound?`<b style="color:var(--pink)">Glitch locked in.</b> Reboot: points moved from your highest attribute to bring it back to 1. Backup hearts set to 0. Glitches: ${S.glitches}/2.`:"Window closed. No glitch for you this round."}</p>`:`<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0 when it closes becomes a glitch.</span>`}
+${a.done&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. No more sabotage this game, and Exploit is lost.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
+<div class="panel"><span class="label">Accusation · one per player · teammates only</span>
+${a.done?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${S.type==="indep"?" Auditor complete.":""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. You lost 1 point from your highest attribute.`:"You skipped your accusation."}</p>`
+:`<div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Who drained your team this round? Correct: +1 point. Wrong: you lose 1 point.</span>`}</div>
+${a.done?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${g.closed?flag(status()):`<span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span>`}</div>
+  ${g.received.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
+  ${!g.closed?`<div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.flag())}${q.isGlitching()&&!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${EP.Gift.check(ME,q,MYTEAM,n)?"disabled":""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`:""}
+  ${g.sent.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
+  ${g.closed?`<p>${ME.glitchedThisRound?`<b style="color:var(--pink)">Glitch locked in.</b> Reboot: points taken evenly from your other attributes to bring it back to 1. Backup hearts set to 0. Glitches: ${ME.glitches}/2.`:"Window closed. No glitch for you this round."}</p>`:`<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0 when it closes becomes a glitch.</span>`}
 </div>`:""}`};
 
-function placeLeft(){return S.toPlace-Object.values(S.place).reduce((a,b)=>a+b,0)}
-V[9]=()=>{const left=placeLeft();const t=T();const prog={coop:S.lifeline,indep:S.auditor,contra:S.exploit}[S.type];const got=S.done?S.earned:S.toPlace;
-return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level 1 complete, ${esc(S.name)}</h2></div>
-<div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${S.log.map(esc).join(" · ")}</span></div>
+function placeLeft(){return (ME?ME.earned:0)-Object.values(S.place).reduce((a,b)=>a+b,0)}
+V[9]=()=>{const left=placeLeft();const t=T();const got=S.done?S.got:ME.earned;
+return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
+<div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${[...S.earnLines,...(S.cashed?["Cash Out: +1"]:[])].map(esc).join(" · ")}</span></div>
+${!S.done&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 backup hearts for +1 point. Only works with full backup.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
 ${S.done?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
 <p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing. Level 2 costs 3.</p>
-<div class="buy">${A.map(a=>{const v=S.attrs[a.k]+(S.place[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!(S.place[a.k])?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${(!left||v>=maxOf(a.k))?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
-<div class="cols"><div class="panel"><span class="label">Status for Level 2 (cost 3)</span>${flag(S.status)}<span class="hint">At risk means an attribute couldn't cover a cost-3 trial even with backup.</span></div>
+<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(S.place[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!(S.place[a.k])?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${(!left||v>=maxOf(a.k))?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
+<div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means an attribute couldn't cover a cost of 4, even with backup.</span></div>
 <div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>
-<div class="panel"><span class="label">Secret path · ${t.path}</span><span>${S.caught&&S.type==="contra"?"Exploit path lost (caught).":`Progress ${prog} / ${t.goal}`}</span></div></div>
+<div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":ME.pathLost?"Exploit path lost (caught).":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div></div>
 ${S.done?`<div class="locked"><div><span class="label">Next · Level 2</span><h3>Sprint 1</h3><span class="hint">Sep 8–25 · Trial cost 3 · Attribute revealed at the briefing</span></div><span class="tag m">LOCKED</span></div><div class="row"><button class="btn blue" id="replay">Replay Level 1</button><button class="btn soft" id="restart">Back to sign-in</button></div>`:""}`};
 
 /* ================= ARRIVAL (elevator → ADMIN_0 → role lead → spawn) ================= */
@@ -568,12 +587,12 @@ const ADMIN_LINES=[
   "You'll see things on this floor that aren't on the org chart. Don't follow them. Listen to them.",
   "Your work style has been assigned. Your orientation lead will brief you now."];
 const ROLE_BRIEF={
-  coop:{lead:2,lines:["Hey, Cooperative! I'm Meep. On this floor you're the glue.","Your gifts cost only 1 heart per point. Use them in the gift window when a teammate starts glitching.","Watch out: you're slow to take Initiative, and Level 1 tests exactly that. Lean on your backup hearts.","Your secret path is Lifeline. Save 2 teammate glitches and you win your own way, even if the floor goes badly."],face:"Collaboration +2 · Composure +2",weak:"Initiative caps at 7",watch:"Level 1 tests Initiative. Keep a heart ready."},
-  indep:{lead:3,lines:["Signal received, Independent. I'm Projection.","You're strongest at Focus and Grit. You'll carry trials others can't.","Collaboration costs you more. Gifts are 2 hearts per point, so choose who you save.","Your secret path is Auditor. Your team needs 2 correct accusations. Watch who goes quiet when points go missing."],face:"Focus +2 · Grit +2",weak:"Collaboration caps at 7",watch:"Someone is sabotaging. Track who visits the Breakout Room."},
-  contra:{lead:1,lines:["So. You don't trust the system either. Good. I'm SYS-ADMIN 02.","Once per round you can sabotage someone on another team from the Breakout Room. 1 heart, 2 points drained.","Every all-hands, each team votes on a saboteur. Get caught and you lose 2 points and the right to sabotage.","Your secret path is Exploit: 3 sabotages nobody catches. Stay calm. Your Composure caps at 7, and they will be watching you."],face:"Initiative +2 · Grit +2",weak:"Composure caps at 7",watch:"Don't be the one who's always near the Breakout Room."}};
+  coop:{lead:2,lines:["Hey, Cooperative! I'm Meep. On this floor you're the glue.","Your gifts cost only 1 heart per point. Use them in the gift window when a teammate starts glitching.","Watch out: you're slow to take Initiative. It caps at 4. And when a teammate's glitch locks in, you lose a heart too.","Your secret path is Lifeline. Cancel 1 teammate glitch with a gift and you win your own way, even if the floor goes badly."],face:"Collaboration +2 · Composure +2",weak:"Initiative caps at 4",watch:"A teammate's locked glitch costs you a heart."},
+  indep:{lead:3,lines:["Signal received, Independent. I'm Projection.","You're strongest at Focus and Grit. You'll carry trials others can't.","Collaboration costs you more. 1 gift point costs 2 hearts, 2 points cost 3. And you can't accept gifts.","Your secret path is Auditor. Make 1 correct accusation yourself. Once per game, with full backup, you can Cash Out 2 hearts for 1 point."],face:"Focus +2 · Grit +2",weak:"Collaboration caps at 4",watch:"Someone on your team may be sabotaging."},
+  contra:{lead:1,lines:["So. You don't trust the system either. Good. I'm SYS-ADMIN 02.","From the Breakout Room you can sabotage a teammate. The first one each round costs 1 heart and drains 2 points.","At every all-hands, each teammate can accuse one person. Get caught and you can't sabotage again, and Exploit is lost.","Your secret path is Exploit: 2 sabotage rounds nobody catches. Each uncaught round also pays +1 point, up to 2. Stay calm. Your Composure caps at 4."],face:"Initiative +2 · Grit +2",weak:"Composure caps at 4",watch:"Don't be the one who's always near the Breakout Room."}};
 function vnBox(who,role,portrait,line,i,n,extra=""){return `<div class="vn"><div class="vnp">${portrait}</div><div class="vnt"><div class="vnh"><b>${who}</b><span class="chip b">${role}</span></div><p class="vnl">${esc(line)}</p>${extra}<div class="vnf"><span class="dots">${Array.from({length:n},(_,j)=>`<i class="${j<=i?"on":""}"></i>`).join("")}</span><span class="label">Press Continue</span></div></div></div>`}
 function roleBrief(){const rb=ROLE_BRIEF[S.type],d=DIALOGS[rb.lead],t=T();
-  const dossier=`<div class="dossier"><span><b>Strengths</b>${rb.face}</span><span><b>Weakness</b>${rb.weak}</span><span><b>Gifts</b>${t.gift} heart${t.gift>1?"s":""} per point</span><span><b>Secret path</b>${t.path}</span><span class="w"><b>Watch for</b>${rb.watch}</span></div>`;
+  const dossier=`<div class="dossier"><span><b>Strengths</b>${rb.face}</span><span><b>Weakness</b>${rb.weak}</span><span><b>Gifts</b>${S.type==="indep"?"1 point = 2 hearts, 2 = 3":"1 heart per point"}</span><span><b>Secret path</b>${t.path}</span><span class="w"><b>Watch for</b>${rb.watch}</span></div>`;
   return vnBox(d.who,t.n+" briefing",`<div class="vnportrait">${d.draw("talk")}</div>`,rb.lines[S.arrLine],S.arrLine,rb.lines.length,S.arrLine===rb.lines.length-1?dossier:"")}
 function arrivalAdvance(){
   if(S.arr==="elev"){S.arr="admin";S.arrLine=0;render();return}
@@ -656,7 +675,7 @@ function worldSVG(){const E="#0b0e13";
    <g transform="translate(1790 520)">${avatarSVG({body:1,skin:4,hair:8,hairC:6,top:7,topS:1,bot:0,botS:1,hat:0,extra:1,acc:2},{label:"Guest",extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="15" fill="#f2b84b" stroke="#0b0e13" stroke-width="4" paint-order="stroke">Guest · Sponsor</text></g>
    <g transform="translate(1690 745)">${avatarSVG(PRESETS_ROOK,{label:"Rook",extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="16" fill="#cbd3dc" stroke="#0b0e13" stroke-width="4" paint-order="stroke">Rook · Wren</text></g></g>
   <g id="wghosts">${GHOSTS.map((g,i)=>`<g class="wg" data-g="${i}" opacity="0" transform="translate(0 0)">${avatarSVG(g.a,{label:g.n,holo:true,ghost:true,holoC:"#e9ecff",extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="15" fill="#e9ecff" stroke="#0b0e13" stroke-width="4" paint-order="stroke">${g.n}</text></g>`).join("")}</g>
-  <g id="wme" transform="translate(${S.pos.x} ${S.pos.y})"><ellipse cx="0" cy="2" rx="26" ry="8" fill="rgba(0,0,0,.35)"/><g id="wmeinner">${avatarSVG(S.av,{label:S.name,holo:S.status==="Glitching",extra:' x="-30" y="-100" width="60" height="101"'})}</g><text y="24" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="17" fill="#f2b84b" stroke="#0b0e13" stroke-width="4" paint-order="stroke">${esc(S.name)}</text></g>
+  <g id="wme" transform="translate(${S.pos.x} ${S.pos.y})"><ellipse cx="0" cy="2" rx="26" ry="8" fill="rgba(0,0,0,.35)"/><g id="wmeinner">${avatarSVG(S.av,{label:S.name,holo:status()==="Glitching",extra:' x="-30" y="-100" width="60" height="101"'})}</g><text y="24" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="17" fill="#f2b84b" stroke="#0b0e13" stroke-width="4" paint-order="stroke">${esc(S.name)}</text></g>
   </svg>`}
 const PRESETS_ROOK={body:0,skin:9,hair:3,hairC:0,top:7,topS:1,bot:0,botS:0,hat:0,extra:1,acc:2};
 function minimapSVG(full){const vis=k=>full||S.visited[k];
@@ -709,8 +728,8 @@ function initWorld(){
 function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
   if(W.near>=0)return{label:"Listen",ok:true,cls:"ghost",act:"ghost"};
   const r=S.wroom;
-  if(r==="kitchen")return mode==="floor"?{label:"Gift",ok:true,cls:"green",act:"room"}:{label:"Gift",ok:false};
-  if(r==="breakout")return mode==="floor"&&S.type==="contra"&&!S.caughtEver?{label:"Sabotage",ok:true,cls:"red",act:"room"}:{label:"Inspect",ok:true,act:"room"};
+  if(r==="kitchen")return{label:"Look",ok:true,act:"room"};
+  if(r==="breakout")return mode==="floor"&&S.type==="contra"&&!ME.sabotageLocked?{label:"Sabotage",ok:true,cls:"red",act:"room"}:{label:"Inspect",ok:true,act:"room"};
   if(r==="hightea")return{label:"Network",ok:true,cls:"green",act:"room"};
   if(r==="allskate")return{label:"Reflect",ok:true,act:"room"};
   if(r==="conf")return{label:"Button",ok:true,cls:"red",act:"room"};
@@ -725,7 +744,6 @@ addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;
 /* ---------- render + bind ---------- */
 function render(){
   if(S.step===7&&!S.sop.pile.length&&!S.sop.built.length)S.sop.pile=shuffle([...SOP,DECOY]);
-  if(S.attrs)S.status=computeStatus(S.step>=9?3:2);
   stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();
   if($("#world"))initWorld();
   if(S.step===4&&!S.arrived&&S.arr==="elev")runElevator();
@@ -763,12 +781,11 @@ function bind(){
     $$("[data-inc]").forEach(b=>b.onclick=()=>{const k=b.dataset.inc;if(spent()<15&&S.base[k]<baseMax(k)){S.base[k]++;render()}});
     $$("[data-dec]").forEach(b=>b.onclick=()=>{const k=b.dataset.dec;if(S.base[k]>1){S.base[k]--;render()}});
   }
-  if(S.step===4&&S.arrived&&S.maxStep<5)tick("left",S.inter,()=>go(5));
+  if(S.step===4&&S.arrived&&S.maxStep<5)tick("left",S.inter,startLevel);
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){
     if(!S.of.applied)$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;keepTimer()});
-    $$("[data-gift]").forEach(b=>b.onclick=()=>{const pts=+b.dataset.pts,cost=pts*T().gift;if(S.backup<cost)return;S.backup-=cost;S.of.giftLog.push(`${b.dataset.gift} accepted your ${pts}-point gift (−${cost} heart${cost>1?"s":""}).`);keepTimer()});
-    $$("[data-sab]").forEach(b=>b.onclick=()=>{if(S.of.sabotaged||S.backup<1)return;S.backup-=1;S.of.sabotaged=b.dataset.sab;keepTimer()});
+    $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;keepTimer()});
     if(!S.of.applied)tick("left",S.of,()=>{applyOpenFloorEnd();go(7)});
   }
   if(S.step===7){
@@ -779,52 +796,50 @@ function bind(){
     if(!s.checked)tick("left",s,()=>{s.inTime=false;checkSop()});
   }
   if(S.step===8){
-    on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;S.acc.target=v;S.acc.done=true;S.acc.correct=v===SABOTEUR;
-      if(S.acc.correct){if(S.type==="indep")S.auditor++}else{const hi=A.reduce((m,a)=>S.attrs[a.k]>S.attrs[m.k]?a:m,A[0]);S.attrs[hi.k]--}startGW()});
-    on("#skipAcc",()=>{S.acc.done=true;S.acc.correct=null;S.acc.target="";startGW()});
-    on("#saveDex",()=>{if(S.backup<T().gift)return;S.backup-=T().gift;S.gw.dexSaved=true;if(S.type==="coop")S.lifeline++;keepTimer()});
-    $$("[data-acc]").forEach(b=>b.onclick=()=>{S.attrs[b.dataset.acc]=Math.min(maxOf(b.dataset.acc),S.attrs[b.dataset.acc]+2);S.gw.offerDone=true;keepTimer()});
-    on("#decline",()=>{S.gw.offerDone=true;keepTimer()});
+    on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;const r=G.accuse(ME,MATE(v));if(!r.ok)return;S.acc.target=v;S.acc.result=r.correct;endAccusations()});
+    on("#skipAcc",()=>{S.acc.target="";S.acc.result=null;endAccusations()});
+    $$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;
+      S.gw.sent.push(r.refused?`${q.name} refused your gift. Nothing was spent.`:`You sent ${q.name} ${pts} point${pts>1?"s":""} (−${r.cost} heart${r.cost>1?"s":""}).${r.cancelled?` ${q.name} is safe.`:""}${r.cancelled&&S.type==="coop"?" Lifeline complete.":""}`);keepTimer()});
     if(S.acc.done&&!S.gw.closed)tick("left",S.gw,closeGW);
   }
   if(S.step===9){
     $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;S.place[k]=(S.place[k]||0)+1;render()});
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
-    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,found:{L:S.found.L,id:S.found.id}};S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
-    on("#restart",()=>{S=fresh();render()});
+    on("#cashOut",()=>{if(G.cashOut(ME)){S.cashed=true;render()}});
+    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,found:{L:S.found.L,id:S.found.id}};endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
+    on("#restart",()=>{endSession();S=fresh();render()});
   }
 }
 function keepTimer(){const t=S.timer;S.timer=null;clearInterval(t);render()}
-function lockPoints(){A.forEach(a=>S.attrs[a.k]+=S.place[a.k]||0);S.earned=S.toPlace;S.place={};S.toPlace=0;S.backup=Math.min(3,S.backup+1);S.done=true;render()}
+function lockPoints(){S.got=ME.earned;ME.placePoints(S.place);S.place={};G.finishRound();S.done=true;render()}
 function applyOpenFloorEnd(){
   if(S.of.applied)return;S.of.applied=true;
-  const d=S.attrs.composure>=6?1:2;S.attrs.initiative-=d;S.sabHit=d;
-  if(S.of.sabotaged){S.caught=Math.random()<.35;if(S.caught){S.caughtEver=true;for(let i=0;i<2;i++){const hi=A.reduce((m,a)=>S.attrs[a.k]>S.attrs[m.k]?a:m,A[0]);S.attrs[hi.k]--}}else S.exploit++}
+  EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now
 }
 function checkSop(){stopTimer();const s=S.sop;s.checked=true;s.score=SOP.filter((t,i)=>s.built[i]===t).length;s.decoyOut=!s.built.includes(DECOY);if(s.decoyOut)S.found.loop=1;S.win=s.score>=5&&s.decoyOut;render()}
 function payCost(){
   if(S.paid)return;S.paid=true;
-  const k="initiative",before=S.attrs[k];let v=before-2,used=0;
-  if(v<0){const per=isBonus(k)?1:2;const cover=Math.min(-v,Math.floor(S.backup/per));S.backup-=cover*per;used=cover*per;v+=cover}
-  S.attrs[k]=v;S.pay={before,after:v,backupUsed:used};
+  G.setTrialResult(MYTEAM,S.win);EP.Bots.trial(G,RNG);   // other teams: engine result
+  S.pay=G.payTrialCosts().get(ME);
 }
-function startGW(){S.gw.started=true;S.gw.left=20;render()}
-function closeGW(){
-  const g=S.gw;g.closed=true;
-  const neg=A.filter(a=>S.attrs[a.k]<0);
-  if(neg.length&&S.glitches<2){
-    S.glitches++;S.glitchedThisRound=true;
-    neg.forEach(n=>{while(S.attrs[n.k]<1){const hi=A.filter(a=>a.k!==n.k).reduce((m,a)=>S.attrs[a.k]>S.attrs[m.k]?a:m);if(S.attrs[hi.k]<=1)break;S.attrs[hi.k]--;S.attrs[n.k]++}});
-    S.backup=0;
-  }
-  S.log=[];
-  if(S.glitchedThisRound){S.toPlace=1;S.log.push("Glitched this round: 1")}else{S.toPlace=S.win?4:2;S.log.push(S.win?"Team won the trial: 4":"Team lost the trial: 2")}
-  if(S.acc.correct){S.toPlace++;S.log.push("Correct accusation: +1")}
-  if(S.acc.done&&S.acc.correct===false)S.log.push("Wrong accusation: −1 already taken");
-  if(S.caught)S.log.push("Caught sabotaging: −2 already taken");
+function endAccusations(){
+  S.acc.done=true;
+  EP.Bots.accusations(G,RNG);   // bots accuse, then Exploit credit
+  startGW();
+}
+function startGW(){
+  S.gw.started=true;S.gw.left=20;
+  EP.Bots.gifts(G,RNG);
+  S.gw.received=G.round.gifts.filter(x=>x.receiver===ME&&!x.refused).map(x=>`${x.giver.name} sent you ${x.pts} point${x.pts>1?"s":""}.`);
   render();
 }
-setInterval(()=>{if(S.step===8&&S.acc.done&&!S.gw.closed&&!S.gw.offer&&S.gw.left<=14&&A.some(a=>S.attrs[a.k]<0)){S.gw.offer=true;keepTimer()}},500);
+function closeGW(){
+  S.gw.closed=true;
+  G.lockIn();
+  S.earnLines=G.computeEarnings().get(ME)||[];
+  EP.Bots.statsUpdate(G);   // bots cash out and place points
+  render();
+}
 
 /* red glitch cursor (menus only) */
 const curRed=`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="#e0394d" stroke="#0b0e13" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
