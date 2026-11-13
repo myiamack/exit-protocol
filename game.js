@@ -157,7 +157,7 @@ const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not
 
 /* ---------- state ---------- */
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
-  av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",tab:"body",
+  av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
   type:null,base:{focus:1,initiative:1,collab:1,composure:1,grit:1},
   inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
   of:{left:90,applied:false,msg:""},
@@ -336,7 +336,7 @@ function fwd(){
   switch(S.step){
     case 0:return{label:"Clock in ▶",ok:true,cls:"red"};
     case 1:return{label:"Play ▶",ok:true,cls:"red"};
-    case 2:return{label:"Save look ▶",ok:S.name.trim().length>=2,cls:"green"};
+    case 2:return{label:"Save look ▶",ok:S.draft.trim().length>=2,cls:"green"};
     case 3:return{label:"Confirm stats ▶",ok:!!S.type&&spent()===15,cls:"red"};
     case 4:return S.arrived?{label:"Start Level 1 ▶",ok:true,cls:"red"}:{label:S.arr==="elev"?"Skip ▶":"Continue ▶",ok:S.arr!=="spawn",cls:"blue"};
     case 5:return{label:"Open the floor ▶",ok:true,cls:"red"};
@@ -351,7 +351,7 @@ function goForward(){
   switch(S.step){
     case 0:$("#signForm").requestSubmit();return;
     case 1:go(2);return;
-    case 2:S.name=S.name.trim();if(S.wardFrom==="badge"){S.menu="badge";go(1)}else go(3);return;
+    case 2:S.name=S.draft.trim();if(S.wardFrom==="badge"){S.menu="badge";go(1)}else go(3);return;
     case 3:if(S.maxStep<5)newSession();go(4);return;
     case 4:if(!S.arrived){arrivalAdvance();return}startLevel();return;
     case 6:applyOpenFloorEnd();go(7);return;
@@ -391,7 +391,8 @@ function chrome(){
   `<div class="side"><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Backup</span><span class="hearts">${[0,1,2].map(i=>HEART(i<ME.backup)).join("")}</span></div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Status</span>${flag(status())}</div><div class="row" style="justify-content:space-between;gap:6px"><span class="label">Anomalies</span><span class="label" style="color:var(--pink)">${Object.keys(S.found).length}/5</span></div></div>`;}
   updateNav();
 }
-function go(n){stopTimer();S.panel=false;if(n!==2)S.wardFrom=null;S.step=n;S.maxStep=Math.max(S.maxStep,n);$(".wrap").scrollTo({top:0});render()}
+/* The Wardrobe name box edits S.draft. S.name changes only on Save. */
+function go(n){stopTimer();S.panel=false;if(n!==2)S.wardFrom=null;if(n===2&&S.step!==2)S.draft=S.name;S.step=n;S.maxStep=Math.max(S.maxStep,n);$(".wrap").scrollTo({top:0});render()}
 /* Fit the map inside the scroll area above the bottom bar, and scroll it fully into view once per screen. */
 function fitWorld(){const wrap=$(".wrap"),w=$("#world");if(!wrap||!w)return;
   w.style.height=Math.max(360,Math.min(640,wrap.clientHeight-28))+"px";
@@ -467,7 +468,7 @@ V[2]=()=>{const t=S.tab,a=S.av;let left="",nm="",tag="Equipped";
     <div class="wleft">${left}</div>
     <div class="wright"><div class="fig">${avatarSVG(a,{label:"Your character"})}</div><span class="eqname">${esc(nm)}</span><span class="eqtag">${tag}</span>
       <span class="toolchip">${pix(TOOLS[a.tool].m,TOOLS[a.tool].p,4)}${TOOLS[a.tool].n}</span>
-      <div class="namebar"><label for="nm" class="label" style="color:var(--sky)">Display name</label><input type="text" id="nm" maxlength="16" value="${esc(S.name)}" placeholder="2–16 characters"><span class="namemsg" id="nmMsg">Letters, numbers and spaces only. No real names.</span></div>
+      <div class="namebar"><label for="nm" class="label" style="color:var(--sky)">Display name</label><input type="text" id="nm" maxlength="16" value="${esc(S.draft)}" placeholder="2–16 characters"><span class="namemsg" id="nmMsg">Letters, numbers and spaces only. No real names.</span></div>
     </div>
   </div></div>`};
 
@@ -775,8 +776,8 @@ function bind(){
   if(S.step===2){
     const nm=$("#nm");
     nm.addEventListener("input",()=>{const raw=nm.value,c=cleanName(raw);const msg=$("#nmMsg");if(c!==raw){const p=Math.max(0,nm.selectionStart-(raw.length-c.length));nm.value=c;try{nm.setSelectionRange(p,p)}catch(e){}msg.textContent="Letters, numbers and spaces only. Special characters were removed.";msg.classList.add("bad")}
-      S.name=c;$("#whoName").textContent=c||"guest";updateNav()});
-    nm.addEventListener("blur",()=>{S.name=S.name.trim();nm.value=S.name});
+      S.draft=c;updateNav()});
+    nm.addEventListener("blur",()=>{S.draft=S.draft.trim();nm.value=S.draft});
     $$("[data-tab]").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;render()});
     $$("[data-k]").forEach(b=>b.onclick=()=>{S.av[b.dataset.k]=+b.dataset.i;render()});
     on("#closeW",()=>go(1));
