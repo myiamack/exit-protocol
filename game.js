@@ -398,8 +398,10 @@ function chrome(){
 /* The Wardrobe name box edits S.draft. S.name changes only on Save. */
 function go(n){stopTimer();S.panel=false;if(n!==2)S.wardFrom=null;if(n===2&&S.step!==2)S.draft=S.name;S.step=n;S.maxStep=Math.max(S.maxStep,n);$(".wrap").scrollTo({top:0});render()}
 /* Fit the map inside the scroll area above the bottom bar, and scroll it fully into view once per screen. */
-function fitWorld(){const wrap=$(".wrap"),w=$("#world");if(!wrap||!w)return;
-  w.style.height=Math.max(360,Math.min(640,wrap.clientHeight-28))+"px";
+/* On map screens the attribute bar sticks to the top (class "mapscreen"), so the map gets the space below it. */
+function fitWorld(){const wrap=$(".wrap"),w=$("#world"),hud=$("#hud");if(!wrap||!w)return;
+  const hudH=hud&&!hud.hidden?hud.offsetHeight+14:0;
+  w.style.height=Math.max(300,Math.min(640,wrap.clientHeight-hudH-28))+"px";
   if(W.fitFor===S.step)return;W.fitFor=S.step;
   const need=w.offsetTop+w.offsetHeight+14-wrap.clientHeight;if(need>wrap.scrollTop)wrap.scrollTo({top:need})}
 
@@ -786,6 +788,7 @@ addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;
 function render(){
   if(S.step===7&&!S.sop.pile.length&&!S.sop.built.length)S.sop.pile=shuffle([...SOP,DECOY]);
   stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();
+  document.body.classList.toggle("mapscreen",!!$("#world"));
   if($("#world")){fitWorld();initWorld()}else W.fitFor=null;
   if(S.step===4&&!S.arrived&&S.arr==="elev")runElevator();
   if(S.step===4&&!S.arrived&&S.arr==="admin"&&!S.doorsDone)setTimeout(()=>{S.doorsDone=true},1600);

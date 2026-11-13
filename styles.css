@@ -66,6 +66,8 @@ input::placeholder{color:#5e6a7c}
 .trk i{display:block;height:100%;background:linear-gradient(90deg,var(--blue2),var(--sky2));transition:width .5s}
 .attr.bonus .trk i{background:linear-gradient(90deg,var(--blue),var(--sky))}
 .hearts{display:flex;gap:3px}.hearts svg{width:20px;height:20px}
+/* Map screens: attribute bar stays visible at the top while the page scrolls. */
+.mapscreen .hud{position:sticky;top:0;z-index:4;background:var(--bg);box-shadow:0 -14px 0 var(--bg),0 6px 0 var(--bg)}
 @media (max-width:860px){.hud{grid-template-columns:repeat(3,minmax(0,1fr))}.side{grid-column:span 3}}
 @media (max-width:460px){.hud{grid-template-columns:repeat(2,minmax(0,1fr))}.side{grid-column:1/-1}}
 .flag{display:inline-block;font-family:var(--cond);font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:.85rem;padding:1px 10px;border-radius:8px;border:3px solid var(--edge);white-space:nowrap;color:var(--edge)}
@@ -311,7 +313,7 @@ body.menucur.curgl,body.menucur.curgl button,body.menucur.curgl input{cursor:var
 @keyframes materialize{0%{opacity:0;filter:drop-shadow(0 0 0 #5ff2ff) brightness(3) saturate(0);transform:scaleY(.1)}40%{opacity:.6;filter:drop-shadow(4px 0 0 #ff4fa3) drop-shadow(-4px 0 0 #5ff2ff) brightness(2) saturate(.2);transform:scaleY(1.05)}100%{opacity:1;filter:none;transform:none}}
 .sptxt{font-family:var(--px);color:#5ff2ff;font-size:1.1rem;letter-spacing:.08em}
 /* ===== walkable world ===== */
-.world{position:relative;height:min(70vh,640px);min-height:440px;border:5px solid var(--edge);border-radius:22px;overflow:hidden;background:#151a22;box-shadow:inset 0 0 0 4px #5b6577}
+.world{position:relative;height:min(70vh,640px);min-height:300px;border:5px solid var(--edge);border-radius:22px;overflow:hidden;background:#151a22;box-shadow:inset 0 0 0 4px #5b6577}
 .wview{position:absolute;inset:0;overflow:hidden;touch-action:none}
 #wsvg{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 .wroom{position:absolute;top:12px;left:50%;transform:translateX(-50%);font-family:var(--cond);font-weight:800;font-size:1.4rem;letter-spacing:.1em;text-transform:uppercase;background:rgba(11,14,19,.85);border:3px solid var(--edge);border-radius:10px;padding:0 16px;white-space:nowrap}
