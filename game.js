@@ -449,7 +449,7 @@ V[1]=()=>`<div class="client">
       <button class="small" data-menu="map" aria-pressed="${S.menu==="map"}">${IC.map}Office map</button>
       <button class="small" data-menu="memos" aria-pressed="${S.menu==="memos"}">${IC.memo}Memos</button>
       <button class="small" data-menu="badge" aria-pressed="${S.menu==="badge"}">${IC.badge}My badge</button>
-      <button class="small" disabled>${IC.wrench}Settings</button>
+      <button class="small" disabled aria-label="Settings, coming soon">${IC.wrench}<span>Settings <span class="soon">Coming soon</span></span></button>
     </div>
     <span class="ver">v0.6 · cycle_60 · build 060-02</span>
   </div>
