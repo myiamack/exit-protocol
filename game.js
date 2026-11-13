@@ -560,6 +560,8 @@ function adminFig(){return `<g transform="translate(440 210)">
 <rect x="52" y="88" width="16" height="14" fill="#4a5568" stroke="#0b0e13" stroke-width="4"/>
 <rect x="10" y="10" width="100" height="80" rx="16" fill="#e6ecf2" stroke="#0b0e13" stroke-width="5"/><rect x="20" y="20" width="80" height="60" rx="10" fill="#0d141c" stroke="#0b0e13" stroke-width="3"/>
 <rect x="38" y="46" width="16" height="4" fill="#f2f5f8"/><rect x="66" y="46" width="16" height="4" fill="#f2f5f8"/><rect x="54" y="62" width="12" height="3" fill="#f2f5f8" opacity=".6"/></g>`}
+/* While the type lead speaks, the lead stands in the doorway instead of ADMIN_0. */
+function leadInDoor(){const d=DIALOGS[ROLE_BRIEF[S.type].lead];return d.draw("talk").replace("<svg ",'<svg x="400" y="230" width="200" height="240" ')}
 function adminPortrait(){return `<svg viewBox="440 210 120 160">${adminFig()}</svg>`}
 function elevatorScene(){const open=S.arr!=="elev",opening=open&&!S.doorsDone;
   return `<div class="cine"><svg viewBox="0 0 1000 600" class="cinesvg" role="img" aria-label="First-person view from inside an elevator">
@@ -572,7 +574,7 @@ function elevatorScene(){const open=S.arr!=="elev",opening=open&&!S.doorsDone;
   ${[0,1,2,3,4].map(i=>`<rect x="${320+i*76}" y="130" width="60" height="70" fill="#0b0e13" stroke="#2a3448"/><rect x="${330+i*76}" y="140" width="40" height="${10+((i*7)%30)}" fill="#e0394d" opacity=".25"/>`).join("")}
   <text x="500" y="100" text-anchor="middle" font-family="Pixelify Sans,monospace" font-size="22" fill="#e0394d" opacity=".75">FLOOR 60 · ORIENTATION</text>
   <ellipse cx="500" cy="500" rx="200" ry="60" fill="url(#spot)"/>
-  <g class="adm ${open?"in":""} ${opening?"opening":""}">${adminFig()}</g>
+  ${S.arr==="role"||S.arr==="spawn"?leadInDoor():`<g class="adm ${open?"in":""} ${opening?"opening":""}">${adminFig()}</g>`}
   <g class="door l ${open?"open":""} ${opening?"opening":""}"><rect x="180" y="60" width="320" height="480" fill="#8d97a6" stroke="#0b0e13" stroke-width="6"/><path d="M200 80 V520" stroke="#a9b2bf" stroke-width="4"/><rect x="470" y="260" width="12" height="80" rx="4" fill="#5b6577"/></g>
   <g class="door r ${open?"open":""} ${opening?"opening":""}"><rect x="500" y="60" width="320" height="480" fill="#8d97a6" stroke="#0b0e13" stroke-width="6"/><path d="M800 80 V520" stroke="#a9b2bf" stroke-width="4"/><rect x="518" y="260" width="12" height="80" rx="4" fill="#5b6577"/></g>
   <polygon points="0,0 180,60 180,540 0,600" fill="#5b6577" stroke="#0b0e13" stroke-width="6"/><polygon points="1000,0 820,60 820,540 1000,600" fill="#4a5568" stroke="#0b0e13" stroke-width="6"/>
