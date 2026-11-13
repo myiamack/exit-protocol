@@ -671,14 +671,15 @@ function inPoly(x,y,p){let c=false;for(let i=0,j=p.length-1;i<p.length;j=i++){co
 const inRect=(x,y,r)=>x>r.x&&x<r.x+r.w&&y>r.y&&y<r.y+r.h;
 function walkable(x,y){if(inRect(x,y,ELEV)||inRect(x,y,HALL)||inRect(x,y,SIDE))return true;for(const r of WROOMS){if(inPoly(x,y,r.pts))return true;if((r.doors||[]).some(d=>inRect(x,y,d)))return true}return false}
 /* Furniture the character cannot walk through: [x,y,w,h], matching the drawings in wFurniture().
-   Wall-mounted items (screens, whiteboard, welcome sign) are not listed. */
+   Tables, desks, counters, shelves and couches block. Chairs, stools, beanbags and plants do not,
+   so rooms stay open to walk. Wall-mounted items (screens, whiteboard, welcome sign) are not listed. */
 const BLOCKS=[
-  /* reception: curved desk, chairs, plant */ [220,690,70,42],[290,668,80,64],[370,690,70,42],[200,800,112,34],[460,800,40,40],
-  /* kitchen: L counter, sink, stove top, fridge, table, stools, vending */ [560,320,180,20],[560,320,20,260],[620,330,40,22],[780,215,120,34],[860,260,48,90],[680,420,150,70],[689,499,142,22],[860,420,44,100],
-  /* all skate: desks with chairs, beanbags */ ...[[1040,230],[1200,230],[1360,230],[1040,330],[1360,330],[1040,470],[1360,470]].map(([x,y])=>[x,y,120,66]),[1170,388,60,44],[1270,388,60,44],
-  /* high tea: tables, chairs, bookshelf, tea counter */ [1648,358,84,84],[1838,388,84,84],[1610,384,36,32],[1734,384,36,32],[1672,322,36,32],[1800,414,36,32],[1924,414,36,32],[1862,352,36,32],[1620,296,140,26],[1800,300,150,44],
-  /* wellness: couches, ottoman, plants */ [580,880,56,130],[656,880,56,130],[754,966,92,68],[826,836,48,48],[576,1056,48,48],
-  /* conference: table and chair rows */ [1000,930,390,160],[1022,896,316,26],[1022,1098,316,26],
+  /* reception: curved desk */ [220,690,70,42],[290,668,80,64],[370,690,70,42],
+  /* kitchen: L counter, sink, stove top, fridge, table, vending */ [560,320,180,20],[560,320,20,260],[620,330,40,22],[780,215,120,34],[860,260,48,90],[680,420,150,70],[860,420,44,100],
+  /* all skate: desks */ ...[[1040,230],[1200,230],[1360,230],[1040,330],[1360,330],[1040,470],[1360,470]].map(([x,y])=>[x,y,120,44]),
+  /* high tea: tables, bookshelf, tea counter */ [1648,358,84,84],[1838,388,84,84],[1620,296,140,26],[1800,300,150,44],
+  /* wellness: couches, ottoman */ [580,880,56,130],[656,880,56,130],[754,966,92,68],
+  /* conference: table */ [1000,930,390,160],
   /* breakout: round table, sofa */ [1586,916,88,88],[1530,1020,140,40]];
 const blocked=(x,y)=>BLOCKS.some(([bx,by,bw,bh])=>x>bx&&x<bx+bw&&y>by&&y<by+bh);
 function canStand(x,y){return [[0,0],[PR,0],[-PR,0],[0,PR],[0,-PR]].every(([dx,dy])=>walkable(x+dx,y+dy)&&!blocked(x+dx,y+dy))}
