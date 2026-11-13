@@ -239,6 +239,8 @@
   Player.AT_RISK_COST = AT_RISK_COST;
   Player.GRAD_TOTAL = GRAD_TOTAL;
   Player.GRAD_MIN = GRAD_MIN;
+  Player.SKIM_MAX = SKIM_MAX;
+  Player.CASHOUT_COST = CASHOUT_COST;
   EP.Player = Player;
   if (typeof module !== "undefined" && module.exports) module.exports = Player;
 })(typeof globalThis !== "undefined" ? globalThis : this);
