@@ -163,7 +163,7 @@ const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
   type:null,base:{focus:1,initiative:1,collab:1,composure:1,grit:1},
   inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
-  of:{left:90,applied:false,msg:""},
+  of:{left:90,applied:false,msg:""},mmHidden:false,
   sop:{pile:[],built:[],checked:false,score:0,decoyOut:false,inTime:true,left:60},
   win:null,pay:null,paid:false,acc:{target:"",done:false,result:null},gw:{left:20,started:false,closed:false,received:[],sent:[]},
   earnLines:[],cashed:false,got:0,place:{},done:false,timer:null});
@@ -719,22 +719,25 @@ function minimapSVG(full){const vis=k=>full||S.visited[k];
   ${WROOMS.map(r=>{const v=vis(r.id),cx=r.pts.reduce((a,p)=>a+p[0],0)/r.pts.length,cy=r.pts.reduce((a,p)=>a+p[1],0)/r.pts.length;return `<polygon points="${P(r.pts)}" fill="${v?"#a8d8ff":"#1d232e"}" stroke="#4a5568" stroke-width="14"/><text x="${cx}" y="${cy+28}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="${v?70:110}" fill="${v?"#13294b":"#4a5568"}">${v?r.n.split(" ")[0].toUpperCase():"?"}</text>`}).join("")}
   ${LOCKS.map(l=>l.dir==="h"?`<rect x="${l.x}" y="${l.y-10}" width="${l.w}" height="40" fill="#e0394d"/>`:`<rect x="${l.x-10}" y="${l.y}" width="40" height="${l.h}" fill="#e0394d"/>`).join("")}
   ${full?"":`${S.visited.allskate?[[1150,410],[1350,410],[1250,520]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="26" fill="#3a74ff" stroke="#fff" stroke-width="6"/>`).join(""):""}<circle id="mmme" cx="${S.pos.x}" cy="${S.pos.y}" r="40" fill="#e0394d" stroke="#fff" stroke-width="10"/>`}</svg>`}
+/* Minimap: M, a click or a tap hides or shows it. When hidden it shrinks to a small MAP tab. */
+function mmapInner(){return S.mmHidden?`<span class="mmt">MAP ▸</span>`:`<span class="mmt">FLOOR 60 · hide</span>${minimapSVG(false)}`}
+function toggleMinimap(){S.mmHidden=!S.mmHidden;const el=$("#mmap");if(!el)return;el.classList.toggle("min",S.mmHidden);el.innerHTML=mmapInner()}
 function worldHTML(mode){return `<div class="world" id="world" data-mode="${mode}">
   <div class="wview" id="wview">${worldSVG()}</div>
   <div class="wroom" id="wroom">${esc(RNAME[S.wroom||"elevator"])}</div>
-  <div class="minimap" id="mmap"><span class="mmt">FLOOR 60</span>${minimapSVG(false)}</div>
+  <div class="minimap${S.mmHidden?" min":""}" id="mmap" role="button" tabindex="0" title="Show or hide the map (M)">${mmapInner()}</div>
   <div class="joy" id="joy" aria-label="Move: drag inside the circle, or use arrow keys / WASD"><div class="knob" id="knob"></div></div>
   <button class="usebtn" id="usebtn" disabled>USE</button>
   ${S.panel?`<div class="wpanel"><button class="xclose" id="closeP" aria-label="Close">✕</button>${S.panel==="ghost"?ghostPanel():roomPanel()}</div>`:""}
   <div class="wact" id="wact" hidden></div>
-  <div class="whelp"><span class="kb">Move: arrow keys / WASD · Act: E</span><span class="tc">Move: joystick · Act: USE</span></div>
+  <div class="whelp"><span class="kb">Move: arrow keys / WASD · Act: E · Map: M</span><span class="tc">Move: joystick · Act: USE</span></div>
   </div>`}
 function ghostPanel(){const g=GHOSTS[S.nearGhost||0];return `<div class="panel" style="border-color:#e9ecff"><span class="label" style="color:#e9ecff">${g.n} · wandering ghost</span><p style="font-family:var(--px);color:#e9ecff">“${esc(g.line)}”</p><span class="hint">It flickers and is gone.</span></div>`}
 let W={raf:0,vx:0,vy:0,keys:{},tapT:{},last:0,ghostT:0,ghostPos:[]};
 const TAP_MS=110;   // one quick tap moves about 33px (300 px/s)
 function stopWorld(){cancelAnimationFrame(W.raf);W.raf=0}
 function initWorld(){
-  stopWorld();const view=$("#wview"),svg=$("#wsvg"),me=$("#wme"),inner=$("#wmeinner"),mm=$("#mmme"),joy=$("#joy"),knob=$("#knob"),use=$("#usebtn"),wact=$("#wact");if(!view)return;
+  stopWorld();const view=$("#wview"),svg=$("#wsvg"),me=$("#wme"),inner=$("#wmeinner"),joy=$("#joy"),knob=$("#knob"),use=$("#usebtn"),wact=$("#wact");if(!view)return;
   if(!W.ghostPos.length)W.ghostPos=GHOSTS.map(()=>({x:0,y:0,on:false}));
   const ghosts=$$(".wg");ghosts.forEach((g,i)=>{const p=W.ghostPos[i];g.setAttribute("transform",`translate(${p.x} ${p.y})`);g.setAttribute("opacity",p.on?".7":"0")});
   let dragging=false;
@@ -742,7 +745,7 @@ function initWorld(){
   joy.onpointerdown=e=>{dragging=true;joy.setPointerCapture(e.pointerId);move(e)};
   const move=e=>{if(!dragging)return;const r=joy.getBoundingClientRect();let dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2);const m=Math.hypot(dx,dy),max=r.width/2-18;if(m>max){dx=dx/m*max;dy=dy/m*max}setKnob(dx,dy);W.vx=dx/max;W.vy=dy/max};
   joy.onpointermove=move;joy.onpointerup=joy.onpointercancel=()=>{dragging=false;W.vx=0;W.vy=0;setKnob(0,0)};
-  use.onclick=doUse;
+  use.onclick=doUse;$("#mmap").onclick=toggleMinimap;
   let bob=0,face=1;
   const frame=t=>{W.raf=requestAnimationFrame(frame);const dt=Math.min(.05,(t-(W.last||t))/1000);W.last=t;
     /* A key counts as held while down, and for at least TAP_MS after a quick tap, so one tap moves one step. */
@@ -756,8 +759,8 @@ function initWorld(){
     const vw=view.clientWidth,vh=view.clientHeight,sc=vw<640?.62:.9;
     const cx=Math.max(0,Math.min(WW*sc-vw,S.pos.x*sc-vw/2)),cy=Math.max(0,Math.min(WH*sc-vh,S.pos.y*sc-vh/2));
     svg.style.transform=`translate(${-cx}px,${-cy}px) scale(${sc})`;
-    if(mm){mm.setAttribute("cx",S.pos.x);mm.setAttribute("cy",S.pos.y)}
-    const rid=roomAt(S.pos.x,S.pos.y);if(rid!==S.wroom){S.wroom=rid;S.visited[rid]=true;if(WROOMS.find(r=>r.id===rid))S.room=rid;const lab=$("#wroom");lab.textContent=RNAME[rid];lab.classList.remove("pop");void lab.offsetWidth;lab.classList.add("pop");$("#mmap").innerHTML=`<span class="mmt">FLOOR 60</span>${minimapSVG(false)}`}
+    const mm=$("#mmme");if(mm){mm.setAttribute("cx",S.pos.x);mm.setAttribute("cy",S.pos.y)}
+    const rid=roomAt(S.pos.x,S.pos.y);if(rid!==S.wroom){S.wroom=rid;S.visited[rid]=true;if(WROOMS.find(r=>r.id===rid))S.room=rid;const lab=$("#wroom");lab.textContent=RNAME[rid];lab.classList.remove("pop");void lab.offsetWidth;lab.classList.add("pop");$("#mmap").innerHTML=mmapInner()}
     /* ghosts */
     if(t-W.ghostT>2800){W.ghostT=t;W.ghostPos.forEach((p,i)=>{if(Math.random()<.5){p.on=!p.on;if(p.on){const r=WROOMS[Math.floor(Math.random()*WROOMS.length)],sp=r.spots[Math.floor(Math.random()*r.spots.length)];p.x=sp[0];p.y=sp[1]}ghosts[i].setAttribute("opacity",p.on?".7":"0");ghosts[i].setAttribute("transform",`translate(${p.x} ${p.y})`)}})}
     let near=-1;W.ghostPos.forEach((p,i)=>{if(p.on&&Math.hypot(p.x-S.pos.x,p.y-S.pos.y)<120)near=i});S.nearGhost=near>=0?near:S.nearGhost;W.near=near;
@@ -779,7 +782,7 @@ function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
   return{label:"USE",ok:false};
 }
 function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"?"ghost":"room";render()}
-addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT")return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"&&!S.panel)doUse()});
+addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT")return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"&&!S.panel)doUse();if(k==="m"&&!e.repeat)toggleMinimap()});
 /* Escape closes any open popup, same as its X: room and ghost panels, and the whisper box. Works wherever focus is. */
 addEventListener("keydown",e=>{if(e.key!=="Escape"&&e.key!=="Esc")return;const w=$("#whisper");if(!w.hidden)w.hidden=true;if(S.panel){S.panel=false;render()}});
 addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;W.keys[k]=false});
