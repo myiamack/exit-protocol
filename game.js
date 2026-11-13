@@ -64,8 +64,9 @@ function sprite(a,o={}){
   if(hair==="Braids"){for(let y=6;y<18;y++){set(3,y,y%2?hc:hcd);set(12,y,y%2?hc:hcd)}set(3,18,ac);set(12,18,ac)}
   if(hair==="Head wrap"){R(3,3,10,3,ac);R(3,6,2,6,ac);R(11,6,2,6,ac);R(3,12,10,2,shade(ac,.8))}
   /* legs / bottoms */
-  if(bot==="Skirt"){R(4,19,8,2,bc);R(3,20,1,1,bc);R(12,20,1,1,bc);R(4,20,8,1,bcd);R(5,21,2,2,sk);R(9,21,2,2,sk)}
-  else if(bot==="Shorts"){R(5,19,3,2,bc);R(8,19,3,2,bc);R(5,21,2,2,sk);R(9,21,2,2,sk)}
+  /* Skirt: A-line flaring to a wide hem. Shorts: two leg openings with a gap. Pants: full-length legs. */
+  if(bot==="Skirt"){R(4,19,8,1,bc);R(3,20,10,1,bc);R(2,21,12,1,bcd);R(5,22,2,1,sk);R(9,22,2,1,sk)}
+  else if(bot==="Shorts"){R(5,19,6,1,bc);R(4,20,3,1,bc);R(9,20,3,1,bc);R(5,21,2,2,sk);R(9,21,2,2,sk)}
   else{R(5,19,3,4,bc);R(8,19,3,4,bc);R(7,19,2,1,bcd)}
   R(4,23,4,1,"#1b1f27");R(8,23,4,1,"#1b1f27");set(4,23,"#3a3f4a");set(11,23,"#3a3f4a");
   /* torso + arms */
@@ -116,7 +117,7 @@ function sprite(a,o={}){
     r+=`<rect x="${xx*s}" y="${y*s}" width="${s+.4}" height="${s+.4}" fill="${fill}"${op}/>`}));
   if(holo)for(let y=0;y<GH;y+=2)r+=`<rect x="0" y="${y*s}" width="${GW*s}" height="${s*.4}" fill="${o.holoC||"#5ff2ff"}" opacity=".12"/>`;
   if(glitch)r+=`<rect x="0" y="${14*s}" width="${GW*s}" height="${s*.6}" fill="#38e6d6" opacity=".7"/>`;
-  const vb=o.head?`${2*s} 0 ${12*s} ${14*s}`:`0 0 ${GW*s} ${GH*s}`;
+  const vb=o.head?`${2*s} 0 ${12*s} ${14*s}`:o.legs?`${2*s} ${18*s} ${12*s} ${9*s}`:`0 0 ${GW*s} ${GH*s}`;
   return `<svg viewBox="${vb}" shape-rendering="crispEdges" role="img" aria-label="${o.label||"Pixel intern"}"${o.attrs||""}>${r}</svg>`;
 }
 function pix(map,pal,s=6){let r="";map.forEach((row,y)=>[...row].forEach((ch,x)=>{if(ch===".")return;r+=`<rect x="${x*s}" y="${y*s}" width="${s+.3}" height="${s+.3}" fill="${pal[ch]}"/>`}));const w=map[0].length*s,h=map.length*s;return `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">${r}</svg>`}
@@ -209,7 +210,7 @@ function tick(key,obj,done){stopTimer();const draw=()=>{const e=$("#tmr");if(e){
   S.timer=setInterval(()=>{obj[key]--;draw();if(obj[key]<=0){stopTimer();done()}},1000)}
 
 /* ---------- character = Pixel Intern (sprite engine above) ---------- */
-function avatarSVG(a,o={}){return sprite(a,{head:o.head,label:o.label,holo:o.holo,ghost:o.ghost,holoC:o.holoC,cell:10,attrs:(o.extra||"")+(o.style?` style="${o.style}"`:"")})}
+function avatarSVG(a,o={}){return sprite(a,{head:o.head,legs:o.legs,label:o.label,holo:o.holo,ghost:o.ghost,holoC:o.holoC,cell:10,attrs:(o.extra||"")+(o.style?` style="${o.style}"`:"")})}
 /* ---------- instructors ---------- */
 function screenhead(c,scr,face){const F={happy:`<path d="M44 34 l5 -5 l5 5 M66 34 l5 -5 l5 5" stroke="${scr}" stroke-width="4" fill="none"/><rect x="50" y="43" width="20" height="3" fill="${scr}"/>`,
   talk:`<rect x="45" y="27" width="8" height="8" fill="${scr}"/><rect x="67" y="27" width="8" height="8" fill="${scr}"/><rect x="52" y="41" width="16" height="7" fill="${scr}"/>`,
@@ -456,11 +457,11 @@ V[1]=()=>`<div class="client">
   <div class="screen">${screenContent()}</div></div>`;
 
 function swRow(key,list,label){return `<span class="label">${label}</span><div class="swg">${list.map((c,i)=>`<button class="sw" data-k="${key}" data-i="${i}" style="background:${c}" aria-label="${label} ${i+1}" aria-pressed="${S.av[key]===i}"></button>`).join("")}</div>`}
-function itRow(key,list,label,head){return `<span class="label">${label}</span><div class="itg">${list.map((o,i)=>`<button class="it" data-k="${key}" data-i="${i}" aria-pressed="${S.av[key]===i}">${avatarSVG({...S.av,[key]:i},{head,label:o})}${o}</button>`).join("")}</div>`}
+function itRow(key,list,label,head,legs){return `<span class="label">${label}</span><div class="itg">${list.map((o,i)=>`<button class="it" data-k="${key}" data-i="${i}" aria-pressed="${S.av[key]===i}">${avatarSVG({...S.av,[key]:i},{head,legs,label:o})}${o}</button>`).join("")}</div>`}
 V[2]=()=>{const t=S.tab,a=S.av;let left="",nm="",tag="Equipped";
   if(t==="body"){left=`<h3>Character</h3>${itRow("body",BODY,"Pick one",false)}${swRow("skin",SKIN,"Skin tone")}`;nm=BODY[a.body]}
   else if(t==="hair"){left=`<h3>Hair</h3>${itRow("hair",HAIR,"Style",true)}${swRow("hairC",HAIRC,"Hair color")}`;nm=HAIR[a.hair]}
-  else if(t==="outfit"){left=`<h3>Outfit</h3>${itRow("topS",TOP,"Top",false)}${swRow("top",CLOTH,"Top color")}${itRow("botS",BOT,"Bottoms",false)}${swRow("bot",BOTC,"Bottom color")}`;nm=TOP[a.topS]+" + "+BOT[a.botS]}
+  else if(t==="outfit"){left=`<h3>Outfit</h3>${itRow("topS",TOP,"Top",false)}${swRow("top",CLOTH,"Top color")}${itRow("botS",BOT,"Bottoms",false,true)}${swRow("bot",BOTC,"Bottom color")}`;nm=TOP[a.topS]+" + "+BOT[a.botS]}
   else if(t==="acc"){left=`<h3>Accessories</h3>${itRow("hat",HAT,"Hats",true)}${itRow("extra",EXTRA,"Extras",true)}${swRow("acc",CLOTH,"Hat, wrap and accessory color")}`;nm=HAT[a.hat]==="None"?EXTRA[a.extra]:HAT[a.hat];if(HAT[a.hat]==="None"&&EXTRA[a.extra]==="None")tag="Nothing equipped"}
   else{left=`<h3>Tool</h3><p class="hint">Carry one office tool. Abilities are being playtested by the team.</p><div class="toolg">${TOOLS.map((x,i)=>`<button class="tl" data-k="tool" data-i="${i}" aria-pressed="${a.tool===i}" style="--r:${x.r}"><span class="ta">${pix(x.m,x.p)}</span><span><b>${x.n}</b><span class="rar">${x.rar}</span><span class="ab">${x.ab}</span><span class="td">${x.d}</span></span></button>`).join("")}</div>`;nm=TOOLS[a.tool].n}
   return `<div class="wardrobe">
