@@ -349,7 +349,7 @@ function fwd(){
     case 1:return{label:"Play ▶",ok:true,cls:"red"};
     case 2:return{label:"Save look ▶",ok:S.draft.trim().length>=2,cls:"green"};
     case 3:return{label:"Confirm stats ▶",ok:!!S.type&&spent()===15,cls:"red"};
-    case 4:return S.arrived?{label:"Start Level 1 ▶",ok:true,cls:"red"}:{label:S.arr==="elev"?"Skip ▶":"Continue ▶",ok:S.arr!=="spawn",cls:"blue"};
+    case 4:return S.arrived?{label:"Start Level 1 ▶",ok:true,cls:"red"}:{label:S.arr==="elev"?"Skip intro ▶":"Continue ▶",ok:S.arr!=="spawn",cls:"blue"};
     case 5:return{label:"Open the floor ▶",ok:true,cls:"red"};
     case 6:return{label:"Ready for trial ▶",ok:true,cls:"red"};
     case 7:return{label:"All-hands ▶",ok:S.sop.checked,cls:"red"};
@@ -364,7 +364,7 @@ function goForward(){
     case 1:go(2);return;
     case 2:S.name=S.draft.trim();if(S.wardFrom==="badge"){S.menu="badge";go(1)}else go(3);return;
     case 3:if(S.maxStep<5)newSession();go(4);return;
-    case 4:if(!S.arrived){arrivalAdvance();return}startLevel();return;
+    case 4:if(!S.arrived){if(S.arr==="elev")skipArrival();else arrivalAdvance();return}startLevel();return;
     case 6:applyOpenFloorEnd();go(7);return;
     case 7:payCost();go(8);return;
     case 9:lockPoints();return;
@@ -614,6 +614,7 @@ function elevatorScene(){const open=S.arr!=="elev",opening=open&&!S.doorsDone;
   ${S.arr==="elev"?`<div class="cinecap">Connecting<span class="dotsanim">...</span></div>`:""}
   ${S.arr==="admin"?vnBox("ADMIN_0","Host",adminPortrait(),ADMIN_LINES[S.arrLine],S.arrLine,ADMIN_LINES.length):""}
   ${S.arr==="role"?roleBrief():""}
+  ${S.arr!=="spawn"?`<button class="btn soft sm cineskip" id="skipIntro">Skip intro ▶</button>`:""}
   ${S.arr==="spawn"?`<div class="spawn"><div class="spfig">${avatarSVG(S.av,{label:S.name})}</div><span class="sptxt">SPAWNING ${esc(S.name.toUpperCase())} · FLOOR 60</span></div>`:""}
   </div>`}
 const ADMIN_LINES=[
@@ -632,6 +633,8 @@ function vnBox(who,role,portrait,line,i,n,extra=""){return `<div class="vn"><div
 function roleBrief(){const rb=ROLE_BRIEF[S.type],d=DIALOGS[rb.lead],t=T();
   const dossier=`<div class="dossier"><span><b>Strengths</b>${rb.face}</span><span><b>Weakness</b>${rb.weak}</span><span><b>Gifts</b>${S.type==="indep"?"1 point = 2 hearts, 2 = 3":"1 heart per point"}</span><span><b>Secret path</b>${t.path}</span><span class="w"><b>Watch for</b>${rb.watch}</span></div>`;
   return vnBox(d.who,t.n+" briefing",`<div class="vnportrait">${d.draw("talk")}</div>`,rb.lines[S.arrLine],S.arrLine,rb.lines.length,S.arrLine===rb.lines.length-1?dossier:"")}
+/* Skip intro: skips the elevator animation, all dialogue and the spawn, straight to the floor. */
+function skipArrival(){elevTimers.forEach(clearTimeout);elevTimers=[];S.doorsDone=true;S.arr="spawn";S.arrived=true;render()}
 function arrivalAdvance(){
   if(S.arr==="elev"){S.arr="admin";S.arrLine=0;render();return}
   if(S.arr==="admin"){if(S.arrLine<ADMIN_LINES.length-1)S.arrLine++;else{S.arr="role";S.arrLine=0}render();return}
@@ -850,6 +853,7 @@ function bind(){
     $$("[data-dec]").forEach(b=>b.onclick=()=>{const k=b.dataset.dec;if(S.base[k]>1){S.base[k]--;render()}});
   }
   if(S.step===4&&S.arrived&&S.maxStep<5)tick("left",S.inter,startLevel);
+  if(S.step===4)on("#skipIntro",skipArrival);
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){
     if(!S.of.applied)$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;keepTimer()});
