@@ -148,7 +148,7 @@
     }
 
     /* Take points evenly from the other attributes until the glitched one reaches 1.
-       Any shortfall the others cannot cover is forgiven. Backup set to 0. */
+       Any shortfall the others cannot cover is forgiven: it still ends at 1. Backup set to 0. */
     reboot() {
       for (const k of KEYS) {
         if (this.attrs[k] >= 0) continue;
@@ -163,7 +163,7 @@
             this.attrs[d] -= 1; got += 1;
           }
         }
-        this.attrs[k] = Math.max(0, this.attrs[k] + got);
+        this.attrs[k] = 1;   // always reboots to 1, shortfall forgiven
       }
       this.backup = 0;
     }

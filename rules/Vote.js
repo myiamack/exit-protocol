@@ -1,4 +1,4 @@
-/* Vote: judged trials with no host. Each player ranks top 3 players from other teams.
+/* Vote: judged trials with no host. Each non-Stuck player ranks top 3 non-Stuck players from other teams.
    1st = 3, 2nd = 2, 3rd = 1. Points go to the ranked players' teams. Top half of teams win.
    Ties at the cutoff: more first-place ranks wins. Still tied: random. */
 (function (root) {
@@ -14,17 +14,22 @@
 
     teamOf(p) { return this.teams.find(t => t.has(p)); }
 
-    /* Players this voter may rank: not themselves, not their own team. */
+    /* Players this voter may rank: not themselves, not their own team, not Stuck. */
     choicesFor(voter) {
-      return this.teams.filter(t => !t.has(voter)).flatMap(t => t.members);
+      return this.teams.filter(t => !t.has(voter)).flatMap(t => t.members).filter(p => !p.isStuck());
     }
+
+    /* Normally 3. Fewer only if fewer than 3 players can be ranked at all. */
+    slotsFor(voter) { return Math.min(3, this.choicesFor(voter).length); }
 
     check(voter, ranking) {
       if (voter.isStuck()) return "Stuck players do not vote.";
-      if (ranking.length !== 3) return "Rank exactly 3 players.";
-      if (new Set(ranking).size !== 3) return "Pick 3 different players.";
+      const n = this.slotsFor(voter);
+      if (ranking.length !== n) return "Rank exactly " + n + " players.";
+      if (new Set(ranking).size !== n) return "Pick " + n + " different players.";
       for (const p of ranking) {
         if (p === voter) return "You cannot rank yourself.";
+        if (p.isStuck()) return "Stuck players cannot be ranked.";
         if (this.teamOf(p) === this.teamOf(voter)) return "You cannot rank your own team.";
       }
       return null;
