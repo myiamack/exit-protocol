@@ -636,7 +636,7 @@ function walkable(x,y){if(inRect(x,y,ELEV)||inRect(x,y,HALL)||inRect(x,y,SIDE))r
 /* Furniture the character cannot walk through: [x,y,w,h], matching the drawings in wFurniture().
    Wall-mounted items (screens, whiteboard, welcome sign) are not listed. */
 const BLOCKS=[
-  /* reception: curved desk, chairs, plant */ [220,690,70,42],[290,668,80,40],[370,690,70,42],[200,800,112,34],[460,800,40,40],
+  /* reception: curved desk, chairs, plant */ [220,690,70,42],[290,668,80,64],[370,690,70,42],[200,800,112,34],[460,800,40,40],
   /* kitchen: L counter, sink, stove top, fridge, table, stools, vending */ [560,320,180,20],[560,320,20,260],[620,330,40,22],[780,215,120,34],[860,260,48,90],[680,420,150,70],[689,499,142,22],[860,420,44,100],
   /* all skate: desks with chairs, beanbags */ ...[[1040,230],[1200,230],[1360,230],[1040,330],[1360,330],[1040,470],[1360,470]].map(([x,y])=>[x,y,120,66]),[1170,388,60,44],[1270,388,60,44],
   /* high tea: tables, chairs, bookshelf, tea counter */ [1648,358,84,84],[1838,388,84,84],[1610,384,36,32],[1734,384,36,32],[1672,322,36,32],[1800,414,36,32],[1924,414,36,32],[1862,352,36,32],[1620,296,140,26],[1800,300,150,44],
@@ -649,7 +649,7 @@ function roomAt(x,y){for(const r of WROOMS)if(inPoly(x,y,r.pts))return r.id;if(i
 const P=pts=>pts.map(p=>p.join(",")).join(" ");
 function wFurniture(){const E="#0b0e13",st=`stroke="${E}" stroke-width="5" stroke-linejoin="round"`,st3=`stroke="${E}" stroke-width="3.5"`;let f="";
   /* reception */
-  f+=`<path d="M220 700 Q330 640 440 700 L440 730 Q330 680 220 730Z" fill="#8a5a33" ${st}/><rect x="250" y="590" width="160" height="22" rx="4" fill="#13294b" ${st}/><text x="330" y="606" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="14" fill="#f2b84b" letter-spacing="2">WELCOME · CYCLE 60</text>
+  f+=`<path d="M220 700 Q330 640 440 700 L440 730 Q330 680 220 730Z" fill="#8a5a33" ${st}/><rect x="250" y="708" width="160" height="22" rx="4" fill="#13294b" ${st}/><text x="330" y="724" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="14" fill="#f2b84b" letter-spacing="2">WELCOME · CYCLE 60</text>
   ${[200,240,280].map(x=>`<rect x="${x}" y="800" width="32" height="34" rx="8" fill="#3a74ff" ${st3}/>`).join("")}<circle cx="480" cy="820" r="20" fill="#1f8a3b" ${st}/><circle cx="480" cy="820" r="8" fill="#5fe04a"/>`;
   /* kitchen */
   f+=`<path d="M560 320 H740 V340 H580 V580 H560Z" fill="#d9dee5" ${st}/><rect x="780" y="215" width="120" height="34" rx="4" fill="#d9dee5" ${st}/><rect x="796" y="220" width="34" height="24" rx="4" fill="#3e4650" ${st3}/><circle cx="813" cy="232" r="5" fill="#e0394d"/>
@@ -717,14 +717,15 @@ function worldHTML(mode){return `<div class="world" id="world" data-mode="${mode
   <div class="joy" id="joy" aria-label="Move: drag inside the circle, or use arrow keys / WASD"><div class="knob" id="knob"></div></div>
   <button class="usebtn" id="usebtn" disabled>USE</button>
   ${S.panel?`<div class="wpanel"><button class="xclose" id="closeP" aria-label="Close">✕</button>${S.panel==="ghost"?ghostPanel():roomPanel()}</div>`:""}
-  <div class="whelp">Move: joystick or arrow keys / WASD · Act: USE or E</div>
+  <div class="wact" id="wact" hidden></div>
+  <div class="whelp"><span class="kb">Move: arrow keys / WASD · Act: E</span><span class="tc">Move: joystick · Act: USE</span></div>
   </div>`}
 function ghostPanel(){const g=GHOSTS[S.nearGhost||0];return `<div class="panel" style="border-color:#e9ecff"><span class="label" style="color:#e9ecff">${g.n} · wandering ghost</span><p style="font-family:var(--px);color:#e9ecff">“${esc(g.line)}”</p><span class="hint">It flickers and is gone.</span></div>`}
 let W={raf:0,vx:0,vy:0,keys:{},tapT:{},last:0,ghostT:0,ghostPos:[]};
 const TAP_MS=110;   // one quick tap moves about 33px (300 px/s)
 function stopWorld(){cancelAnimationFrame(W.raf);W.raf=0}
 function initWorld(){
-  stopWorld();const view=$("#wview"),svg=$("#wsvg"),me=$("#wme"),inner=$("#wmeinner"),mm=$("#mmme"),joy=$("#joy"),knob=$("#knob"),use=$("#usebtn");if(!view)return;
+  stopWorld();const view=$("#wview"),svg=$("#wsvg"),me=$("#wme"),inner=$("#wmeinner"),mm=$("#mmme"),joy=$("#joy"),knob=$("#knob"),use=$("#usebtn"),wact=$("#wact");if(!view)return;
   if(!W.ghostPos.length)W.ghostPos=GHOSTS.map(()=>({x:0,y:0,on:false}));
   const ghosts=$$(".wg");ghosts.forEach((g,i)=>{const p=W.ghostPos[i];g.setAttribute("transform",`translate(${p.x} ${p.y})`);g.setAttribute("opacity",p.on?".7":"0")});
   let dragging=false;
@@ -752,6 +753,7 @@ function initWorld(){
     if(t-W.ghostT>2800){W.ghostT=t;W.ghostPos.forEach((p,i)=>{if(Math.random()<.5){p.on=!p.on;if(p.on){const r=WROOMS[Math.floor(Math.random()*WROOMS.length)],sp=r.spots[Math.floor(Math.random()*r.spots.length)];p.x=sp[0];p.y=sp[1]}ghosts[i].setAttribute("opacity",p.on?".7":"0");ghosts[i].setAttribute("transform",`translate(${p.x} ${p.y})`)}})}
     let near=-1;W.ghostPos.forEach((p,i)=>{if(p.on&&Math.hypot(p.x-S.pos.x,p.y-S.pos.y)<120)near=i});S.nearGhost=near>=0?near:S.nearGhost;W.near=near;
     const act=useAction();use.textContent=act.label;use.disabled=!act.ok;use.className="usebtn "+(act.cls||"");
+    const hint=act.ok?"Press E: "+act.label:"";if(wact&&wact.dataset.t!==hint){wact.dataset.t=hint;wact.textContent=hint;wact.hidden=!hint}
   };
   W.raf=requestAnimationFrame(frame);
 }
