@@ -136,6 +136,9 @@ If game.js scores any trial differently, show me and ask before changing it.
 - Wrong: accuser loses 1 point from their highest attribute. Can cause a glitch.
 - A Contrarian caught by any correct accusation loses 0 points, cannot sabotage again, and loses Exploit.
 
+### Sign in and sign out
+- Sign out keeps the display name only. It returns on the next sign-in with the same email. Look, tool and progress reset.
+
 ### Anomalies
 - There are 3 anomalies: ERROR (the capital L on the sign-in screen), WATCHER (the badge says ATTEMPT 02), LOOP (leaving the endless step out of the SOP).
 - The HUD shows anomalies found out of 3. The HUD and the Glitch Report use the same count.
