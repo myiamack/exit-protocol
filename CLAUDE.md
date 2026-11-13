@@ -126,6 +126,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 - Accept: points land using the rules above. Decline: the points (backup) return to the giver.
 - No answer: the gift is declined and refunded when the current step ends (Open Floor or the gift window).
 - Stuck players cannot give or receive gifts.
+- An Independent's automatic refusal shows to the giver as a normal decline: "[Name] declined your gift. Your hearts came back." Never mention the type. Gift buttons stay for every teammate.
 - Cost by type, Independent refusal and refund, and overflow refund are unchanged (see Types).
 - Lifeline counts only a gift that cancels a glitch (the receiver was Glitching before the gift and is not after it).
 
