@@ -130,6 +130,11 @@ If game.js scores any trial differently, show me and ask before changing it.
 - Wrong: accuser loses 1 point from their highest attribute. Can cause a glitch.
 - A Contrarian caught by any correct accusation loses 0 points, cannot sabotage again, and loses Exploit.
 
+### Anomalies
+- There are 3 anomalies: ERROR (the capital L on the sign-in screen), WATCHER (the badge says ATTEMPT 02), LOOP (leaving the endless step out of the SOP).
+- The HUD shows anomalies found out of 3. The HUD and the Glitch Report use the same count.
+- Ghosts (USER_???, ATTEMPT_01, NULL) give hints only. They do not count as anomalies.
+
 ### Points
 - Team wins trial: 4. Team loses: 2. Glitched that round: 1.
 - Bonuses: correct accusation +1, Skim, Cash Out.
