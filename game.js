@@ -742,10 +742,14 @@ function worldSVG(){const E="#0b0e13";
   <g id="wme" transform="translate(${S.pos.x} ${S.pos.y})"><ellipse cx="0" cy="2" rx="26" ry="8" fill="rgba(0,0,0,.35)"/><g id="wmeinner">${avatarSVG(S.av,{label:S.name,holo:status()==="Glitching",extra:' x="-30" y="-100" width="60" height="101"'})}</g><text y="24" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="17" fill="#f2b84b" stroke="#0b0e13" stroke-width="4" paint-order="stroke">${esc(S.name)}</text></g>
   </svg>`}
 const PRESETS_ROOK={body:0,skin:9,hair:3,hairC:0,top:7,topS:1,bot:0,botS:0,hat:0,extra:1,acc:2};
+/* Minimap room labels: short full names, squeezed to fit inside the room when needed. */
+const MMLAB={reception:"RECEPTION",kitchen:"KITCHEN",allskate:"ALL SKATE",hightea:"HIGH TEA",wellness:"WELLNESS",conf:"CONFERENCE",breakout:"BREAKOUT"};
+function mmFit(r){const xs=r.pts.map(p=>p[0]),room=Math.max(...xs)-Math.min(...xs),max=room*.72,est=MMLAB[r.id].length*70*.62;
+  return est>max?` textLength="${Math.round(max)}" lengthAdjust="spacingAndGlyphs"`:""}
 function minimapSVG(full){const vis=k=>full||S.visited[k];
   return `<svg viewBox="0 0 ${WW} ${WH}" role="img" aria-label="Minimap"><rect width="${WW}" height="${WH}" rx="40" fill="#0b0e13"/>
   <rect x="${HALL.x}" y="${HALL.y}" width="${HALL.w}" height="${HALL.h}" fill="${vis("hall")?"#cfd6de":"#1d232e"}"/><rect x="${SIDE.x}" y="${SIDE.y}" width="${SIDE.w}" height="${SIDE.h}" fill="${vis("side")?"#cfd6de":"#1d232e"}"/><rect x="${ELEV.x}" y="${ELEV.y}" width="${ELEV.w}" height="${ELEV.h}" fill="#5b6577"/>
-  ${WROOMS.map(r=>{const v=vis(r.id),cx=r.pts.reduce((a,p)=>a+p[0],0)/r.pts.length,cy=r.pts.reduce((a,p)=>a+p[1],0)/r.pts.length;return `<polygon points="${P(r.pts)}" fill="${v?"#a8d8ff":"#1d232e"}" stroke="#4a5568" stroke-width="14"/><text x="${cx}" y="${cy+28}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="${v?70:110}" fill="${v?"#13294b":"#4a5568"}">${v?r.n.split(" ")[0].toUpperCase():"?"}</text>`}).join("")}
+  ${WROOMS.map(r=>{const v=vis(r.id),cx=r.pts.reduce((a,p)=>a+p[0],0)/r.pts.length,cy=r.pts.reduce((a,p)=>a+p[1],0)/r.pts.length;return `<polygon points="${P(r.pts)}" fill="${v?"#a8d8ff":"#1d232e"}" stroke="#4a5568" stroke-width="14"/><text x="${cx}" y="${cy+28}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="${v?70:110}" fill="${v?"#13294b":"#4a5568"}"${v?mmFit(r):""}>${v?MMLAB[r.id]:"?"}</text>`}).join("")}
   ${LOCKS.map(l=>l.dir==="h"?`<rect x="${l.x}" y="${l.y-10}" width="${l.w}" height="40" fill="#e0394d"/>`:`<rect x="${l.x-10}" y="${l.y}" width="40" height="${l.h}" fill="#e0394d"/>`).join("")}
   ${full?"":`${S.visited.allskate?[[1150,410],[1350,410],[1250,520]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="26" fill="#3a74ff" stroke="#fff" stroke-width="6"/>`).join(""):""}<circle id="mmme" cx="${S.pos.x}" cy="${S.pos.y}" r="40" fill="#e0394d" stroke="#fff" stroke-width="10"/>`}</svg>`}
 /* Minimap: M, a click or a tap hides or shows it. When hidden it shrinks to a small MAP tab. */
