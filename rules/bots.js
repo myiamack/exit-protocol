@@ -7,7 +7,7 @@
 
   const Bots = {
     SETTINGS: { sabotageRate: 0.5, victimAccuses: 0.9, otherAccuses: 0.25, idleAccuses: 0.05,
-                pickSaboteur: 1 / 3, nonCoopGifts: 0.25, trialWinRate: 0.5 },
+                pickSaboteur: 1 / 3, nonCoopGifts: 0.25, acceptGifts: 0.8, trialWinRate: 0.5 },
 
     /* Typical build: 5/4/3/2/1, bonus attributes first, penalty last. */
     typicalSpend(type) {
@@ -63,19 +63,32 @@
     },
 
     /* Gift window: Cooperative bots always gift if they can; others 25%. 2 if affordable, else 1.
-       Bots do not gift to Independents (it would be refused). */
+       Bots do not gift to Independents (it would be refused), or to a teammate who already has a
+       gift waiting for an answer. A bot receiver answers at once. */
     gifts(game, rng) {
       for (const team of game.teams) {
         for (const r of team.members) {
           if (r.isStuck() || !r.isGlitching() || r.type === "indep") continue;
           for (const g of team.mates(r)) {
             if (!g.isBot || g.isStuck() || !r.isGlitching()) continue;
+            if (EP.Gift.pending(game.round).some(x => x.receiver === r)) continue;
             if (g.type !== "coop" && rng() >= Bots.SETTINGS.nonCoopGifts) continue;
             const pts = g.backup >= EP.Gift.cost(g, 2) ? 2 : g.backup >= EP.Gift.cost(g, 1) ? 1 : 0;
-            if (pts) game.gift(g, r, pts);
+            if (!pts) continue;
+            const res = game.gift(g, r, pts);
+            if (res.ok && r.isBot) Bots.answer(game, res.gift, rng);
           }
         }
       }
+    },
+
+    /* Bots accept 80% of gifts. Pass a seeded rng in tests so results repeat. */
+    answer(game, gift, rng) {
+      if (gift.status !== "pending" || !gift.receiver.isBot) return null;
+      return game.answerGift(gift, rng() < Bots.SETTINGS.acceptGifts);
+    },
+    answerAll(game, rng) {
+      for (const g of EP.Gift.pending(game.round)) Bots.answer(game, g, rng);
     },
 
     /* Stats Update: Independents Cash Out at the first chance, then place points. */

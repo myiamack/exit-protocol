@@ -3,10 +3,10 @@
    Player actions (sabotage, accuse, gift, cashOut) return { ok: false, reason }.
    Engine calls (payTrialCosts, lockIn, ...) throw an Error with the reason.
    Order each level 1 to 6 (advance() moves to the next step):
-     openFloor:    sabotage*, gift*                           > advance
+     openFloor:    sabotage*, gift*, answerGift*              > advance (unanswered gifts expire)
      trial:        setTrialResult / startVote, payTrialCosts  > advance
      glitchReport: accuse*, endGlitchReport                   > advance
-     giftWindow:   gift*                                      > advance
+     giftWindow:   gift*, answerGift*                         > advance (unanswered gifts expire)
      lockIn:       lockIn                                     > advance
      statsUpdate:  computeEarnings, cashOut*, place points, finishRound
    Then startNextRound. Level 7: startNextRound > place points > results. */
@@ -59,6 +59,7 @@
       if (this.step === "statsUpdate") throw new Error("Stats Update is the last step. Call finishRound, then startNextRound.");
       const need = REQUIRED[this.step];
       if (need && !this.didRun(need)) throw new Error("Finish " + this.stepName() + " first (" + need + ").");
+      if (this.step === "openFloor" || this.step === "giftWindow") EP.Gift.expireAll(this.round);   // no answer = declined
       return this.round.nextStep();
     }
 
@@ -122,6 +123,13 @@
         "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
       if (why) return { ok: false, reason: why };
       return EP.Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts);
+    }
+    /* The receiver answers a pending gift: accept (true) or decline (false). */
+    answerGift(gift, accept) {
+      const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+        "Not allowed now. Gifts are answered in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
+      if (why) return { ok: false, reason: why };
+      return accept ? EP.Gift.accept(this.round, gift) : EP.Gift.decline(this.round, gift);
     }
 
     /* 5. Lock-in: glitches count, reboot, Empathy. */

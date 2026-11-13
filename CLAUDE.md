@@ -122,6 +122,10 @@ If game.js scores any trial differently, show me and ask before changing it.
 - Ties go in this order: Focus, Collaboration, Initiative, Grit, Composure.
 - Maxed attribute: if the lowest attribute is at its max, the points go to the lowest attribute that still has room (same tie order). If every attribute is at its max, the giver is refunded.
 - The receiver does not pick the attribute.
+- The receiver sees "Gift from [name]: Accept or Decline." The giver pays when sending.
+- Accept: points land using the rules above. Decline: the points (backup) return to the giver.
+- No answer: the gift is declined and refunded when the current step ends (Open Floor or the gift window).
+- Stuck players cannot give or receive gifts.
 - Cost by type, Independent refusal and refund, and overflow refund are unchanged (see Types).
 - Lifeline counts only a gift that cancels a glitch (the receiver was Glitching before the gift and is not after it).
 
@@ -162,6 +166,7 @@ Use the same assumptions as the balance simulation (`Tests\v2_balance\sim_v2.py`
 - Contrarian bots sabotage in 50% of rounds if able, once per round, targeting At risk teammates first.
 - After a sabotage on their team: the victim accuses 90% of the time, each other teammate 25%. No sabotage: each player 5%.
 - Cooperative bots always gift to Glitching teammates if they can afford it; other types 25% of the time. Gift 2 if affordable, else 1.
+- Bots accept 80% of gifts, and answer at once. Tests use a fixed random seed so results repeat run to run.
 - Independent bots Cash Out at the first Stats Update with full backup.
 - In round 7, bots raise any attribute below 2 first.
 - Bot votes: rank 3 players from other teams at random.
