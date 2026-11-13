@@ -925,5 +925,8 @@ document.addEventListener("click",e=>{const g=e.target.closest&&e.target.closest
 $("#navBack").onclick=()=>{if(!canBack())return;if(S.step===1&&S.menu!=="map"){S.menu="map";render();return}go(S.step-1)};
 $("#navNext").onclick=goForward;
 $("#facBtn").onclick=e=>{const v=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",v);$("#fac").hidden=!v};
+/* Host Script: only the host sees the button. Solo testing: Ctrl+Shift+H turns host view on or off. */
+addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==="h")))return;e.preventDefault();
+  const b=$("#facBtn");b.hidden=!b.hidden;if(b.hidden){b.setAttribute("aria-pressed","false");$("#fac").hidden=true}});
 render();
 })();
