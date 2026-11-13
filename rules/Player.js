@@ -9,7 +9,7 @@
   const TYPES = {
     coop:   { name: "Cooperative", bonus: ["collab", "composure"], pen: "initiative", path: "Lifeline", goal: 1 },
     indep:  { name: "Independent", bonus: ["focus", "grit"],       pen: "collab",     path: "Auditor",  goal: 1 },
-    contra: { name: "Contrarian",  bonus: ["initiative", "grit"],  pen: "composure",  path: "Exploit",  goal: 2 }
+    contra: { name: "Contrarian",  bonus: ["initiative", "grit"],  pen: "composure",  path: "Exploit",  goal: 3 }
   };
 
   const START_EACH = 1;      // every attribute starts at 1

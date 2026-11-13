@@ -73,7 +73,7 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 |---|---|---|---|---|---|---|
 | Cooperative | Collaboration, Composure | Initiative | 1 backup per point | Cheapest gifts | Empathy: loses 1 backup when a teammate's glitch locks in | **Lifeline: 1** rescue (a gift that cancels a teammate's glitch) |
 | Independent | Focus, Grit | Collaboration | 1 point costs 2, 2 points cost 3 | Cash Out: once per game, spend 2 backup for 1 point; needs full backup | Cannot accept gifts (refused and refunded to the giver) | Auditor: 1 own correct accusation |
-| Contrarian | Initiative, Grit | Composure | 1 backup per point | Skim: +1 point per uncaught sabotage round, max 2 per game | Sabotage costs backup. If caught: no more sabotage this game, Exploit lost | **Exploit: 2** uncaught sabotage rounds |
+| Contrarian | Initiative, Grit | Composure | 1 backup per point | Skim: +1 point per uncaught sabotage round, max 2 per game | Sabotage costs backup. If caught: no more sabotage this game, Exploit lost | **Exploit: 3** uncaught sabotage rounds (was 2, changed after playtest round 2) |
 
 ### Backup
 - Starts at 3. Cap 3. Refills 1 at the end of each round.
