@@ -854,7 +854,9 @@ function bind(){
     on("#rand",()=>{const r=n=>Math.floor(Math.random()*n);S.av={body:r(2),skin:r(SKIN.length),hair:r(HAIR.length),hairC:r(HAIRC.length),top:r(CLOTH.length),topS:r(TOP.length),bot:r(BOTC.length),botS:r(BOT.length),hat:r(HAT.length),extra:r(EXTRA.length),acc:r(CLOTH.length),tool:r(TOOLS.length)};render()});
   }
   if(S.step===3){
-    $$("[data-type]").forEach(b=>b.onclick=()=>{S.type=b.dataset.type;S.base={focus:1,initiative:1,collab:1,composure:1,grit:1};render()});
+    $$("[data-type]").forEach(b=>b.onclick=()=>{const t=b.dataset.type;if(t===S.type)return;
+      if(S.type&&spent()>0&&!confirm("Switching resets your points. Continue?"))return;   /* confirm before wiping placed points */
+      S.type=t;S.base={focus:1,initiative:1,collab:1,composure:1,grit:1};render()});
     $$("[data-inc]").forEach(b=>b.onclick=()=>{const k=b.dataset.inc;if(spent()<15&&S.base[k]<baseMax(k)){S.base[k]++;render()}});
     $$("[data-dec]").forEach(b=>b.onclick=()=>{const k=b.dataset.dec;if(S.base[k]>1){S.base[k]--;render()}});
   }
