@@ -190,8 +190,8 @@
           const lines = [];
           let e;
           if (p.glitchedThisRound) { e = POINTS.glitched; lines.push("Glitched this round: 1"); }
-          else if (team.won) { e = POINTS.win; lines.push("Team won the trial: 4"); }
-          else { e = POINTS.lose; lines.push("Team lost the trial: 2"); }
+          else if (team.won) { e = POINTS.win; lines.push("Points earned: 4"); }
+          else { e = POINTS.lose; lines.push("Points earned: 2"); }
           if (p.correctAccusation) { e += POINTS.correctAccusation; lines.push("Correct accusation: +1"); }
           const skim = p.takeSkim();
           if (skim) { e += skim; lines.push("Skim: +1"); }

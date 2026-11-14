@@ -180,25 +180,39 @@ throws("Finish the round before points are placed", () => game.finishRound());
   acc = EP.Accusation.apply(r, a, b, team, at(0.61));
   expect("Focus 6, roll 0.61: wrong accusation costs 1", !acc.safe && a.total() === t0 - 1);
 
-  // Collaboration: free gift. Collab 3 = 30%.
+  // Collaboration: gift costs 1 heart less, never below 1. Collab 3 = 30%. Giver a is Cooperative (1 per point).
   set(a, { collab: 3 }); set(b, { composure: 2 });
   r = new EP.Round(1);
   let g = EP.Gift.apply(r, a, b, team, 2, at(0.29));
-  expect("Collab 3, roll 0.29: gift costs 0 hearts", g.ok && g.free && a.hearts.count === 3, a.hearts.count);
+  expect("Collab 3, roll 0.29: 2-point gift costs 1 heart (2 - 1)", g.ok && g.discount && g.cost === 1 && a.hearts.count === 2, a.hearts.count);
   EP.Gift.decline(r, g.gift);
-  expect("Declined free gift refunds nothing", a.hearts.count === 3, a.hearts.count);
+  expect("Declined discounted gift refunds the 1 heart paid", a.hearts.count === 3, a.hearts.count);
+  g = EP.Gift.apply(r, a, b, team, 1, at(0.29));
+  expect("Discount never goes below 1: 1-point gift still costs 1", g.discount && g.cost === 1 && a.hearts.count === 2, a.hearts.count);
+  EP.Gift.decline(r, g.gift);
   g = EP.Gift.apply(r, a, b, team, 2, at(0.31));
-  expect("Collab 3, roll 0.31: gift costs 2 hearts", g.ok && !g.free && a.hearts.count === 1, a.hearts.count);
+  expect("Collab 3, roll 0.31: gift costs 2 hearts", g.ok && !g.discount && a.hearts.count === 1, a.hearts.count);
   EP.Gift.decline(r, g.gift);
   g = EP.Gift.apply(r, a, ind, team, 1, at(0));
-  expect("Refused gift: no Collaboration roll, nothing spent", g.refused && !g.free && a.hearts.count === 3);
-  // Free gift that overflows: no refund (it cost nothing).
+  expect("Refused gift: no Collaboration roll, nothing spent", g.refused && !g.discount && a.hearts.count === 3);
+  // Independent giver: 1 point costs 2 -> 1, 2 points cost 3 -> 2.
+  set(ind, { collab: 3 });
+  g = EP.Gift.apply(r, ind, b, team, 1, at(0));
+  expect("Independent 1-point gift with discount: 2 -> 1 heart", g.cost === 1 && ind.hearts.count === 2, ind.hearts.count);
+  EP.Gift.decline(r, g.gift);
+  g = EP.Gift.apply(r, ind, b, team, 2, at(0));
+  expect("Independent 2-point gift with discount: 3 -> 2 hearts", g.cost === 2 && ind.hearts.count === 1, ind.hearts.count);
+  EP.Gift.decline(r, g.gift);
+  // Discounted gift that overflows: refund what was paid, never more.
   set(b, { focus: 10, collab: 10, initiative: b.max("initiative"), grit: 10, composure: 10 });
-  a.hearts.spend(1);
-  g = EP.Gift.apply(r, a, b, team, 1, at(0));
+  g = EP.Gift.apply(r, a, b, team, 2, at(0));
   EP.Gift.accept(r, g.gift);
-  expect("Free gift that cannot land refunds nothing", g.free && a.hearts.count === 2, a.hearts.count);
-  a.hearts.refill();
+  expect("Discounted gift that cannot land refunds the 1 paid, not 2", g.cost === 1 && g.gift.overflow === 2 && a.hearts.count === 3, a.hearts.count);
+  // 0 hearts: no gift, even with a lucky roll.
+  a.hearts.empty();
+  const zero = EP.Gift.apply(r, a, b, team, 1, at(0));
+  expect("0 hearts: gift refused, even when the discount would fire", !zero.ok, zero.reason);
+  a.hearts.refill(3);
 
   // Composure: drain. Composure 6 = 60%.
   set(b, { composure: 6 });

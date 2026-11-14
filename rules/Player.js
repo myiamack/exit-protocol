@@ -17,8 +17,8 @@
   /* Stat abilities (Part 4b). per = chance per stat point. */
   const ABILITY = {
     focus:      { name: "Focus",         per: 0.10, what: "safe accusation" },
-    collab:     { name: "Collaboration", per: 0.10, what: "free gift" },
-    initiative: { name: "Initiative",    per: 0,    what: "vote points" },
+    collab:     { name: "Collaboration", per: 0.10, what: "gift costs 1 heart less (min 1)" },
+    initiative: { name: "Initiative",    per: 0,    what: "vote points (applies in Levels 5 and 6)" },
     grit:       { name: "Grit",          per: 0.05, what: "extra heart at round end" },
     composure:  { name: "Composure",     per: 0.10, what: "sabotage drains only 1" },
   };

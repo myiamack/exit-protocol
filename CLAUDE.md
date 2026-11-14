@@ -127,6 +127,7 @@ SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 t
 
 ### Gifts
 - Any player can gift any teammate during Open Floor or the gift window, whatever the receiver's status (OK, At risk or Glitching). Every teammate gets a gift button.
+- Every gift costs at least 1 heart. A player with too few hearts for the cost cannot gift (the button is disabled).
 - Receiver Glitching: points go to the glitching attribute. Receiver not Glitching: points go to their lowest attribute.
 - Ties go in this order: Focus, Collaboration, Initiative, Grit, Composure.
 - Maxed attribute: if the lowest attribute is at its max, the points go to the lowest attribute that still has room (same tie order). If every attribute is at its max, the giver is refunded.
@@ -213,8 +214,8 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 4. Caught Contrarian: a caught sabotage does not count toward Exploit. A Contrarian cannot sabotage while on a team that caught them; switching teams allows sabotage again. Exploit is never lost. Replace sabotageLocked and pathLost with a list of team ids that caught the player. Skim stays: +1 per uncaught sabotage round, max 2 per game.
 4b. Stat abilities. Each uses the stat's value at that moment (negative counts as 0, max 10). All chances use the game's seeded rng so tests repeat.
    - Focus (Accusation): a wrong accusation has a Focus x 10% chance to cost nothing.
-   - Collaboration (Gift): a sent gift that is not refused has a Collaboration x 10% chance to cost 0 hearts.
-   - Initiative (Vote): each voter's ranking points (3/2/1) are multiplied by 1 + Initiative / 10.
+   - Collaboration (Gift): a sent gift that is not refused has a Collaboration x 10% chance to cost 1 heart less. Every gift costs at least 1 heart (changed after playtest; was "costs 0 hearts"). An overflow refund never returns more than the giver paid.
+   - Initiative (Vote): each voter's ranking points (3/2/1) are multiplied by 1 + Initiative / 10. The ability line says "applies in Levels 5 and 6".
    - Grit (end of round, after the normal refill): Grit x 5% chance of +1 heart, capped at the max.
    - Composure (Sabotage.drain): Composure x 10% chance the drain is 1 instead of 2. Replaces the old "Composure 6 or more" rule.
    - Light influence (Trial base class, Levels 1 to 4 only): team score += 0.5 x (team's average in the tested attribute, active players only, minus the average of all teams). Judged levels unchanged. Base score for Levels 2 to 4: a random whole number 0 to 7 (same range as SOP), plus the influence.
@@ -247,6 +248,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Accepted: (a) Contrarian switcher. Edge +3.9 at 16 players (+5.3 at 20, +2.3 at 24), kept on purpose as the reward for switching.
    - Parked, not fixed: (b) all-Cooperative lobby; odd team counts at 20 players; aware play not paying off; the small 5-person vote gap.
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
+   - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
 8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
