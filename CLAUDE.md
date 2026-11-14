@@ -205,7 +205,7 @@ After each step: tell me what changed, then give me the exact git commands to co
 
 ## Refactor queue (Parts 1 to 13, decided)
 
-One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, show results, give commit commands, wait for confirmation.
+One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
 
 1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
 2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
@@ -229,7 +229,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Target check: type gap of 1 to 3 points, labeled PASS or FAIL, overall and by player count. This is the goal. Use it in every balance report.
    - No match check (the old expected numbers came from a fixed mix).
 5. Done. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
-5b. Tuning. Goal: find and close cheese strategies, not exact balance across mixes. A cheese is a strategy that wins clearly more than normal play. Tests/check_cheese.js has bots play each one on purpose and compares them to normal play. Report each one before changing any rule. Strategies to test:
+5b. Done (closed). Tuning. Goal: find and close cheese strategies, not exact balance across mixes. A cheese is a strategy that wins clearly more than normal play. Tests/check_cheese.js has bots play each one on purpose and compares them to normal play. Report each one before changing any rule. Strategies to test:
    1. Never pay trial costs with points; let hearts cover them.
    2. A Contrarian who switches teams after every catch.
    3. Everyone picks the same type.
@@ -242,6 +242,11 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    Tests/check_balance.js stays as a general check (type gap 1 to 3 under random mixes, typical and aware). Known issues it shows:
    1. Aware spending finishes lower than typical, because free heart refills make paying trial costs with hearts cheaper than with points. Careful play must not lose to careless play.
    2. Independents lead because Auditor gets easier as Contrarians increase. The gap grows from 1.6 at 2 Contrarians to 13.3 at 6 (16 players, typical spending).
+   Final status:
+   - Closed: (c) vote favoring big teams.
+   - Accepted: (a) Contrarian switcher. Edge +3.9 at 16 players (+5.3 at 20, +2.3 at 24), kept on purpose as the reward for switching.
+   - Parked, not fixed: (b) all-Cooperative lobby; odd team counts at 20 players; aware play not paying off; the small 5-person vote gap.
+   - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
 8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
