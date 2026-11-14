@@ -156,7 +156,7 @@ const FAC=[
   ["Intermission in All Skate. Teams of 4. Move players between teams if needed, then start Level 1."],
   ["Reveal: Boot Up tests Grit. Every player pays 2 Grit after the trial."],
   ["Open Floor: players walk the office. Breakout Room = sabotage a teammate (Contrarians). High Tea = network with a guest for a hint. All Skate = reflect and plan. Conference Room has the emergency button. Kitchen = gift any teammate (also in the gift window).","Live game: ~3 minutes. Demo timer: 90 seconds."],
-  ["Teams play the SOP challenge (coffee). In the live game you mark each team Win or Loss."],
+  ["Teams play the SOP challenge (coffee). Each team scores 1 point per step in the right place, +1 if they leave out the endless step. The top half of teams win."],
   ["All-hands meeting in the Conference Room. Each player may accuse one teammate.","Then open the 30-second gift window. Glitches lock in when it closes."],
   ["Win = 4 points, Loss = 2, glitched = 1. Bonuses: correct accusation +1, Skim, Cash Out. Players place points before the next trial is revealed. Hearts refill by 1."]];
 const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not guaranteed."],["From: IT","We are aware of a typo on the sign-in screen. It is not a typo."],["From: Facilities","The Kitchen coffee machine has been restocked. Again. And again. And again."]];
@@ -167,7 +167,7 @@ const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   type:null,base:{focus:1,initiative:1,collab:1,composure:1,grit:1},
   inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
   of:{left:90,applied:false,msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
-  sop:{pile:[],built:[],checked:false,score:0,decoyOut:false,inTime:true,left:60},
+  sop:{pile:[],built:[],checked:false,score:0,points:0,rank:[],decoyOut:false,inTime:true,left:60},
   win:null,pay:null,paid:false,acc:{target:"",done:false,result:null},gw:{left:20,started:false,closed:false,received:[],sent:[]},
   earnLines:[],cashed:false,got:0,place:{},done:false,timer:null});
 let S=fresh();
@@ -535,7 +535,7 @@ ${hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you.
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Your team wins with 5+ correct and nothing extra.</p>
 <div class="sop"><div><span class="label">Available steps</span><div class="pile">${s.pile.map((t,i)=>`<button class="scard" data-pile="${i}" ${s.checked?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
 <div><span class="label">Team SOP</span><div class="built">${s.built.map((t,i)=>`<button class="scard ${s.checked?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${s.checked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}: ${s.score} of 6 correct${!s.built.length?", no steps placed":s.decoyOut?", decoy left out":", decoy included"}${s.inTime?"":", time ran out"}.</b><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
+${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}: ${s.score} of 6 correct${!s.built.length?", no steps placed":s.decoyOut?", decoy left out":", decoy included"}${s.inTime?"":", time ran out"}.</b><span class="hint">SOP score ${s.points} of ${EP.Trial.SopTrial.MAX_SCORE}. Ranking: ${s.rank.map(x=>`${x.place}. ${esc(x.team.name)} (${x.score})`).join(" · ")}. Top ${EP.Trial.winners(s.rank.length)} of ${s.rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
 :`<div class="row"><button class="btn green" id="check" ${s.built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
 
 V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
@@ -918,11 +918,14 @@ function applyOpenFloorEnd(){
   EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now
   G.advance();                // Open Floor > Trial
 }
-function checkSop(){stopTimer();const s=S.sop;s.checked=true;s.score=SOP.filter((t,i)=>s.built[i]===t).length;s.decoyOut=s.built.length>0&&!s.built.includes(DECOY);/* nothing placed: no LOOP */if(s.decoyOut)S.found.loop=1;S.win=s.score>=5&&s.decoyOut;render()}
+/* Level 1: score the SOP, then the trial ranks every team (bot teams get a random score). Top half win. */
+function checkSop(){stopTimer();const s=S.sop;s.checked=true;
+  const r=EP.Trial.SopTrial.score(s.built,SOP,DECOY);s.score=r.right;s.decoyOut=r.endlessOut;s.points=r.score;   /* nothing placed: no LOOP */
+  if(s.decoyOut)S.found.loop=1;
+  G.setSopScore(MYTEAM,r.score);s.rank=G.runTrial();S.win=MYTEAM.won;render()}
 function payCost(){
   if(S.paid)return;S.paid=true;
-  G.setTrialResult(MYTEAM,S.win);EP.Bots.trial(G,RNG);   // other teams: engine result
-  S.pay=G.payTrialCosts().get(ME);
+  S.pay=G.payTrialCosts().get(ME);   // the trial already ranked the teams in checkSop
   G.advance();                // Trial > Glitch Report
 }
 function endAccusations(){

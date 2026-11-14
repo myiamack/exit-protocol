@@ -52,7 +52,8 @@ Rule classes must contain **no screen code**. They only change numbers and retur
 | Sabotage | Cost, drain, Composure shield, target rules. |
 | Accusation | One per player per round, correct or wrong, point effects. |
 | Gift | Cost by type, Independent refusal and refund, overflow refund, Lifeline credit. |
-| Vote | Ranked top 3, team totals, top half wins, tie rule. |
+| Vote | Ranked top 3, team totals, top half wins (rounded up), tie rule. |
+| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: SopTrial (Level 1), AutoTrial (Levels 2 to 4, random order for now), JudgedTrial (Levels 5 and 6, uses Vote). Ties: judged = more first places, then random; others = random. |
 | Game | Runs rounds in step order, applies all rules, Stuck, graduation check, endings, host or no-host mode. |
 | CharacterType | Base class with 3 subclasses: Cooperative, Independent, Contrarian. Each answers: bonus, penalty, max, giftCost, giftRefundPerPoint, canAcceptGifts, canSabotage, path name and goal, plus hasEmpathy, hasCashOut, hasSkim and which event counts for its second path. No `type === "coop"/"indep"/"contra"` checks anywhere else: other code asks the type. |
 | Hearts | The heart count (start 3, cap 3). Only its methods change it: spend, refill, refund, lose, empty. Nothing else touches the number. |
@@ -87,15 +88,19 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 ### Levels (Package A order; trial activities stay in their original levels)
 | Level | Trial activity | Attribute | Cost | Scored by |
 |---|---|---|---|---|
-| 1 Boot Up | SOP mini-game | Grit | 2 | Engine |
-| 2 Sprint 1 | Prioritize against a timer | Collaboration | 3 | Engine |
-| 3 The Mirror | Q&A gauntlet | Focus | 3 | Engine (set answers) |
-| 4 Geek Week | Testing challenge | Initiative | 4 | Engine |
-| 5 Sprint 2 | Fix the broken team | Composure | 4 | Player vote |
-| 6 Sprint 3 | Final build and dream speech | Grit | 6 | Player vote |
+| 1 Boot Up | SOP mini-game | Grit | 2 | SopTrial: SOP score |
+| 2 Sprint 1 | Prioritize against a timer | Collaboration | 3 | AutoTrial (random for now) |
+| 3 The Mirror | Q&A gauntlet | Focus | 3 | AutoTrial (random for now; later set answers) |
+| 4 Geek Week | Testing challenge | Initiative | 4 | AutoTrial (random for now) |
+| 5 Sprint 2 | Fix the broken team | Composure | 4 | JudgedTrial: player vote |
+| 6 Sprint 3 | Final build and dream speech | Grit | 6 | JudgedTrial: player vote |
 | 7 Graduation | Crack the simulation | All five | none | Graduation check |
 
 If game.js scores any trial differently, show me and ask before changing it.
+
+Every trial ranks the teams. **Top half win, rounded up** (5 teams: 3 win; 7 teams: 4 win).
+
+SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 to 6), +1 if the endless step is left out (max 7). Placing nothing does not count as leaving it out. Higher score ranks higher; ties random. Bot teams get a random score from 0 to 7. The old pass mark (5 right and endless step out) is gone.
 
 ### Round step order (levels 1 to 6)
 1. **Open Floor:** Contrarians may sabotage. Any player may gift a teammate.
@@ -157,7 +162,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 ### Judged trials: player vote (used when there is no host)
 - Each player ranks their **top 3 players from other teams**. Never themselves, never their own team.
 - Points: 1st = 3, 2nd = 2, 3rd = 1. Each player's points go to their team.
-- **Top half of teams win.** Ties at the cutoff: the team with more first-place ranks wins. Still tied: random.
+- **Top half of teams win, rounded up.** Ties at the cutoff: the team with more first-place ranks wins. Still tied: random.
 
 ### Host
 - Host is optional. The System Administrator stays as a story role.
@@ -195,6 +200,24 @@ Do these in order. Finish and test each before starting the next.
 
 After each step: tell me what changed, then give me the exact git commands to commit it to the ben-ooad branch.
 
+## Refactor queue (Parts 1 to 13, decided)
+
+One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, show results, give commit commands, wait for confirmation.
+
+1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
+2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
+3. Done. Trial base class (see Trial in the class table). Vote uses Math.ceil.
+4. Caught Contrarian: a caught sabotage does not count toward Exploit. A Contrarian cannot sabotage while on a team that caught them; switching teams allows sabotage again. Exploit is never lost. Replace sabotageLocked and pathLost with a list of team ids that caught the player. Skim stays: +1 per uncaught sabotage round, max 2 per game.
+5. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
+6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
+7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
+8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
+9. Move all rule math out of game.js (checkSop, payCost, lockPoints and any other). game.js only draws screens and calls the rules classes. Remove global rule state that duplicates Game.
+10. Full screen button on the game screens.
+11. Tests/check_teams.js: 1,000 games each at 16 players (4 teams of 4), 20 players (5 teams of 4), 24 players (7 teams: three of 4, four of 3). Report graduation, win by type, type gap, win by team size.
+12. Convert every file in rules/ to ES modules (export class / import). Browser prototype keeps working (script type="module"); all Node tests keep passing.
+13. Save and load. Game.toJSON() returns the whole state as plain data (players, teams, hearts, glitches, round, step, gifts, sabotages, accusations, votes, attendance, idle flags, rng state), with players and teams referenced by id. Game.fromJSON(data) rebuilds an identical game. Tests/check_save.js plays random bot games, saves and reloads after every step, and confirms final results match games that never reload. Reason: Base44 Actors sleep after about 10 seconds of quiet and lose anything not saved.
+
 ## Not in this build (parked)
 
 - Base44 build and real multiplayer.
@@ -202,7 +225,7 @@ After each step: tell me what changed, then give me the exact git commands to co
 - Difficulty dials (round 6 cost 7, graduation total 23).
 - Clue system and special abilities.
 - Engine auto-dials.
-- Trial mini-games for levels 2 to 4. For now they use a random 50% team result with an on-screen placeholder note.
+- Trial mini-games for levels 2 to 4. For now AutoTrial ranks teams in random order (top half win) with an on-screen placeholder note.
 
 ## Known limits (do not try to fix now)
 

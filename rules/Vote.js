@@ -1,5 +1,6 @@
 /* Vote: judged trials with no host. Each non-Stuck player ranks top 3 non-Stuck players from other teams.
-   1st = 3, 2nd = 2, 3rd = 1. Points go to the ranked players' teams. Top half of teams win.
+   1st = 3, 2nd = 2, 3rd = 1. Points go to the ranked players' teams. Top half of teams win
+   (rounded up: 5 teams -> 3 win, 7 teams -> 4).
    Ties at the cutoff: more first-place ranks wins. Still tied: random. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
@@ -56,7 +57,7 @@
         const A = score.get(a), B = score.get(b);
         return (B.total - A.total) || (B.firsts - A.firsts) || (A.roll - B.roll);
       });
-      const winners = Math.floor(this.teams.length / 2);
+      const winners = Math.ceil(this.teams.length / 2);
       order.forEach((t, i) => { t.won = i < winners; });
       return order.map(t => ({ team: t, ...score.get(t), won: t.won }));
     }

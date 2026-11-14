@@ -4,7 +4,7 @@
    Engine calls (payTrialCosts, lockIn, ...) throw an Error with the reason.
    Order each level 1 to 6 (advance() moves to the next step):
      openFloor:    sabotage*, gift*, answerGift*              > advance (unanswered gifts expire)
-     trial:        setTrialResult / startVote, payTrialCosts  > advance
+     trial:        setSopScore (Level 1) / startVote + cast (Levels 5-6), runTrial, payTrialCosts  > advance
      glitchReport: accuse*, endGlitchReport                   > advance
      giftWindow:   gift*, answerGift*                         > advance (unanswered gifts expire)
      lockIn:       lockIn                                     > advance
@@ -68,6 +68,7 @@
       if (this.round && !this.didRun("finishRound")) throw new Error("Finish this round first (finishRound).");
       this.level += 1;
       this.round = new EP.Round(this.level);
+      if (!this.round.isFinal) this.round.trial = EP.Trial.forRound(this.round, this.rng);
       this.players.forEach(p => p.resetRoundFlags());
       this.teams.forEach(t => t.resetRound());
       if (this.round.isFinal) {
@@ -83,18 +84,28 @@
       return EP.Sabotage.apply(this.round, actor, target, this.teamOf(actor));
     }
 
-    /* 2. Trial. Engine-scored trials: the screen or host sets each team's result.
-       Judged trials with no host: use a Vote. */
-    setTrialResult(team, won) {
+    /* 2. Trial. The round's Trial ranks the teams; the top half win.
+       Level 1: the screen sets a team's SOP score (teams with none get a random score).
+       Levels 5-6: players cast votes on startVote(), then runTrial. */
+    setSopScore(team, score) {
       this.mustBe("trial");
-      if (this.didRun("payTrialCosts")) throw new Error("Trial costs are already paid.");
-      team.won = !!won;
+      if (!(this.round.trial instanceof EP.Trial.SopTrial)) throw new Error("This level has no SOP.");
+      this.round.trial.setScore(team, score);
     }
-    startVote() { this.mustBe("trial"); return new EP.Vote(this.teams, this.rng); }
+    startVote() {
+      this.mustBe("trial");
+      if (!(this.round.trial instanceof EP.Trial.JudgedTrial)) throw new Error("This level is not judged.");
+      return this.round.trial.startVote(this.teams);
+    }
+    /* Returns the ranked list: [{ team, place, won, ... }] best first. */
+    runTrial() {
+      this.mustBe("trial");
+      this.once("runTrial");
+      return this.round.trial.run(this.round, this.teams);
+    }
     payTrialCosts() {
       this.mustBe("trial");
-      const missing = this.teams.find(t => t.won === null);
-      if (missing) throw new Error("No trial result for " + missing.name + ".");
+      if (!this.didRun("runTrial")) throw new Error("Run the trial first (runTrial).");
       this.once("payTrialCosts");
       const out = new Map();
       for (const p of this.players) {

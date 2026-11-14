@@ -1,7 +1,7 @@
 /* Spot test: Game refuses calls made in the wrong step.
    Run from the repo folder:  node Tests/check_steps.js */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 
@@ -35,9 +35,11 @@ expect("Advance moves to Trial", game.step === "trial", game.step);
 refusedResult("Sabotage during Trial", game.sabotage(contra, mate));
 refusedResult("Accuse during Trial", game.accuse(mate, contra));
 refusedResult("Gift during Trial", game.gift(players[2], mate, 1));
-throws("Pay costs before every team has a result", () => game.payTrialCosts());
+throws("Pay costs before the trial runs", () => game.payTrialCosts());
 throws("Advance before trial costs are paid", () => game.advance());
-teams.forEach(t => game.setTrialResult(t, true));
+throws("Vote on a level that is not judged", () => game.startVote());
+expect("Level 1 ranks every team", game.runTrial().length === teams.length);
+throws("Run the trial twice", () => game.runTrial());
 game.payTrialCosts();
 throws("Pay trial costs twice", () => game.payTrialCosts());
 
@@ -58,6 +60,42 @@ throws("Advance past Stats Update", () => game.advance());
 throws("Start the next round before finishing this one", () => game.startNextRound());
 game.computeEarnings();
 throws("Finish the round before points are placed", () => game.finishRound());
+
+// Trials: ranked list, top half win (rounded up).
+{
+  const W = EP.Trial.winners;
+  expect("Winners: 4 teams -> 2, 5 -> 3, 7 -> 4", W(4) === 2 && W(5) === 3 && W(7) === 4, [W(4), W(5), W(7)].join(","));
+
+  const SOP = ["a", "b", "c", "d", "e", "f"], END = "loop";
+  const sc = EP.Trial.SopTrial.score;
+  expect("SOP score: all 6 right, endless step out = 7", sc(SOP, SOP, END).score === 7);
+  expect("SOP score: endless step included = right steps only", sc([...SOP.slice(0, 4), END], SOP, END).score === 4);
+  expect("SOP score: nothing placed = 0 (not counted as leaving it out)", sc([], SOP, END).score === 0);
+
+  const ts = [0, 1, 2, 3].map(i => new EP.Team({ id: i, name: "S" + i, members: [EP.Bots.makePlayer(100 + i, "s" + i, "coop")] }));
+  const sop = new EP.Trial.SopTrial(() => 0.5);
+  [3, 7, 1, 5].forEach((s, i) => sop.setScore(ts[i], s));
+  const r = sop.run(new EP.Round(1), ts);
+  expect("SOP ranks by score (7, 5, 3, 1) and the top 2 win",
+         r.map(x => x.score).join(",") === "7,5,3,1" && r.map(x => x.won).join(",") === "true,true,false,false",
+         r.map(x => x.team.name + ":" + x.score).join(" "));
+
+  const auto = new EP.Trial.AutoTrial(Math.random).run(new EP.Round(2), ts);
+  expect("AutoTrial: 4 teams, exactly 2 win", auto.filter(x => x.won).length === 2);
+
+  // Judged, 5 teams of 1. Totals a8 c8 e5 d5 b4. d and e tie at the cutoff; e has a first place, d has none.
+  const ps = ["a", "b", "c", "d", "e"].map((n, i) => EP.Bots.makePlayer(200 + i, n, "coop"));
+  const jts = ps.map((p, i) => new EP.Team({ id: 10 + i, name: p.name.toUpperCase(), members: [p] }));
+  const jt = new EP.Trial.JudgedTrial(() => 0.5);
+  const v = jt.startVote(jts);
+  const [a, b, c, d, e] = ps;
+  [[a, [b, c, d]], [b, [a, c, e]], [c, [a, d, e]], [d, [e, a, c]], [e, [c, d, b]]]
+    .forEach(([voter, rank]) => v.cast(voter, rank));
+  const jr = jt.run(new EP.Round(5), jts);
+  expect("Judged: 5 teams, 3 win; cutoff tie goes to more first places",
+         jr.map(x => x.team.name).join("") === "ACEDB" && jr.filter(x => x.won).length === 3,
+         jr.map(x => x.team.name + ":" + x.total + "/" + x.firsts + (x.won ? "W" : "")).join(" "));
+}
 
 // Hearts: only its own methods change the count.
 {

@@ -1,9 +1,10 @@
 /* Balance check for the rules classes. Plays bot games with the final rules.
    Run from the repo folder:  node Tests/check_rules.js
    Target after playtest round 2 (grad total 24, Exploit 3, At risk 3): about 52.3% overall graduation,
-   gap between types about 2.1 points (seed 1). */
+   gap between types about 2.1 points (seed 1), with a 50% coin flip per team.
+   Part 3 (trials rank teams, top half win): 51.6% overall, gap 2.8 (seed 1). */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 
@@ -64,8 +65,8 @@ for (let g = 0; g < GAMES; g++) {
   }
 }
 
-console.log("Games: " + GAMES + "  (16 players, 4 teams, 50% trial wins, 1-in-3 guessing)\n");
-console.log("Overall graduation:  " + pct("grad") + "   target about 52.3%");
+console.log("Games: " + GAMES + "  (16 players, 4 teams, top half win each trial, 1-in-3 guessing)\n");
+console.log("Overall graduation:  " + pct("grad") + "   target about 52%");
 console.log("Stuck:               " + pct("stuck") + "\n");
 console.log("Type          Win      Graduate   Second path");
 for (const [t, n] of [["coop", "Cooperative"], ["indep", "Independent"], ["contra", "Contrarian"]]) {
