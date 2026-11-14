@@ -113,7 +113,7 @@
     startVote(teams) { if (!this.vote) this.vote = new EP.Vote(teams, this.rng); return this.vote; }
     rank(round, teams) {
       const vote = this.startVote(teams);
-      return vote.tally().map(r => ({ team: r.team, total: r.total, firsts: r.firsts }));
+      return vote.tally().map(r => ({ team: r.team, total: r.total, active: r.active, score: r.score, firsts: r.firsts }));
     }
   }
 

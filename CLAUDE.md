@@ -163,7 +163,8 @@ SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 t
 
 ### Judged trials: player vote (used when there is no host)
 - Each player ranks their **top 3 players from other teams**. Never themselves, never their own team.
-- Points: 1st = 3, 2nd = 2, 3rd = 1. Each player's points go to their team.
+- Points: 1st = 3, 2nd = 2, 3rd = 1, times the voter's Initiative weight. Each player's points go to their team.
+- Each team's total is divided by its number of active players (not Stuck, not idle) before ranking. A team with no active players scores 0.
 - **Top half of teams win, rounded up.** Ties at the cutoff: the team with more first-place ranks wins. Still tied: random.
 
 ### Host
@@ -236,6 +237,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    First results: 1 not a cheese (-2 to -3). 2 cheese (+3.6 to +10.6). 3 all Cooperative is a cheese (+23 to +28). 4 not a cheese (small teams lose); but odd team counts lift win rates (rounding up), and the player vote favors bigger teams (Levels 5-6: 4-person teams win 73%, 3-person 45%).
    Fix (a), switcher, try 1 (undone): caught = lose 1 point from highest. Switcher edge +9.1 / +6.3 / +1.4 (16 / 20 / 24); all Contrarians weaker (type gap 17.7 typical).
    Fix (a), try 2 (current): after any catch, no sabotage on any team next round (see Accusations). Wrong accusation ties now use the usual order. Switcher edge +7.5 / +6.5 / +0.5. Still a cheese at 16 and 20 (Exploit 21% vs 15%). check_balance.js unchanged from Part 4c (type gap 10.5 typical, 15.8 aware), because bots that do not switch were already blocked on their own team.
+   Fix (c), vote favors big teams: team vote total divided by active players (see Judged trials). Levels 5-6 now favor small teams instead: 3-person vs 4-person 60% / 54% (24 players), 62% / 50% (16); 3-person vs 5-person 54% / 30% (20). Cause: a player cannot be ranked by their own team, so a bigger team has fewer possible voters per member. Switcher edge now +3.9 / +3.6 / +2.5. Type gap 10.1 typical, 15.8 aware.
    Tests/check_balance.js stays as a general check (type gap 1 to 3 under random mixes, typical and aware). Known issues it shows:
    1. Aware spending finishes lower than typical, because free heart refills make paying trial costs with hearts cheaper than with points. Careful play must not lose to careless play.
    2. Independents lead because Auditor gets easier as Contrarians increase. The gap grows from 1.6 at 2 Contrarians to 13.3 at 6 (16 players, typical spending).

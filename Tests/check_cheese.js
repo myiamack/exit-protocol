@@ -84,6 +84,7 @@ function playGame(opts, rng) {
     EP.Bots.openFloor(game, rng);
     game.advance();
     EP.Bots.trial(game, rng);
+    if (opts.onTrial) for (const t of teams) opts.onTrial(level, t);
     game.payTrialCosts();
     game.advance();
     EP.Bots.accusations(game, rng);
@@ -195,3 +196,22 @@ for (const n of COUNTS) {
   }
 }
 console.log("Diff = whole-lobby win with small teams minus normal teams. Team size is the size at the start.");
+
+// 5. Trial win rate by team size and level (normal play, no small-team heart).
+//    Levels 5-6 vote points are divided by active players, so team size should not matter.
+console.log("\n=== 5. Trial win rate by team size (size when the trial runs) ===");
+const LAYOUTS = [["24 players", NORMAL[24]], ["16 players", SMALL[16]], ["20 players", SMALL[20]]];
+for (const [label, layout] of LAYOUTS) {
+  const s = {};
+  const onTrial = (level, t) => {
+    const key = (level <= 4 ? "1-4" : "L" + level) + "|" + t.size();
+    s[key] = s[key] || [0, 0]; s[key][0] += t.won ? 1 : 0; s[key][1] += 1;
+  };
+  const rng = seeded(SEED);
+  for (let g = 0; g < GAMES; g++) playGame({ layout, typeOf: randomType, onTrial }, rng);
+  const sizes = [...new Set(layout)].sort();
+  const cell = (lv, size) => (s[lv + "|" + size] ? f1(100 * s[lv + "|" + size][0] / s[lv + "|" + size][1]) : "  -  ");
+  console.log(label + " (" + layout.join("/") + ", " + Math.ceil(layout.length / 2) + " of " + layout.length + " teams win)");
+  console.log("  " + "Levels".padEnd(10) + sizes.map(z => (z + "-person").padEnd(11)).join(""));
+  for (const lv of ["1-4", "L5", "L6"]) console.log("  " + lv.replace("L", "Level ").padEnd(10) + sizes.map(z => cell(lv, z).padEnd(11)).join(""));
+}

@@ -1,5 +1,6 @@
 /* Vote: judged trials with no host. Each non-Stuck player ranks top 3 non-Stuck players from other teams.
-   1st = 3, 2nd = 2, 3rd = 1, times the voter's 1 + Initiative / 10. Points go to the ranked players' teams. Top half of teams win
+   1st = 3, 2nd = 2, 3rd = 1, times the voter's 1 + Initiative / 10. Points go to the ranked players' teams,
+   then each team's total is divided by its active players. Top half of teams win
    (rounded up: 5 teams -> 3 win, 7 teams -> 4).
    Ties at the cutoff: more first-place ranks wins. Still tied: random. */
 (function (root) {
@@ -43,9 +44,12 @@
       return { ok: true };
     }
 
-    /* Returns teams in final order with totals, and sets team.won. */
+    /* Returns teams in final order, and sets team.won.
+       total = the team's vote points (each voter's points already x Initiative weight).
+       score = total / the team's active players (not Stuck; idle too once Part 8 exists). Teams rank by score,
+       so a big team does not win just by having more players to rank. A team with no active players scores 0. */
     tally() {
-      const score = new Map(this.teams.map(t => [t, { total: 0, firsts: 0, roll: this.rng() }]));
+      const score = new Map(this.teams.map(t => [t, { total: 0, active: t.active().length, score: 0, firsts: 0, roll: this.rng() }]));
       for (const [voter, ranking] of this.ballots) {
         const w = voter.voteWeight();   // Initiative: points x (1 + Initiative / 10)
         ranking.forEach((p, i) => {
@@ -54,9 +58,10 @@
           if (i === 0) s.firsts += 1;
         });
       }
+      for (const s of score.values()) s.score = s.active ? s.total / s.active : 0;
       const order = [...this.teams].sort((a, b) => {
         const A = score.get(a), B = score.get(b);
-        return (B.total - A.total) || (B.firsts - A.firsts) || (A.roll - B.roll);
+        return (B.score - A.score) || (B.firsts - A.firsts) || (A.roll - B.roll);
       });
       const winners = Math.ceil(this.teams.length / 2);
       order.forEach((t, i) => { t.won = i < winners; });
