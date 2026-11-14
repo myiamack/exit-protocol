@@ -265,7 +265,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 - No submission: player cannot be ranked, but can still vote.
 - Vote rules stay as they are: rank top 3 players from other teams, Stuck players cannot vote or be ranked, if fewer than 3 can be ranked, rank as many as exist, points divided by active players and by possible voters, Initiative weight applies first.
 - Voters see each submission with the writer's name and team.
-- Prompts: fixed list of 10 per level in the rules code (placeholders below, team may change). Host picks one or types a custom prompt (custom prompt saved on that game's record, not added to the list). No host: engine picks one at random.
+- Prompts: fixed list of 10 per level in the rules code (placeholders below, team may change). Host picks one or types a custom prompt (max 200 characters, not empty; custom prompt saved on that game's record, not added to the list). No host: engine picks one at random.
 - Bots submit the text "Bot answer" so tests still run the vote.
 
 Level 5 prompts (Sprint 2, fixing problems):

@@ -338,6 +338,121 @@ throws("Finish the round before points are placed", () => game.finishRound());
   ss.forEach(p => { p.glitches = 0; });
 }
 
+// Levels 5-6: submissions and vote.
+{
+  const JT = EP.Trial.JudgedTrial;
+  // 3 teams of 3, all bots. Play Levels 1-4 with the usual bot rules, then stop at Level 5's Trial.
+  function judgedGame({ host = false, seed = 7 } = {}) {
+    let a = seed;   // seeded random numbers (same generator as check_balance.js)
+    const rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const ps = Array.from({ length: 9 }, (_, i) => EP.Bots.makePlayer(300 + i, "J" + i, ["coop", "indep", "contra"][i % 3]));
+    const ts = [0, 1, 2].map(i => new EP.Team({ id: "J" + i, name: "Team J" + i, members: ps.slice(i * 3, i * 3 + 3) }));
+    const g = new EP.Game({ teams: ts, rng, host });
+    g.startNextRound(); g.level = 4; g.round = null;   // jump straight to Level 5
+    g.startNextRound(); g.advance();                   // Open Floor > Trial
+    return { g, ps, ts };
+  }
+
+  // Prompts: 10 per level, from the rules code.
+  expect("10 prompts each for Levels 5 and 6", JT.prompts(5).length === 10 && JT.prompts(6).length === 10);
+
+  // No host: the engine picks one at random from the list.
+  {
+    const { g } = judgedGame();
+    refusedResult("No host: setPrompt is refused", g.setPrompt(0));
+    const pr = g.startWriting();
+    expect("No host: random prompt from the Level 5 list", !pr.custom && JT.prompts(5)[pr.index] === pr.text, pr.text);
+    const picks = new Set([1, 2, 3, 4, 5, 6, 7, 8].map(s => judgedGame({ seed: s }).g.startWriting().index));
+    expect("No host: different seeds pick different prompts", picks.size > 1, [...picks].join(","));
+  }
+
+  // Host: custom prompt saved on the game record, not added to the list.
+  {
+    const { g } = judgedGame({ host: true });
+    throws("Host: writing cannot start before a prompt is picked", () => g.startWriting());
+    refusedResult("Host: empty custom prompt is refused", g.setPrompt("   "));
+    refusedResult("Host: custom prompt of 201 characters is refused", g.setPrompt("p".repeat(201)));
+    expect("Host: custom prompt of exactly 200 characters is accepted", g.setPrompt("p".repeat(200)).ok);
+    expect("Host: list pick works", g.setPrompt(3).ok && g.round.trial.prompt.text === JT.prompts(5)[3]);
+    expect("Host: custom prompt replaces the pick", g.setPrompt("What did you learn this week?").ok);
+    g.startWriting();
+    const rec = g.prompts[0];
+    expect("Custom prompt saved on the game record",
+           g.prompts.length === 1 && rec.custom === true && rec.text === "What did you learn this week?" && rec.level === 5,
+           JSON.stringify(rec));
+    expect("Custom prompt not added to the list",
+           JT.prompts(5).length === 10 && !JT.prompts(5).includes("What did you learn this week?"));
+    refusedResult("Prompt cannot change after writing starts", g.setPrompt(1));
+  }
+
+  // 300 character limit.
+  {
+    const { g, ps } = judgedGame();
+    g.startWriting();
+    refusedResult("Submission of 301 characters is refused", g.submit(ps[0], "x".repeat(301)));
+    refusedResult("Empty submission is refused", g.submit(ps[0], "   "));
+    expect("Submission of exactly 300 characters is accepted", g.submit(ps[0], "x".repeat(300)).ok);
+    refusedResult("Second submission by the same player is refused", g.submit(ps[0], "again"));
+    const t = g.typeSubmission(ps[1], "y".repeat(301));
+    expect("Counter: 301 characters shows 1 over", t.tooLong && t.left === -1, JSON.stringify(t));
+  }
+
+  // Early close: writing closes when every active player has submitted. Stuck players are not waited for.
+  {
+    const { g, ps } = judgedGame();
+    ps[8].glitches = 2;   // Stuck
+    g.startWriting();
+    refusedResult("Stuck player cannot submit", g.submit(ps[8], "hi"));
+    let last;
+    for (const p of ps.slice(0, 7)) { last = g.submit(p, "answer " + p.name); }
+    expect("Writing still open with one active player left", g.round.trial.writing === "open" && !last.closed);
+    throws("Vote cannot start while writing is open", () => g.startVote());
+    last = g.submit(ps[7], "last one");
+    expect("Writing closes early when every active player has submitted",
+           last.ok && last.closed === true && g.round.trial.writing === "closed");
+    refusedResult("Submit after writing closed is refused", g.submit(ps[8], "late"));
+  }
+
+  // No submission: cannot be ranked, can still vote.
+  {
+    const { g, ps } = judgedGame();
+    const quiet = ps[0];   // Team J0, never submits
+    g.startWriting();
+    ps.slice(1).forEach(p => g.submit(p, "answer"));
+    expect("Writing stays open until the timer ends if someone has not submitted", g.round.trial.writing === "open");
+    g.closeWriting();      // the 3-minute timer ran out
+    const v = g.startVote();
+    const voter = ps[3];   // Team J1
+    expect("No submission: not in anyone's choices", !v.choicesFor(voter).includes(quiet));
+    refusedResult("No submission: ranking them is refused", v.cast(voter, [quiet, ps[1], ps[6]]));
+    expect("No submission: they can still vote", v.cast(quiet, [ps[3], ps[4], ps[6]]).ok);
+    const tl = g.runTrial();
+    expect("Vote runs and ranks every team", tl.length === 3 && tl.filter(x => x.won).length === 2,
+           tl.map(x => x.team.name + ":" + x.total.toFixed(1)).join(" "));
+  }
+
+  // Bots submit "Bot answer" so tests still run the vote.
+  {
+    const { g, ps } = judgedGame();
+    EP.Bots.trial(g, () => 0.3);
+    const subs = [...g.round.trial.submissions.values()];
+    expect('Every bot submits "Bot answer"', subs.length === ps.length && subs.every(t => t === "Bot answer"), subs[0]);
+    expect("Bot votes counted", g.round.trial.vote.ballots.size === ps.length && g.round.trial.ranking.length === 3);
+  }
+
+  // Typing resets the Attendance check (Part 7 reads player.lastActivity).
+  {
+    const { g, ps } = judgedGame();
+    g.startWriting();
+    ps[0].lastActivity = 1000;
+    g.typeSubmission(ps[0], "I would", 5000);
+    expect("Typing resets the Attendance check (last activity updated)", ps[0].lastActivity === 5000, ps[0].lastActivity);
+    g.submit(ps[0], "I would fix it", 9000);
+    expect("Submitting also counts as activity", ps[0].lastActivity === 9000, ps[0].lastActivity);
+  }
+}
+
 // Hearts: only its own methods change the count.
 {
   const h = new EP.Hearts();

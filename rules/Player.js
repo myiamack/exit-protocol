@@ -47,6 +47,7 @@
 
       this.hearts = new EP.Hearts();
       this.glitches = 0;
+      this.lastActivity = null;   // time of the last key, click or touch (read by the Attendance check, Part 7)
 
       // second path
       this.pathProgress = 0;
@@ -74,6 +75,8 @@
     lowestKey() { return KEYS.reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m), KEYS[0]); }
 
     isStuck() { return this.glitches >= 2; }
+    /* Any input (including typing a submission) counts as activity and resets the Attendance check. */
+    markActive(now = Date.now()) { this.lastActivity = now; }
     isGlitching() { return KEYS.some(k => this.attrs[k] < 0); }   // exactly 0 is safe
     isAtRisk() {
       return KEYS.some(k => this.attrs[k] + Math.floor(this.hearts.count / this.rate(k)) < AT_RISK_COST);

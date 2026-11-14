@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Exit_ProtocoL Levels 5-6 Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&display=swap">
+<link rel="stylesheet" href="../styles.css">
+<style>
+/* Test page only: Levels 5-6 submissions and vote. */
+.vt textarea{width:100%;min-height:140px;resize:vertical;font-family:var(--mono);font-size:1.05rem;color:var(--ink);background:#0d1118;border:3px solid var(--edge);box-shadow:inset 0 0 0 2px var(--frame3);border-radius:10px;padding:9px 12px}
+.vt .prompt{font-size:1.15rem;line-height:1.4}
+.vt .plist{display:grid;gap:8px}
+.vt .plist label{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:3px solid var(--edge);background:#141922;cursor:pointer}
+.vt .plist input{margin-top:5px}
+.vt .sub{display:grid;gap:4px;padding:10px 12px;border-radius:12px;border:3px solid var(--edge);background:#141922}
+.vt .sub.own{opacity:.6}
+.vt .sub .txt{white-space:pre-wrap;overflow-wrap:anywhere}
+.vt .subs{display:grid;gap:10px}
+.vt .over{color:var(--pink)}
+.vt .tmr{font-family:var(--mono);font-size:1.6rem}
+.vt .tmr.low{color:var(--pink)}
+.vt table{border-collapse:collapse;width:100%}
+.vt td,.vt th{text-align:left;padding:4px 8px;border-bottom:2px solid var(--frame3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar"><span class="who"><span class="dotlive"></span><span>Levels 5-6 test</span></span><span class="where" id="where"></span></header>
+  <main class="stage boxed vt" id="stage" aria-live="polite"></main>
+</div>
+<!-- Rule classes (no screen code). -->
+<script src="../rules/Hearts.js"></script>
+<script src="../rules/CharacterType.js"></script>
+<script src="../rules/Player.js"></script>
+<script src="../rules/Team.js"></script>
+<script src="../rules/Round.js"></script>
+<script src="../rules/Sabotage.js"></script>
+<script src="../rules/Accusation.js"></script>
+<script src="../rules/Gift.js"></script>
+<script src="../rules/Vote.js"></script>
+<script src="../rules/Trial.js"></script>
+<script src="../rules/Game.js"></script>
+<script src="../rules/bots.js"></script>
+<script src="vote-test.js"></script>
+</body>
+</html>

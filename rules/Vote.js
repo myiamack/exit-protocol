@@ -8,17 +8,19 @@
   const POINTS = [3, 2, 1];
 
   class Vote {
-    constructor(teams, rng = Math.random) {
+    /* canBeRanked: optional check. Levels 5-6 pass "has a submission"; without it, anyone not Stuck. */
+    constructor(teams, rng = Math.random, canBeRanked = null) {
       this.teams = teams;
       this.rng = rng;
+      this.canBeRanked = canBeRanked || (() => true);
       this.ballots = new Map();   // voter -> [p1, p2, p3]
     }
 
     teamOf(p) { return this.teams.find(t => t.has(p)); }
 
-    /* Players this voter may rank: not themselves, not their own team, not Stuck. */
+    /* Players this voter may rank: not themselves, not their own team, not Stuck, and (Levels 5-6) submitted. */
     choicesFor(voter) {
-      return this.teams.filter(t => !t.has(voter)).flatMap(t => t.members).filter(p => !p.isStuck());
+      return this.teams.filter(t => !t.has(voter)).flatMap(t => t.members).filter(p => !p.isStuck() && this.canBeRanked(p));
     }
 
     /* Normally 3. Fewer only if fewer than 3 players can be ranked at all. */
@@ -32,6 +34,7 @@
       for (const p of ranking) {
         if (p === voter) return "You cannot rank yourself.";
         if (p.isStuck()) return "Stuck players cannot be ranked.";
+        if (!this.canBeRanked(p)) return p.name + " has no submission and cannot be ranked.";
         if (this.teamOf(p) === this.teamOf(voter)) return "You cannot rank your own team.";
       }
       return null;
