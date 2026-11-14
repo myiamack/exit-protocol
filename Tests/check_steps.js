@@ -275,6 +275,49 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("Sabotage allowed on the new team", g2.sabotage(ps[0], ps[10]).ok);
 }
 
+// Part 5b: vote points divided by active players. 5-person team B vs 3-person team S; team X votes.
+{
+  const mk = (n, i) => { const p = EP.Bots.makePlayer(300 + i, n, "coop"); p.attrs.initiative = 0; return p; };   // weight 1
+  const bs = [0, 1, 2, 3, 4].map(i => mk("b" + i, i));
+  const ss = [0, 1, 2].map(i => mk("s" + i, 5 + i));
+  const xs = [0, 1, 2].map(i => mk("x" + i, 8 + i));
+  const mkTeams = () => [new EP.Team({ id: "B", name: "B", members: bs }),
+                         new EP.Team({ id: "S", name: "S", members: ss }),
+                         new EP.Team({ id: "X", name: "X", members: xs })];
+  // Ballots: B gets 3+3+4 = 10 points, S gets 3+3+2 = 8.
+  const ballots = [[xs[0], [ss[0], bs[0], bs[1]]], [xs[1], [ss[1], bs[2], bs[3]]], [xs[2], [bs[4], ss[2], bs[0]]]];
+  const tallyWith = (before) => {
+    const tm = mkTeams(), v = new EP.Vote(tm, () => 0.5);
+    ballots.forEach(([voter, r]) => v.cast(voter, r));
+    if (before) before();
+    return v.tally();
+  };
+  const row = (tl, n) => tl.find(x => x.team.name === n);
+  const show = tl => tl.map(x => x.team.name + ":" + x.total + "/" + x.active + "=" + x.score.toFixed(2)).join(" ");
+
+  let tl = tallyWith();
+  expect("5 vs 3: B total 10 / 5 = 2.00, S total 8 / 3 = 2.67", row(tl, "B").score === 2 && Math.abs(row(tl, "S").score - 8 / 3) < 1e-9, show(tl));
+  expect("5 vs 3: S ranks above B despite fewer total points", tl.map(x => x.team.name).join("") === "SBX", show(tl));
+  expect("5 vs 3: top half win (3 teams -> 2): S and B", row(tl, "S").won && row(tl, "B").won && !row(tl, "X").won);
+
+  // Initiative still applies to each voter's points before the division. x2 Initiative 10 = weight 2.
+  tl = tallyWith(() => { xs[2].attrs.initiative = 10; });
+  expect("Initiative first, then divide: B (3+3+8) / 5 = 2.80, S (3+3+4) / 3 = 3.33",
+         row(tl, "B").total === 14 && row(tl, "B").score === 2.8 && Math.abs(row(tl, "S").score - 10 / 3) < 1e-9, show(tl));
+  xs[2].attrs.initiative = 0;
+
+  // Stuck players do not count as active. B with 2 Stuck: 10 / 3 = 3.33 beats S 8 / 3 = 2.67.
+  tl = tallyWith(() => { bs[3].glitches = 2; bs[4].glitches = 2; });
+  expect("Stuck not counted: B 10 / 3 active = 3.33 ranks above S 2.67",
+         row(tl, "B").active === 3 && tl[0].team.name === "B", show(tl));
+  bs[3].glitches = 0; bs[4].glitches = 0;
+
+  // A team with no active players scores 0.
+  tl = tallyWith(() => { ss.forEach(p => { p.glitches = 2; }); });
+  expect("Team with no active players scores 0", row(tl, "S").score === 0, show(tl));
+  ss.forEach(p => { p.glitches = 0; });
+}
+
 // Hearts: only its own methods change the count.
 {
   const h = new EP.Hearts();
