@@ -6,7 +6,7 @@
    - Independents refuse automatically. Bots accept 80% (seeded, so results repeat).
    Run from the repo folder:  node Tests/check_gifts.js */
 const path = require("path");
-["Hearts", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 

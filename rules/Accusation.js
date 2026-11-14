@@ -21,7 +21,7 @@
       const correct = target.sabotagesThisRound > 0;
       if (correct) {
         accuser.correctAccusation = true;
-        if (accuser.type === "indep") accuser.addPathProgress();   // Auditor
+        accuser.creditPath(EP.CharacterType.PATH_EVENTS.correctAccusation);   // Auditor
         Accusation.catchSaboteur(target);
       } else {
         accuser.takeFromHighest(1);

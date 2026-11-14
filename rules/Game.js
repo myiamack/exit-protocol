@@ -114,7 +114,7 @@
       this.mustBe("glitchReport");
       this.once("endGlitchReport");
       // Exploit: +1 for each Contrarian who sabotaged this round and was not caught.
-      for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.addPathProgress();
+      for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.creditPath(EP.CharacterType.PATH_EVENTS.uncaughtSabotage);
     }
 
     /* Gifts: Open Floor or the gift window. */
@@ -142,7 +142,7 @@
           if (!p.lockIn()) continue;
           locked.push(p);
           for (const q of team.mates(p)) {
-            if (q.type === "coop" && !q.isStuck()) q.hearts.lose(1);   // Empathy
+            if (q.type.hasEmpathy() && !q.isStuck()) q.hearts.lose(1);   // Empathy
           }
         }
       }

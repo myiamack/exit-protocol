@@ -3,7 +3,7 @@
    Target after playtest round 2 (grad total 24, Exploit 3, At risk 3): about 52.3% overall graduation,
    gap between types about 2.1 points (seed 1). */
 const path = require("path");
-["Hearts", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 
@@ -58,9 +58,9 @@ for (let g = 0; g < GAMES; g++) {
     const p = r.player;
     count("grad", p.graduates());
     count("stuck", p.isStuck());
-    count("win_" + p.type, p.wins());
-    count("grad_" + p.type, p.graduates());
-    count("path_" + p.type, p.pathDone);
+    count("win_" + p.type.key, p.wins());
+    count("grad_" + p.type.key, p.graduates());
+    count("path_" + p.type.key, p.pathDone);
   }
 }
 

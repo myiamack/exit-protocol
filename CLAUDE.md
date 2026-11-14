@@ -54,7 +54,10 @@ Rule classes must contain **no screen code**. They only change numbers and retur
 | Gift | Cost by type, Independent refusal and refund, overflow refund, Lifeline credit. |
 | Vote | Ranked top 3, team totals, top half wins, tie rule. |
 | Game | Runs rounds in step order, applies all rules, Stuck, graduation check, endings, host or no-host mode. |
+| CharacterType | Base class with 3 subclasses: Cooperative, Independent, Contrarian. Each answers: bonus, penalty, max, giftCost, giftRefundPerPoint, canAcceptGifts, canSabotage, path name and goal, plus hasEmpathy, hasCashOut, hasSkim and which event counts for its second path. No `type === "coop"/"indep"/"contra"` checks anywhere else: other code asks the type. |
 | Hearts | The heart count (start 3, cap 3). Only its methods change it: spend, refill, refund, lose, empty. Nothing else touches the number. |
+
+Player.type is a CharacterType object, not a string. Its `key` ("coop", "indep", "contra") is only for lookups and saved data.
 
 Small things (single attributes, flags) are fields and methods inside these classes, not their own classes. Add a class later only if one gets too crowded.
 

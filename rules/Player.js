@@ -6,31 +6,24 @@
   const KEYS = ["focus", "initiative", "collab", "composure", "grit"];
   const GIFT_TIE_ORDER = ["focus", "collab", "initiative", "grit", "composure"];
 
-  const TYPES = {
-    coop:   { name: "Cooperative", bonus: ["collab", "composure"], pen: "initiative", path: "Lifeline", goal: 1 },
-    indep:  { name: "Independent", bonus: ["focus", "grit"],       pen: "collab",     path: "Auditor",  goal: 1 },
-    contra: { name: "Contrarian",  bonus: ["initiative", "grit"],  pen: "composure",  path: "Exploit",  goal: 3 }
-  };
-
   const START_EACH = 1;      // every attribute starts at 1
   const SPEND = 15;          // points the player spends at creation
   const BOOST = 2;           // type boost per bonus attribute
-  const MAX = 10, PEN_MAX = 4;
   const AT_RISK_COST = 3;
   const GRAD_TOTAL = 24, GRAD_MIN = 2;
   const SKIM_MAX = 2, CASHOUT_USES = 1, CASHOUT_COST = 2;
 
   class Player {
-    /* spend: { focus: n, ... } adding up to 15. Boost is added here. */
+    /* type: a key ("coop", "indep", "contra") or a CharacterType.
+       spend: { focus: n, ... } adding up to 15. Boost is added here. */
     constructor({ id, name, type, spend, isBot = false }) {
-      if (!TYPES[type]) throw new Error("Unknown type: " + type);
       this.id = id;
       this.name = name;
-      this.type = type;
+      this.type = EP.CharacterType.get(type);
       this.isBot = isBot;
       this.teamId = null;
 
-      const t = TYPES[type];
+      const t = this.type;
       this.attrs = {};
       let total = 0;
       for (const k of KEYS) {
@@ -60,12 +53,10 @@
     }
 
     static get KEYS() { return KEYS; }
-    static get TYPES() { return TYPES; }
     static get SPEND() { return SPEND; }
 
-    get typeInfo() { return TYPES[this.type]; }
-    isBonus(k) { return this.typeInfo.bonus.includes(k); }
-    max(k) { return k === this.typeInfo.pen ? PEN_MAX : MAX; }
+    isBonus(k) { return this.type.isBonus(k); }
+    max(k) { return this.type.max(k); }
     rate(k) { return this.isBonus(k) ? 1 : 2; }   // hearts per point covered
 
     total() { return KEYS.reduce((s, k) => s + this.attrs[k], 0); }
@@ -182,7 +173,7 @@
 
     /* Cash Out (Independent): once per game, needs full hearts, 2 hearts for 1 point. */
     canCashOut() {
-      return this.type === "indep" && !this.isStuck() && this.cashOutUsed < CASHOUT_USES &&
+      return this.type.hasCashOut() && !this.isStuck() && this.cashOutUsed < CASHOUT_USES &&
              this.hearts.isFull() && this.hearts.has(CASHOUT_COST);
     }
     cashOut() {
@@ -195,7 +186,7 @@
 
     /* Skim (Contrarian): +1 per uncaught sabotage round, max 2 per game. */
     takeSkim() {
-      if (this.type !== "contra" || this.sabotagesThisRound === 0 || this.caughtThisRound) return 0;
+      if (!this.type.hasSkim() || this.sabotagesThisRound === 0 || this.caughtThisRound) return 0;
       if (this.skimUsed >= SKIM_MAX) return 0;
       this.skimUsed += 1;
       return 1;
@@ -215,10 +206,13 @@
     /* True if there is room left to place points at all. */
     roomLeft() { return KEYS.reduce((s, k) => s + (this.max(k) - this.attrs[k]), 0); }
 
-    addPathProgress() {
-      if (this.pathDone || this.pathLost) return;
+    /* An event happened (rescue, correctAccusation, uncaughtSabotage). It counts only if it is
+       this type's second-path event. Returns true if it counted. */
+    creditPath(event) {
+      if (!this.type.pathCounts(event) || this.pathDone || this.pathLost) return false;
       this.pathProgress += 1;
-      if (this.pathProgress >= this.typeInfo.goal) this.pathDone = true;
+      if (this.pathProgress >= this.type.goal) this.pathDone = true;
+      return true;
     }
 
     graduates() {
@@ -227,7 +221,7 @@
     wins() { return this.graduates() || this.pathDone; }
     ending() {
       if (this.graduates()) return "Graduated";
-      if (this.pathDone) return this.typeInfo.path + " complete";
+      if (this.pathDone) return this.type.pathName + " complete";
       return "Contract renewed";
     }
   }

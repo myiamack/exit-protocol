@@ -9,12 +9,9 @@
 
   class Gift {
     /* Heart cost. Independent: 1 point costs 2, 2 points cost 3. Others: 1 per point. */
-    static cost(giver, pts) {
-      if (giver.type === "indep") return pts === 1 ? 2 : 3;
-      return pts;
-    }
+    static cost(giver, pts) { return giver.type.giftCost(pts); }
     /* Hearts refunded per point that cannot land (overflow). */
-    static refundPerPoint(giver) { return giver.type === "indep" ? 2 : 1; }
+    static refundPerPoint(giver) { return giver.type.giftRefundPerPoint(); }
 
     static check(giver, receiver, team, pts) {
       if (pts !== 1 && pts !== 2) return "Gift 1 or 2 points.";
@@ -34,7 +31,7 @@
       if (why) return { ok: false, reason: why };
       const cost = Gift.cost(giver, pts);
       let rec;
-      if (receiver.type === "indep") {
+      if (!receiver.type.canAcceptGifts()) {
         rec = { giver, receiver, pts, cost: 0, status: "refused", refused: true, cancelled: false };
       } else {
         giver.hearts.spend(cost);
@@ -56,7 +53,7 @@
         giver.hearts.refund(rec.overflow * Gift.refundPerPoint(giver));
       }
       rec.cancelled = wasGlitching && !receiver.isGlitching();   // only a real rescue counts
-      if (rec.cancelled && giver.type === "coop") giver.addPathProgress();   // Lifeline
+      if (rec.cancelled) giver.creditPath(EP.CharacterType.PATH_EVENTS.rescue);   // Lifeline
       rec.status = "accepted";
       return { ok: true, gift: rec, ...rec };
     }
