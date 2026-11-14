@@ -15,7 +15,7 @@
   <header class="topbar" id="topbar">
     <span class="who"><span class="dotlive"></span><span id="whoName">guest</span></span>
     <span class="where" id="where"></span>
-    <span class="row"><button class="btn soft sm" id="facBtn" aria-pressed="false">Host script</button></span>
+    <span class="row"><button class="btn soft sm" id="boardBtn" hidden>Board</button><button class="btn soft sm" id="facBtn" aria-pressed="false" hidden>Host script</button></span>
   </header>
   <div class="banner" id="banner" hidden><span class="t" id="bannerT">Intermission</span><span class="tm" id="tmr">0:00</span></div>
   <section class="hud" id="hud" aria-label="My attributes" hidden></section>
@@ -29,6 +29,20 @@
   <span class="mid" id="navMid"></span>
   <button class="btn red" id="navNext">Next ▶</button>
 </div></nav>
+<!-- Rule classes (no screen code). Load before game.js. -->
+<script src="rules/Hearts.js"></script>
+<script src="rules/CharacterType.js"></script>
+<script src="rules/Player.js"></script>
+<script src="rules/Team.js"></script>
+<script src="rules/Round.js"></script>
+<script src="rules/Sabotage.js"></script>
+<script src="rules/Accusation.js"></script>
+<script src="rules/Gift.js"></script>
+<script src="rules/Vote.js"></script>
+<script src="rules/Trial.js"></script>
+<script src="rules/Game.js"></script>
+<script src="rules/bots.js"></script>
+<script src="board.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
