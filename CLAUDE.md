@@ -121,7 +121,7 @@ SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 t
 ### Sabotage (Contrarian only)
 - Teammates only. Not Stuck targets.
 - Cost: 1 heart for the first in a round, 2 for each extra in the same round.
-- Drain: 2 points from the target's trial attribute for this round. Only 1 if the target's Composure is 6 or more.
+- Drain: 2 points from the target's trial attribute for this round. Composure x 10% chance it is only 1 (Part 4b; replaces the old "Composure 6 or more" rule).
 - Hearts cover a drain below 0, same as any shortfall.
 - The victim is told privately.
 
@@ -208,6 +208,20 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
 3. Done. Trial base class (see Trial in the class table). Vote uses Math.ceil.
 4. Caught Contrarian: a caught sabotage does not count toward Exploit. A Contrarian cannot sabotage while on a team that caught them; switching teams allows sabotage again. Exploit is never lost. Replace sabotageLocked and pathLost with a list of team ids that caught the player. Skim stays: +1 per uncaught sabotage round, max 2 per game.
+4b. Stat abilities. Each uses the stat's value at that moment (negative counts as 0, max 10). All chances use the game's seeded rng so tests repeat.
+   - Focus (Accusation): a wrong accusation has a Focus x 10% chance to cost nothing.
+   - Collaboration (Gift): a sent gift that is not refused has a Collaboration x 10% chance to cost 0 hearts.
+   - Initiative (Vote): each voter's ranking points (3/2/1) are multiplied by 1 + Initiative / 10.
+   - Grit (end of round, after the normal refill): Grit x 5% chance of +1 heart, capped at the max.
+   - Composure (Sabotage.drain): Composure x 10% chance the drain is 1 instead of 2. Replaces the old "Composure 6 or more" rule.
+   - Light influence (Trial base class, Levels 1 to 4 only): team score += 0.5 x (team's average in the tested attribute, active players only, minus the average of all teams). Judged levels unchanged.
+   - The tested attribute for a level stays hidden on screen until that level's briefing.
+   - Show each ability's chance on the player's own screen (for example "Focus 6: 60% safe accusation"). Never show other players' chances.
+4c. Tests/check_balance.js. For each setting run 2,000 seeded bot games.
+   - Headcounts: 16 (4 teams of 4), 20 (5 of 4), 24 (three of 4 and four of 3).
+   - Spending: typical (current bot rule) and aware (bots put half their earned points into the next level's attribute).
+   - Report per setting: graduation %, win % by type, type gap, second path % by type, Stuck %, percent of sabotages caught, and how often Level 1 winners win later trials versus Level 1 losers.
+   - Expected with typical spending, roughly: graduation 59 / 73 / 69, type gap 5 / 5 / 9. Flag any result more than 3 points off.
 5. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
