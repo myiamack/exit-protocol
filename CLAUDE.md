@@ -225,7 +225,10 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Group games by Contrarian count and show the type gap for each group, so extreme mixes do not hide in the average. Groups under 50 games are marked "few games".
    - Target check: type gap of 1 to 3 points, labeled PASS or FAIL, overall and by player count. This is the goal. Use it in every balance report.
    - No match check (the old expected numbers came from a fixed mix).
-5. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
+5. Done. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
+5b. Tuning. Target: type gap of 1 to 3 points under random mixes, with both typical and aware spending (Tests/check_balance.js). Two issues:
+   1. Aware spending finishes lower than typical, because free heart refills make paying trial costs with hearts cheaper than with points. Careful play must not lose to careless play.
+   2. Independents lead because Auditor gets easier as Contrarians increase. The gap grows from 1.6 at 2 Contrarians to 13.3 at 6 (16 players, typical spending).
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
 8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.

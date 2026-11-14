@@ -201,6 +201,45 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("SOP score includes influence: 5 + 1.5 = 6.5 beats 7 - 1.5 = 5.5", sr[0].team === i1 && sr[0].score === 6.5, sr.map(x => x.score).join(" / "));
 }
 
+// Part 5: team switching in Open Floor. Teams stay 3 to 5 members. Sabotaged this round = no switch.
+{
+  const ps = ["contra", "coop", "coop", "indep",            // A: 4
+              "coop", "coop", "indep", "coop", "coop",      // B: 5
+              "contra", "coop", "indep"]                    // C: 3
+    .map((t, i) => EP.Bots.makePlayer(100 + i, "S" + i, t));
+  const A = new EP.Team({ id: 10, name: "Team A", members: ps.slice(0, 4) });
+  const B = new EP.Team({ id: 11, name: "Team B", members: ps.slice(4, 9) });
+  const C = new EP.Team({ id: 12, name: "Team C", members: ps.slice(9) });
+  const g = new EP.Game({ teams: [A, B, C], rng: NO });
+  g.startNextRound();
+
+  refusedResult("Switch to your own team", g.switchTeam(ps[1], A));
+  refusedResult("Switch into a full team (5)", g.switchTeam(ps[1], B));
+  refusedResult("Switch out of a team of 3", g.switchTeam(ps[10], A));
+  expect("Contrarian sabotages a teammate", g.sabotage(ps[0], ps[1]).ok);
+  refusedResult("Saboteur switches the same round", g.switchTeam(ps[0], C));
+
+  const r = g.switchTeam(ps[1], C);
+  expect("Switch from 4 to 3 is allowed", r.ok, r.reason);
+  expect("Player moved: A has 3, C has 4", A.size() === 3 && C.size() === 4, A.size() + " / " + C.size());
+  expect("teamId and teamOf follow the switch", ps[1].teamId === C.id && g.teamOf(ps[1]) === C);
+  refusedResult("Switch out of A now that it has 3", g.switchTeam(ps[2], C));
+
+  g.advance();
+  refusedResult("Switch during Trial", g.switchTeam(ps[11], A));
+
+  // Caught by team A, then switch: sabotage allowed again on the new team.
+  const stuck = ps[7]; stuck.glitches = 2;
+  const g2 = new EP.Game({ teams: [A, B, C], rng: NO });
+  g2.startNextRound();
+  refusedResult("Stuck player switches", g2.switchTeam(stuck, A));
+  expect("Move back to A (A 4, C 3)", g2.switchTeam(ps[1], A).ok);
+  ps[0].markCaughtBy(A.id);
+  refusedResult("Caught Contrarian sabotages on the team that caught them", g2.sabotage(ps[0], ps[2]));
+  expect("Caught Contrarian switches to C", g2.switchTeam(ps[0], C).ok);
+  expect("Sabotage allowed on the new team", g2.sabotage(ps[0], ps[10]).ok);
+}
+
 // Hearts: only its own methods change the count.
 {
   const h = new EP.Hearts();
