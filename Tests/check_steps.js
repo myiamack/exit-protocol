@@ -97,6 +97,31 @@ throws("Finish the round before points are placed", () => game.finishRound());
          jr.map(x => x.team.name + ":" + x.total + "/" + x.firsts + (x.won ? "W" : "")).join(" "));
 }
 
+// Part 4: caught Contrarian. Caught by a team = no sabotage while on that team. Exploit never lost.
+{
+  const ps = ["contra", "coop", "coop", "coop", "indep", "coop", "coop"].map((t, i) => EP.Bots.makePlayer(100 + i, "C" + i, t));
+  const [c, v] = ps;
+  const tA = new EP.Team({ id: "A", name: "A", members: ps.slice(0, 4) });
+  const r1 = new EP.Round(1);
+  expect("Sabotage on own team allowed before being caught", EP.Sabotage.apply(r1, c, v, tA).ok);
+  const acc = EP.Accusation.apply(r1, v, c, tA);
+  expect("Correct accusation catches the Contrarian", acc.ok && acc.correct && c.caughtThisRound);
+  expect("Caught list holds team A only", c.caughtBy.join(",") === "A", c.caughtBy.join(","));
+  expect("Caught Contrarian loses 0 points", c.total() === 24, c.total());
+  // Game.endGlitchReport credits Exploit only if not caughtThisRound.
+  expect("Caught round gives no Skim", c.takeSkim() === 0);
+  c.resetRoundFlags();
+  const r2 = new EP.Round(2);
+  const again = EP.Sabotage.apply(r2, c, v, tA);
+  expect("Cannot sabotage team A again", !again.ok, again.reason);
+  // Switch teams: leave A, join B.
+  tA.members.splice(tA.members.indexOf(c), 1);
+  const tB = new EP.Team({ id: "B", name: "B", members: [c, ...ps.slice(4)] });
+  expect("On team B, sabotage is allowed again", EP.Sabotage.apply(r2, c, ps[4], tB).ok);
+  expect("Exploit still counts after being caught", c.creditPath(EP.CharacterType.PATH_EVENTS.uncaughtSabotage) && c.pathProgress === 1, c.pathProgress);
+  expect("Uncaught round gives Skim", c.takeSkim() === 1);
+}
+
 // Hearts: only its own methods change the count.
 {
   const h = new EP.Hearts();

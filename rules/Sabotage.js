@@ -13,7 +13,7 @@
     static check(actor, target, team) {
       if (!actor.type.canSabotage()) return "Only Contrarians can sabotage.";
       if (actor.isStuck()) return "You are Stuck.";
-      if (actor.sabotageLocked) return "You were caught. No more sabotage this game.";
+      if (actor.wasCaughtBy(team.id)) return "This team caught you. No sabotage while you are on it.";
       if (target === actor) return "You cannot sabotage yourself.";
       if (!team.has(target)) return "Teammates only.";
       if (target.isStuck()) return "Stuck players cannot be sabotaged.";
