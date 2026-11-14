@@ -142,7 +142,7 @@
           if (!p.lockIn()) continue;
           locked.push(p);
           for (const q of team.mates(p)) {
-            if (q.type === "coop" && !q.isStuck()) q.backup = Math.max(0, q.backup - 1);   // Empathy
+            if (q.type === "coop" && !q.isStuck()) q.hearts.lose(1);   // Empathy
           }
         }
       }
@@ -176,7 +176,7 @@
       const why = this.wrongStep("statsUpdate") ||
                   (!this.didRun("computeEarnings") ? "Earnings come first." : null) ||
                   (this.didRun("finishRound") ? "The round is over." : null) ||
-                  (!p.canCashOut() ? "Cash Out needs an Independent with full backup, once per game." : null);
+                  (!p.canCashOut() ? "Cash Out needs an Independent with full hearts, once per game." : null);
       if (why) return { ok: false, reason: why };
       p.cashOut();
       return { ok: true };
@@ -187,7 +187,7 @@
       const unplaced = this.players.find(p => !p.isStuck() && p.earned > 0);
       if (unplaced) throw new Error(unplaced.name + " has not placed their points.");
       this.once("finishRound");
-      for (const p of this.players) if (!p.isStuck()) p.refillBackup();
+      for (const p of this.players) if (!p.isStuck()) p.hearts.refill();
     }
 
     /* Level 7 */

@@ -1,4 +1,4 @@
-/* Player: one intern. Holds type, 5 attributes, backup, glitches, flags, second path.
+/* Player: one intern. Holds type, 5 attributes, hearts, glitches, flags, second path.
    Rule code only. No screen code. Works in the browser and in Node. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
@@ -16,7 +16,6 @@
   const SPEND = 15;          // points the player spends at creation
   const BOOST = 2;           // type boost per bonus attribute
   const MAX = 10, PEN_MAX = 4;
-  const BACKUP_START = 3, BACKUP_CAP = 3;
   const AT_RISK_COST = 3;
   const GRAD_TOTAL = 24, GRAD_MIN = 2;
   const SKIM_MAX = 2, CASHOUT_USES = 1, CASHOUT_COST = 2;
@@ -43,7 +42,7 @@
       }
       if (total !== SPEND) throw new Error("Must spend exactly " + SPEND + " points");
 
-      this.backup = BACKUP_START;
+      this.hearts = new EP.Hearts();
       this.glitches = 0;
 
       // second path
@@ -67,7 +66,7 @@
     get typeInfo() { return TYPES[this.type]; }
     isBonus(k) { return this.typeInfo.bonus.includes(k); }
     max(k) { return k === this.typeInfo.pen ? PEN_MAX : MAX; }
-    rate(k) { return this.isBonus(k) ? 1 : 2; }   // backup per point covered
+    rate(k) { return this.isBonus(k) ? 1 : 2; }   // hearts per point covered
 
     total() { return KEYS.reduce((s, k) => s + this.attrs[k], 0); }
     lowest() { return Math.min(...KEYS.map(k => this.attrs[k])); }
@@ -77,7 +76,7 @@
     isStuck() { return this.glitches >= 2; }
     isGlitching() { return KEYS.some(k => this.attrs[k] < 0); }   // exactly 0 is safe
     isAtRisk() {
-      return KEYS.some(k => this.attrs[k] + Math.floor(this.backup / this.rate(k)) < AT_RISK_COST);
+      return KEYS.some(k => this.attrs[k] + Math.floor(this.hearts.count / this.rate(k)) < AT_RISK_COST);
     }
     /* What other players see. Never numbers. */
     flag() {
@@ -97,7 +96,7 @@
       this.earned = 0;
     }
 
-    /* Lose points from one attribute, from any cause. Backup covers any shortfall below 0. */
+    /* Lose points from one attribute, from any cause. Hearts cover any shortfall below 0. */
     lose(k, n) {
       this.attrs[k] -= n;
       this.cover(k);
@@ -107,18 +106,18 @@
       if (this.attrs[k] >= 0) return 0;
       const short = -this.attrs[k];
       const r = this.rate(k);
-      const covered = Math.min(short, Math.floor(this.backup / r));
-      this.backup -= covered * r;
+      const covered = Math.min(short, Math.floor(this.hearts.count / r));
+      this.hearts.spend(covered * r);
       this.attrs[k] += covered;
-      return covered * r;   // backup used
+      return covered * r;   // hearts used
     }
 
     /* Trial cost. Glitching players pay too. Stuck players do not. */
     payTrial(k, cost) {
       if (this.isStuck()) return null;
-      const before = this.attrs[k], backupBefore = this.backup;
+      const before = this.attrs[k], heartsBefore = this.hearts.count;
       this.lose(k, cost);
-      return { attr: k, before, after: this.attrs[k], backupUsed: backupBefore - this.backup };
+      return { attr: k, before, after: this.attrs[k], heartsUsed: heartsBefore - this.hearts.count };
     }
 
     /* Wrong accusation penalty. Ties go to the first attribute in KEYS order. */
@@ -161,7 +160,7 @@
     }
 
     /* Take points evenly from the other attributes until the glitched one reaches 1.
-       Any shortfall the others cannot cover is forgiven: it still ends at 1. Backup set to 0. */
+       Any shortfall the others cannot cover is forgiven: it still ends at 1. Hearts set to 0. */
     reboot() {
       for (const k of KEYS) {
         if (this.attrs[k] >= 0) continue;
@@ -178,17 +177,17 @@
         }
         this.attrs[k] = 1;   // always reboots to 1, shortfall forgiven
       }
-      this.backup = 0;
+      this.hearts.empty();
     }
 
-    /* Cash Out (Independent): once per game, needs full backup, 2 backup for 1 point. */
+    /* Cash Out (Independent): once per game, needs full hearts, 2 hearts for 1 point. */
     canCashOut() {
       return this.type === "indep" && !this.isStuck() && this.cashOutUsed < CASHOUT_USES &&
-             this.backup === BACKUP_CAP && this.backup >= CASHOUT_COST;
+             this.hearts.isFull() && this.hearts.has(CASHOUT_COST);
     }
     cashOut() {
       if (!this.canCashOut()) return false;
-      this.backup -= CASHOUT_COST;
+      this.hearts.spend(CASHOUT_COST);
       this.cashOutUsed += 1;
       this.earned += 1;
       return true;
@@ -216,8 +215,6 @@
     /* True if there is room left to place points at all. */
     roomLeft() { return KEYS.reduce((s, k) => s + (this.max(k) - this.attrs[k]), 0); }
 
-    refillBackup() { this.backup = Math.min(BACKUP_CAP, this.backup + 1); }
-
     addPathProgress() {
       if (this.pathDone || this.pathLost) return;
       this.pathProgress += 1;
@@ -235,7 +232,6 @@
     }
   }
 
-  Player.BACKUP_CAP = BACKUP_CAP;
   Player.AT_RISK_COST = AT_RISK_COST;
   Player.GRAD_TOTAL = GRAD_TOTAL;
   Player.GRAD_MIN = GRAD_MIN;

@@ -6,7 +6,7 @@
    - Independents refuse automatically. Bots accept 80% (seeded, so results repeat).
    Run from the repo folder:  node Tests/check_gifts.js */
 const path = require("path");
-["Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
+["Hearts", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 
@@ -47,10 +47,10 @@ console.log("-- Accept, Decline, no answer");
   set(r, { focus: 5, initiative: 4, collab: 6, composure: 2, grit: 7 });
   const res = EP.Gift.apply(round, g, r, team, 2);
   expect("Sent gift is pending and nothing has landed yet", res.ok && res.gift.status === "pending" && r.attrs.composure === 2, res.gift && res.gift.status);
-  expect("Giver pays when sending (3 -> 1)", g.backup === 1, g.backup);
+  expect("Giver pays when sending (3 -> 1)", g.hearts.count === 1, g.hearts.count);
   const acc = EP.Gift.accept(round, res.gift);
   expect("Accept: points land on the lowest attribute (Composure 2 -> 4)", acc.ok && r.attrs.composure === 4, JSON.stringify(r.attrs));
-  expect("Accept: giver does not get the backup back", g.backup === 1, g.backup);
+  expect("Accept: giver does not get the hearts back", g.hearts.count === 1, g.hearts.count);
   expect("A gift cannot be answered twice", !EP.Gift.decline(round, res.gift).ok);
 }
 { // Decline: points go back to the giver
@@ -59,7 +59,7 @@ console.log("-- Accept, Decline, no answer");
   const res = EP.Gift.apply(round, g, r, team, 2);
   const dec = EP.Gift.decline(round, res.gift);
   expect("Decline: nothing lands", dec.ok && r.attrs.composure === 2, JSON.stringify(r.attrs));
-  expect("Decline: giver gets the backup back (1 -> 3)", g.backup === 3, g.backup);
+  expect("Decline: giver gets the hearts back (1 -> 3)", g.hearts.count === 3, g.hearts.count);
   expect("Decline: status is declined", res.gift.status === "declined");
 }
 { // No answer: declined and refunded when the step ends (Open Floor, then the gift window)
@@ -68,16 +68,16 @@ console.log("-- Accept, Decline, no answer");
   const a = game.gift(ps[0], ps[1], 1);
   game.advance();   // Open Floor ends
   expect("No answer in Open Floor: expired when Open Floor ends", a.gift.status === "expired", a.gift.status);
-  expect("No answer in Open Floor: giver refunded", ps[0].backup === 3, ps[0].backup);
+  expect("No answer in Open Floor: giver refunded", ps[0].hearts.count === 3, ps[0].hearts.count);
   expect("An expired gift cannot be accepted later", !EP.Gift.accept(game.round, a.gift).ok);
   teams.forEach(t => game.setTrialResult(t, true)); game.payTrialCosts(); game.advance();
   game.endGlitchReport(); game.advance();
-  const before = ps[2].backup;
+  const before = ps[2].hearts.count;
   const b = game.gift(ps[2], ps[3], 1);
   const total3 = ps[3].total();
   game.advance();   // gift window ends
   expect("No answer in the gift window: expired, refunded, nothing landed",
-         b.gift.status === "expired" && ps[2].backup === before && ps[3].total() === total3, b.gift.status);
+         b.gift.status === "expired" && ps[2].hearts.count === before && ps[3].total() === total3, b.gift.status);
 }
 { // Answering is only allowed during Open Floor or the gift window
   const { ps, teams, game } = gameOf(Array(8).fill("coop"));
@@ -131,17 +131,17 @@ console.log("-- Where accepted points land");
 {
   const { ps: [g, r], team, round } = setup();
   set(r, { focus: 10, initiative: 4, collab: 10, composure: 10, grit: 10 });
-  const before = g.backup;
+  const before = g.hearts.count;
   sendAccept(round, g, r, team, 2);
-  expect("All attributes maxed: nothing lands and the giver is refunded", r.total() === 44 && g.backup === before, "backup " + before + " -> " + g.backup);
+  expect("All attributes maxed: nothing lands and the giver is refunded", r.total() === 44 && g.hearts.count === before, "hearts " + before + " -> " + g.hearts.count);
 }
 
 console.log("-- Who can gift");
 {
   const { ps: [g, , ind], team, round } = setup();
-  const before = g.backup;
+  const before = g.hearts.count;
   const res = EP.Gift.apply(round, g, ind, team, 1);
-  expect("Independent refuses automatically and the giver keeps backup", res.refused && res.gift.status === "refused" && g.backup === before);
+  expect("Independent refuses automatically and the giver keeps hearts", res.refused && res.gift.status === "refused" && g.hearts.count === before);
 }
 {
   const { ps: [g, r, , c], team, round } = setup();

@@ -1,7 +1,7 @@
 /* Spot test: Game refuses calls made in the wrong step.
    Run from the repo folder:  node Tests/check_steps.js */
 const path = require("path");
-["Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
+["Hearts", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 
@@ -58,6 +58,21 @@ throws("Advance past Stats Update", () => game.advance());
 throws("Start the next round before finishing this one", () => game.startNextRound());
 game.computeEarnings();
 throws("Finish the round before points are placed", () => game.finishRound());
+
+// Hearts: only its own methods change the count.
+{
+  const h = new EP.Hearts();
+  expect("Hearts start at 3", h.count === 3, h.count);
+  try { h.count = 99; } catch (e) { /* strict mode throws; either way it must not change */ }
+  expect("Setting hearts.count directly does nothing", h.count === 3, h.count);
+  expect("Spend more than you have is refused", h.spend(4) === false && h.count === 3, h.count);
+  h.spend(2); h.refill(); h.refund(5);
+  expect("Refill and refund stop at the cap of 3", h.count === 3, h.count);
+  h.lose(5);
+  expect("Lose never goes below 0", h.count === 0, h.count);
+  h.refill(); h.empty();
+  expect("Empty sets hearts to 0", h.count === 0, h.count);
+}
 
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

@@ -1,9 +1,9 @@
-/* Sabotage: Contrarian only, teammates only, costs backup, drains the trial attribute. */
+/* Sabotage: Contrarian only, teammates only, costs hearts, drains the trial attribute. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
   class Sabotage {
-    /* 1 backup for the first in a round, 2 for each extra in the same round. */
+    /* 1 heart for the first in a round, 2 for each extra in the same round. */
     static cost(actor) { return actor.sabotagesThisRound === 0 ? 1 : 2; }
 
     /* 2 points, or 1 if the target's Composure is 6 or more. */
@@ -17,7 +17,7 @@
       if (target === actor) return "You cannot sabotage yourself.";
       if (!team.has(target)) return "Teammates only.";
       if (target.isStuck()) return "Stuck players cannot be sabotaged.";
-      if (actor.backup < Sabotage.cost(actor)) return "Not enough backup.";
+      if (!actor.hearts.has(Sabotage.cost(actor))) return "Not enough hearts.";
       return null;
     }
 
@@ -26,10 +26,10 @@
       const why = Sabotage.check(actor, target, team);
       if (why) return { ok: false, reason: why };
       const cost = Sabotage.cost(actor);
-      actor.backup -= cost;
+      actor.hearts.spend(cost);
       actor.sabotagesThisRound += 1;
       const drain = Sabotage.drain(target);
-      target.lose(round.attr, drain);   // backup covers a drain below 0
+      target.lose(round.attr, drain);   // hearts cover a drain below 0
       target.wasSabotagedThisRound = true;
       const rec = { actor, target, drain, cost };
       round.sabotages.push(rec);
