@@ -2,8 +2,9 @@
    Every trial takes the round and the teams and returns a ranked list (best first).
    Winners = half the teams, rounded up: 4 teams -> 2, 5 teams -> 3, 7 teams -> 4.
    Subclasses only decide the order:
-     SopTrial    Level 1     SOP score (steps in the right place + 1 if the endless step is left out), ties random
-     AutoTrial   Levels 2-4  random order (placeholder until those mini-games exist)
+     SopTrial    Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
+     AutoTrial   Levels 2-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
+   Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
      JudgedTrial Levels 5-6  player Vote: points, then most first places, then random
    Rule code only. No screen code. Works in the browser and in Node. */
 (function (root) {
@@ -41,6 +42,33 @@
       });
     }
 
+    /* Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute,
+       active players only, minus the average of all teams). Values count as 0 to 10.
+       A team with no active players gets 0 and is left out of the all-teams average. */
+    static influence(round, teams) {
+      const avg = new Map();
+      for (const t of teams) {
+        const a = t.active();
+        if (a.length) avg.set(t, a.reduce((s, p) => s + p.abilityValue(round.attr), 0) / a.length);
+      }
+      const vals = [...avg.values()];
+      const all = vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : 0;
+      return new Map(teams.map(t => [t, avg.has(t) ? Trial.INFLUENCE * (avg.get(t) - all) : 0]));
+    }
+
+    /* Rank by base + influence. Ties random. */
+    rankWithInfluence(round, teams, baseOf) {
+      const inf = Trial.influence(round, teams);
+      const entries = teams.map(team => {
+        const base = baseOf(team);
+        return { team, base, influence: inf.get(team), score: base + inf.get(team) };
+      });
+      return this.sortBy(entries, [e => e.score]);
+    }
+
+    /* A random whole number from 0 to 7 (same range as the SOP score). */
+    randomBase() { return Math.floor(this.rng() * (Trial.MAX_BASE + 1)); }
+
     /* The right trial for a round's level. */
     static forRound(round, rng) {
       if (round.trialKind === "sop") return new SopTrial(rng);
@@ -69,15 +97,14 @@
 
     /* Teams with no score yet (bot teams in the prototype) get a random score from 0 to 7. */
     rank(round, teams) {
-      for (const t of teams) if (!this.scores.has(t)) this.scores.set(t, Math.floor(this.rng() * (SopTrial.MAX_SCORE + 1)));
-      const entries = teams.map(team => ({ team, score: this.scores.get(team) }));
-      return this.sortBy(entries, [e => e.score]);
+      for (const t of teams) if (!this.scores.has(t)) this.scores.set(t, this.randomBase());
+      return this.rankWithInfluence(round, teams, t => this.scores.get(t));
     }
   }
 
-  /* Levels 2-4 for now: random order. */
+  /* Levels 2-4 for now: random whole number 0 to 7 plus light influence. */
   class AutoTrial extends Trial {
-    rank(round, teams) { return this.sortBy(teams.map(team => ({ team })), []); }
+    rank(round, teams) { return this.rankWithInfluence(round, teams, () => this.randomBase()); }
   }
 
   /* Levels 5-6: players vote. Cast ballots on .vote, then run(). */
@@ -90,6 +117,8 @@
     }
   }
 
+  Trial.INFLUENCE = 0.5;
+  Trial.MAX_BASE = 7;
   Trial.SopTrial = SopTrial;
   Trial.AutoTrial = AutoTrial;
   Trial.JudgedTrial = JudgedTrial;

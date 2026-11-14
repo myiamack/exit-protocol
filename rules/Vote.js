@@ -1,5 +1,5 @@
 /* Vote: judged trials with no host. Each non-Stuck player ranks top 3 non-Stuck players from other teams.
-   1st = 3, 2nd = 2, 3rd = 1. Points go to the ranked players' teams. Top half of teams win
+   1st = 3, 2nd = 2, 3rd = 1, times the voter's 1 + Initiative / 10. Points go to the ranked players' teams. Top half of teams win
    (rounded up: 5 teams -> 3 win, 7 teams -> 4).
    Ties at the cutoff: more first-place ranks wins. Still tied: random. */
 (function (root) {
@@ -46,10 +46,11 @@
     /* Returns teams in final order with totals, and sets team.won. */
     tally() {
       const score = new Map(this.teams.map(t => [t, { total: 0, firsts: 0, roll: this.rng() }]));
-      for (const ranking of this.ballots.values()) {
+      for (const [voter, ranking] of this.ballots) {
+        const w = voter.voteWeight();   // Initiative: points x (1 + Initiative / 10)
         ranking.forEach((p, i) => {
           const s = score.get(this.teamOf(p));
-          s.total += POINTS[i];
+          s.total += POINTS[i] * w;
           if (i === 0) s.firsts += 1;
         });
       }

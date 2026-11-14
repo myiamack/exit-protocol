@@ -26,7 +26,7 @@
     /* Send a gift. The giver pays now. The gift waits for the receiver's answer (status "pending").
        Independents refuse at once and nothing is spent (status "refused").
        The result's .gift is the record to pass to accept or decline. */
-    static apply(round, giver, receiver, team, pts) {
+    static apply(round, giver, receiver, team, pts, rng) {
       const why = Gift.check(giver, receiver, team, pts);
       if (why) return { ok: false, reason: why };
       const cost = Gift.cost(giver, pts);
@@ -34,8 +34,11 @@
       if (!receiver.type.canAcceptGifts()) {
         rec = { giver, receiver, pts, cost: 0, status: "refused", refused: true, cancelled: false };
       } else {
-        giver.hearts.spend(cost);
-        rec = { giver, receiver, pts, cost, status: "pending", refused: false, cancelled: false };
+        // Collaboration x 10% chance the gift costs 0 hearts (Part 4b). Not rolled for refused gifts.
+        const free = giver.rollAbility("collab", rng);
+        const paid = free ? 0 : cost;
+        giver.hearts.spend(paid);
+        rec = { giver, receiver, pts, cost: paid, free, status: "pending", refused: false, cancelled: false };
       }
       round.gifts.push(rec);
       return { ok: true, gift: rec, ...rec };
@@ -49,7 +52,7 @@
       const wasGlitching = receiver.isGlitching();
       rec.target = receiver.giftTarget();
       rec.overflow = receiver.receiveGift(pts);
-      if (rec.overflow) {
+      if (rec.overflow && !rec.free) {   // a free gift has nothing to refund
         giver.hearts.refund(rec.overflow * Gift.refundPerPoint(giver));
       }
       rec.cancelled = wasGlitching && !receiver.isGlitching();   // only a real rescue counts
