@@ -1,6 +1,6 @@
 /* Vote: judged trials with no host. Each non-Stuck player ranks top 3 non-Stuck players from other teams.
    1st = 3, 2nd = 2, 3rd = 1, times the voter's 1 + Initiative / 10. Points go to the ranked players' teams,
-   then each team's total is divided by its active players. Top half of teams win
+   then each team's total is divided by its active players and by the active players not on that team. Top half of teams win
    (rounded up: 5 teams -> 3 win, 7 teams -> 4).
    Ties at the cutoff: more first-place ranks wins. Still tied: random. */
 (function (root) {
@@ -46,10 +46,15 @@
 
     /* Returns teams in final order, and sets team.won.
        total = the team's vote points (each voter's points already x Initiative weight).
-       score = total / the team's active players (not Stuck; idle too once Part 8 exists). Teams rank by score,
-       so a big team does not win just by having more players to rank. A team with no active players scores 0. */
+       score = total / (team's active players x active players who could rank them, i.e. active players not on
+       that team). Active = not Stuck (idle too once Part 8 exists). Teams rank by score, so team size does not
+       matter: big teams have more players to rank, small teams have more possible voters. Either count 0 = score 0. */
     tally() {
-      const score = new Map(this.teams.map(t => [t, { total: 0, active: t.active().length, score: 0, firsts: 0, roll: this.rng() }]));
+      const allActive = this.teams.reduce((n, t) => n + t.active().length, 0);
+      const score = new Map(this.teams.map(t => {
+        const active = t.active().length;
+        return [t, { total: 0, active, voters: allActive - active, score: 0, firsts: 0, roll: this.rng() }];
+      }));
       for (const [voter, ranking] of this.ballots) {
         const w = voter.voteWeight();   // Initiative: points x (1 + Initiative / 10)
         ranking.forEach((p, i) => {
@@ -58,7 +63,7 @@
           if (i === 0) s.firsts += 1;
         });
       }
-      for (const s of score.values()) s.score = s.active ? s.total / s.active : 0;
+      for (const s of score.values()) s.score = s.active && s.voters ? s.total / (s.active * s.voters) : 0;
       const order = [...this.teams].sort((a, b) => {
         const A = score.get(a), B = score.get(b);
         return (B.score - A.score) || (B.firsts - A.firsts) || (A.roll - B.roll);

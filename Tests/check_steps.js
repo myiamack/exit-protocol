@@ -293,23 +293,29 @@ throws("Finish the round before points are placed", () => game.finishRound());
     return v.tally();
   };
   const row = (tl, n) => tl.find(x => x.team.name === n);
-  const show = tl => tl.map(x => x.team.name + ":" + x.total + "/" + x.active + "=" + x.score.toFixed(2)).join(" ");
+  const near = (x, y) => Math.abs(x - y) < 1e-9;
+  const show = tl => tl.map(x => x.team.name + ":" + x.total + "/(" + x.active + "x" + x.voters + ")=" + x.score.toFixed(3)).join(" ");
 
+  // 11 active players. B: 5 active, 6 possible voters. S: 3 active, 8 possible voters.
   let tl = tallyWith();
-  expect("5 vs 3: B total 10 / 5 = 2.00, S total 8 / 3 = 2.67", row(tl, "B").score === 2 && Math.abs(row(tl, "S").score - 8 / 3) < 1e-9, show(tl));
-  expect("5 vs 3: S ranks above B despite fewer total points", tl.map(x => x.team.name).join("") === "SBX", show(tl));
+  expect("5 vs 3: B voters 6, S voters 8", row(tl, "B").voters === 6 && row(tl, "S").voters === 8, show(tl));
+  expect("5 vs 3: B 10 / (5 x 6) = 0.333, S 8 / (3 x 8) = 0.333",
+         near(row(tl, "B").score, 1 / 3) && near(row(tl, "S").score, 1 / 3), show(tl));
+  expect("5 vs 3: equal score, tie goes to more first places (S 2, B 1)", tl.map(x => x.team.name).join("") === "SBX", show(tl));
   expect("5 vs 3: top half win (3 teams -> 2): S and B", row(tl, "S").won && row(tl, "B").won && !row(tl, "X").won);
 
   // Initiative still applies to each voter's points before the division. x2 Initiative 10 = weight 2.
   tl = tallyWith(() => { xs[2].attrs.initiative = 10; });
-  expect("Initiative first, then divide: B (3+3+8) / 5 = 2.80, S (3+3+4) / 3 = 3.33",
-         row(tl, "B").total === 14 && row(tl, "B").score === 2.8 && Math.abs(row(tl, "S").score - 10 / 3) < 1e-9, show(tl));
+  expect("Initiative first, then divide: B (3+3+8) / 30 = 0.467 beats S (3+3+4) / 24 = 0.417",
+         row(tl, "B").total === 14 && near(row(tl, "B").score, 14 / 30) && near(row(tl, "S").score, 10 / 24) &&
+         tl[0].team.name === "B", show(tl));
   xs[2].attrs.initiative = 0;
 
-  // Stuck players do not count as active. B with 2 Stuck: 10 / 3 = 3.33 beats S 8 / 3 = 2.67.
+  // Stuck players do not count, as members or as voters. B with 2 Stuck: 3 active, 6 voters (S 3 + X 3).
   tl = tallyWith(() => { bs[3].glitches = 2; bs[4].glitches = 2; });
-  expect("Stuck not counted: B 10 / 3 active = 3.33 ranks above S 2.67",
-         row(tl, "B").active === 3 && tl[0].team.name === "B", show(tl));
+  expect("Stuck not counted: B 10 / (3 x 6) = 0.556 beats S 8 / (3 x 6) = 0.444",
+         row(tl, "B").active === 3 && row(tl, "S").voters === 6 && near(row(tl, "B").score, 10 / 18) &&
+         tl[0].team.name === "B", show(tl));
   bs[3].glitches = 0; bs[4].glitches = 0;
 
   // A team with no active players scores 0.
