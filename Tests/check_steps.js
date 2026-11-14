@@ -108,7 +108,11 @@ throws("Finish the round before points are placed", () => game.finishRound());
   const acc = EP.Accusation.apply(r1, v, c, tA, NO);
   expect("Correct accusation catches the Contrarian", acc.ok && acc.correct && c.caughtThisRound);
   expect("Caught list holds team A only", c.caughtBy.join(",") === "A", c.caughtBy.join(","));
-  expect("Caught Contrarian loses 0 points", c.total() === 24, c.total());
+  // Part 5b: caught = 1 point from the highest attribute (typical Contrarian: Initiative 8).
+  expect("Caught Contrarian loses 1 point from the highest (Initiative 8 -> 7)",
+         c.total() === 23 && c.attrs.initiative === 7 && c.caughtLoss === "initiative", c.total() + ", " + c.caughtLoss);
+  const acc2 = EP.Accusation.apply(r1, ps[2], c, tA, NO);
+  expect("Second correct accuser the same round: still one catch, no extra loss", acc2.correct && c.total() === 23, c.total());
   // Game.endGlitchReport credits Exploit only if not caughtThisRound.
   expect("Caught round gives no Skim", c.takeSkim() === 0);
   c.resetRoundFlags();
@@ -121,6 +125,28 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("On team B, sabotage is allowed again", EP.Sabotage.apply(r2, c, ps[4], tB, NO).ok);
   expect("Exploit still counts after being caught", c.creditPath(EP.CharacterType.PATH_EVENTS.uncaughtSabotage) && c.pathProgress === 1, c.pathProgress);
   expect("Uncaught round gives Skim", c.takeSkim() === 1);
+  // Caught again on team B: another point lost (every catch, any team). Exploit progress stays.
+  const before = c.total();
+  const accB = EP.Accusation.apply(r2, ps[4], c, tB, NO);
+  expect("Caught on team B also costs 1 point", accB.correct && c.total() === before - 1, before + " -> " + c.total());
+  expect("Caught list now holds A and B", c.caughtBy.join(",") === "A,B", c.caughtBy.join(","));
+  expect("Exploit never lost after a second catch", c.pathProgress === 1, c.pathProgress);
+}
+
+// Part 5b: caught point loss, tie order Focus, Collaboration, Initiative, Grit, Composure.
+{
+  const c = EP.Bots.makePlayer(200, "T", "contra");
+  const tieCase = (label, attrs, want) => {
+    c.resetRoundFlags();
+    Object.assign(c.attrs, attrs);
+    const k = c.markCaughtBy("X");
+    expect("Tie order: " + label, k === want && c.attrs[want] === attrs[want] - 1, k);
+  };
+  tieCase("all equal -> Focus",        { focus: 4, collab: 4, initiative: 4, grit: 4, composure: 4 }, "focus");
+  tieCase("Collab = Initiative -> Collaboration", { focus: 3, collab: 6, initiative: 6, grit: 6, composure: 4 }, "collab");
+  tieCase("Initiative = Grit -> Initiative",      { focus: 3, collab: 3, initiative: 6, grit: 6, composure: 4 }, "initiative");
+  tieCase("Grit = Composure -> Grit",             { focus: 1, collab: 1, initiative: 1, grit: 4, composure: 4 }, "grit");
+  tieCase("Highest wins over order -> Composure", { focus: 1, collab: 1, initiative: 1, grit: 2, composure: 4 }, "composure");
 }
 
 // Part 4b: stat abilities. "at" makes an rng that always returns x.
