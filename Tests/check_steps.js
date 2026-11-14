@@ -453,6 +453,77 @@ throws("Finish the round before points are placed", () => game.finishRound());
   }
 }
 
+// Progress board (Part 2).
+{
+  let a = 11;
+  const rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const ps = Array.from({ length: 12 }, (_, i) => EP.Bots.makePlayer(400 + i, "B" + i, ["coop", "indep", "contra"][i % 3]));
+  const ts = [0, 1, 2].map(i => new EP.Team({ id: "B" + i, name: "Team B" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+  const g = new EP.Game({ teams: ts, rng });
+
+  // Only the allowed fields.
+  const same = (o, keys) => Object.keys(o).sort().join() === keys.slice().sort().join();
+  const b0 = g.board();
+  expect("Board has only players, teams, submissions", same(b0, ["players", "teams", "submissions"]), Object.keys(b0).join());
+  expect("Board players: only name, team, status", b0.players.length === 12 && b0.players.every(x => same(x, ["name", "team", "status"])),
+         Object.keys(b0.players[0]).join());
+  expect("Board teams: only name, wins", b0.teams.every(x => same(x, ["name", "wins"])), Object.keys(b0.teams[0]).join());
+  expect("Board values are plain text and numbers (no Player objects)",
+         b0.players.every(x => typeof x.name === "string" && typeof x.team === "string" && typeof x.status === "string") &&
+         b0.teams.every(x => typeof x.wins === "number"));
+  const hidden = /"(type|attrs|hearts|glitches|earned|skim|skimUsed|cashOutUsed|pathProgress|gifts|caughtBy|focus|grit)"/;
+  expect("Board JSON has no type, attributes, hearts, gifts, Skim or Cash Out", !hidden.test(JSON.stringify(b0)));
+
+  // The 5 statuses.
+  const st = p => g.board().players.find(x => x.name === p.name).status;
+  const [pA, pR, pG, pS, pI] = ps;
+  pR.attrs.grit = 0; pR.hearts.empty();          // cannot pay 3 even with hearts
+  pG.attrs.focus = -1;                           // below 0
+  pS.glitches = 2;                               // Stuck
+  pI.idle = true;                                // missed an Attendance check (Part 8 sets this)
+  expect("Status Active", st(pA) === "Active", st(pA));
+  expect("Status At risk (same rule as the HUD flag)", st(pR) === "At risk" && pR.flag() === "At risk", st(pR));
+  expect("Status Glitching", st(pG) === "Glitching", st(pG));
+  expect("Status Stuck", st(pS) === "Stuck", st(pS));
+  expect("Status Idle", st(pI) === "Idle", st(pI));
+  pR.attrs.grit = 6; pR.hearts.refill(); pR.hearts.refill(); pR.hearts.refill();
+  expect("Status updates live (At risk back to Active)", st(pR) === "Active", st(pR));
+  pG.attrs.focus = 4; pS.glitches = 0; pI.idle = false;
+
+  // Play all 6 levels with bots; check team wins after each trial.
+  let ok = true, detail = "";
+  for (let n = 1; n <= 6; n++) {
+    g.startNextRound();
+    EP.Bots.openFloor(g, rng); g.advance();
+    const before = g.board().teams.map(x => x.wins);
+    EP.Bots.trial(g, rng);
+    const after = g.board().teams.map(x => x.wins);
+    const winners = ts.map(t => t.won);
+    const right = after.every((w, i) => w === before[i] + (winners[i] ? 1 : 0)) && winners.filter(Boolean).length === 2;
+    if (!right) { ok = false; detail = "Level " + n + ": " + before + " > " + after; }
+    if (n === 5) {
+      const s5 = g.board().submissions;
+      expect("Level 5 submissions appear on the board with name and level",
+             s5.length === 12 && s5.every(x => x.level === 5 && x.text === "Bot answer" && same(x, ["level", "name", "text"])),
+             s5.length + " entries");
+    }
+    g.payTrialCosts(); g.advance();
+    EP.Bots.accusations(g, rng); g.endGlitchReport(); g.advance();
+    EP.Bots.gifts(g, rng); g.advance(); g.lockIn(); g.advance();
+    g.computeEarnings(); EP.Bots.statsUpdate(g); g.finishRound();
+  }
+  expect("Team wins update after every trial (2 winners each level)", ok, detail);
+  expect("Team wins add up to 12 after 6 levels", g.board().teams.reduce((s, x) => s + x.wins, 0) === 12,
+         g.board().teams.map(x => x.name + ":" + x.wins).join(" "));
+  const subs = g.board().submissions;
+  expect("Level 6 submissions added after Level 5's",
+         subs.filter(x => x.level === 5).length === 12 && subs.filter(x => x.level === 6).length > 0 &&
+         subs.findIndex(x => x.level === 6) > subs.map(x => x.level).lastIndexOf(5),
+         subs.filter(x => x.level === 6).length + " at Level 6");
+  expect("No submissions on the board before Level 5", b0.submissions.length === 0);
+}
+
 // Hearts: only its own methods change the count.
 {
   const h = new EP.Hearts();

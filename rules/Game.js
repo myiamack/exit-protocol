@@ -33,6 +33,7 @@
       this.round = null;
       this.log = [];
       this.prompts = [];         // game record: the prompt used at each judged level { level, index, text, custom }
+      this.submissions = [];     // game record: Level 5-6 submissions once writing closes { level, name, text }
     }
 
     teamOf(p) { return this.teams.find(t => t.has(p)); }
@@ -147,11 +148,16 @@
       const jt = this.judged();
       p.markActive(now);
       const r = jt.submit(p, text);
-      if (r.ok && jt.allSubmitted(this.players)) { jt.closeWriting(); r.closed = true; }
+      if (r.ok && jt.allSubmitted(this.players)) { this.closeWriting(); r.closed = true; }
       return r;
     }
-    /* The 3-minute timer ran out (or the host closes it). */
-    closeWriting() { this.judged().closeWriting(); }
+    /* The 3-minute timer ran out (or the host closes it). Submissions go on the game record. */
+    closeWriting() {
+      const jt = this.judged();
+      if (jt.writing !== "open") return;
+      jt.closeWriting();
+      for (const [p, text] of jt.submissions) this.submissions.push({ level: this.level, name: p.name, text });
+    }
     startVote() {
       const jt = this.judged();
       if (jt.writing === "open") throw new Error("Writing is still open. Close it first (closeWriting).");
@@ -268,6 +274,16 @@
       }
       this.round.gritBonus = gritBonus;
       return gritBonus;
+    }
+
+    /* Progress board: read-only, open to every player at any time. Returns new plain objects with only
+       these fields, so screen code never reaches type, attributes, hearts, gifts, Skim or Cash Out. */
+    board() {
+      return {
+        players: this.players.map(p => ({ name: p.name, team: this.teamOf(p).name, status: p.boardStatus() })),
+        teams: this.teams.map(t => ({ name: t.name, wins: t.trialWins })),
+        submissions: this.submissions.map(s => ({ level: s.level, name: s.name, text: s.text })),
+      };
     }
 
     /* Level 7 */

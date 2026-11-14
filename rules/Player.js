@@ -47,6 +47,7 @@
 
       this.hearts = new EP.Hearts();
       this.glitches = 0;
+      this.idle = false;          // set by the Attendance check (Part 8); idle until the next input
       this.lastActivity = null;   // time of the last key, click or touch (read by the Attendance check, Part 7)
 
       // second path
@@ -87,6 +88,13 @@
       if (this.isGlitching()) return "Glitching";
       if (this.isAtRisk()) return "At risk";
       return "OK";
+    }
+    /* Progress board status: Stuck, Idle, Glitching, At risk or Active. Same At risk rule as flag(). */
+    boardStatus() {
+      if (this.isStuck()) return "Stuck";
+      if (this.idle) return "Idle";
+      const f = this.flag();
+      return f === "OK" ? "Active" : f;
     }
 
     /* Stat abilities (Part 4b). The stat's value right now: negative counts as 0, max 10. */

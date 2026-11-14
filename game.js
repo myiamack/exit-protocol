@@ -391,6 +391,7 @@ function chrome(){
   document.body.classList.toggle("menucur",S.step<=2);
   $("#topbar").hidden=S.step===0;
   $("#whoName").textContent=shownName();
+  $("#boardBtn").hidden=!(G&&S.step>=5);   /* Progress board: from the Level 1 briefing on */
   $("#where").textContent=inGame?"Level 1 · Boot Up":STEPS[S.step];
   $("#stage").classList.toggle("boxed",S.step>=3);
   $("#steps").hidden=S.step<=1||(S.step===4&&!S.arrived);
@@ -828,7 +829,7 @@ function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
   return{label:"USE",ok:false};
 }
 function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"||a.act==="npc"?a.act:"room";S.panelAt={room:S.wroom,x:S.pos.x,y:S.pos.y};render()}
-addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT")return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"){if(S.panel){S.panel=false;if(!useAction().ok){render();return}}doUse()}/* E with a popup open: close it, open the new interaction */if(k==="m"&&!e.repeat)toggleMinimap()});
+addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT"||BOARD.isOpen())return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"){if(S.panel){S.panel=false;if(!useAction().ok){render();return}}doUse()}/* E with a popup open: close it, open the new interaction */if(k==="m"&&!e.repeat)toggleMinimap()});
 /* Escape closes any open popup, same as its X: room and ghost panels, and the whisper box. Works wherever focus is. */
 addEventListener("keydown",e=>{if(e.key!=="Escape"&&e.key!=="Esc")return;const w=$("#whisper");if(!w.hidden)w.hidden=true;if(S.panel){S.panel=false;render()}});
 addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;W.keys[k]=false});
@@ -836,7 +837,7 @@ addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;
 /* ---------- render + bind ---------- */
 function render(){
   if(S.step===7&&!S.sop.pile.length&&!S.sop.built.length)S.sop.pile=shuffle([...SOP,DECOY]);
-  stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();
+  stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();BOARD.refresh();
   document.body.classList.toggle("mapscreen",!!$("#world"));
   /* Map screens: the name bar and stat bar get their own rows above the scroll area, so nothing scrolls under them. */
   {const top=$("#topbar"),hud=$("#hud"),wrap=$(".wrap");if($("#world")){if(hud.parentNode!==document.body){document.body.insertBefore(top,wrap);document.body.insertBefore(hud,wrap)}}
@@ -967,6 +968,9 @@ setInterval(ghostHop,2600);setTimeout(ghostHop,400);
 document.addEventListener("click",e=>{const g=e.target.closest&&e.target.closest(".gwalk");if(!g||g.getAttribute("opacity")==="0")return;const gh=GHOSTS[+g.dataset.ghost];const w=$("#whisper");w.innerHTML=`<b>${gh.n}</b> whispers: “${esc(gh.line)}”`;w.hidden=false;clearTimeout(w._t);w._t=setTimeout(()=>w.hidden=true,6000)});
 $("#navBack").onclick=()=>{if(!canBack())return;if(S.step===1&&S.menu!=="map"){S.menu="map";render();return}if(S.step===1){signOut();return}go(S.step-1)};
 $("#navNext").onclick=goForward;
+/* Progress board: read-only, open at any time in the game. Data comes only from Game.board(). */
+const BOARD=BoardView.mount(()=>G?G.board():null);
+$("#boardBtn").onclick=()=>BOARD.open();
 $("#facBtn").onclick=e=>{const v=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",v);$("#fac").hidden=!v};
 /* Host Script: only the host sees the button. Solo testing: Ctrl+Shift+H turns host view on or off. */
 addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==="h")))return;e.preventDefault();

@@ -28,6 +28,7 @@
       const w = Trial.winners(order.length);
       this.ranking = order.map((r, i) => {
         r.team.won = i < w;
+        if (r.team.won) r.team.trialWins += 1;
         return { ...r, place: i + 1, won: r.team.won };
       });
       return this.ranking;
