@@ -11,7 +11,7 @@
 
     /* Returns null if allowed, or a reason string if not. */
     static check(actor, target, team) {
-      if (actor.type !== "contra") return "Only Contrarians can sabotage.";
+      if (!actor.type.canSabotage()) return "Only Contrarians can sabotage.";
       if (actor.isStuck()) return "You are Stuck.";
       if (actor.sabotageLocked) return "You were caught. No more sabotage this game.";
       if (target === actor) return "You cannot sabotage yourself.";

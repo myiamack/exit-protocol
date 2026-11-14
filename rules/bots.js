@@ -7,13 +7,13 @@
 
   const Bots = {
     SETTINGS: { sabotageRate: 0.5, victimAccuses: 0.9, otherAccuses: 0.25, idleAccuses: 0.05,
-                pickSaboteur: 1 / 3, nonCoopGifts: 0.25, acceptGifts: 0.8, trialWinRate: 0.5 },
+                pickSaboteur: 1 / 3, giftRate: { coop: 1, indep: 0.25, contra: 0.25 }, acceptGifts: 0.8, trialWinRate: 0.5 },
 
     /* Typical build: 5/4/3/2/1, bonus attributes first, penalty last. */
     typicalSpend(type) {
-      const t = EP.Player.TYPES[type];
-      const others = KEYS().filter(k => !t.bonus.includes(k) && k !== t.pen);
-      const order = [...t.bonus, ...others, t.pen];
+      const t = EP.CharacterType.get(type);
+      const others = KEYS().filter(k => !t.bonus.includes(k) && k !== t.penalty);
+      const order = [...t.bonus, ...others, t.penalty];
       const spend = {};
       order.forEach((k, i) => { spend[k] = [5, 4, 3, 2, 1][i]; });
       return spend;
@@ -26,7 +26,7 @@
     openFloor(game, rng) {
       for (const team of game.teams) {
         for (const p of team.members) {
-          if (!p.isBot || p.type !== "contra" || p.isStuck() || p.sabotageLocked) continue;
+          if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageLocked) continue;
           if (!p.hearts.has(EP.Sabotage.cost(p))) continue;
           if (rng() >= Bots.SETTINGS.sabotageRate) continue;
           const targets = team.mates(p).filter(q => !q.isStuck());
@@ -68,11 +68,12 @@
     gifts(game, rng) {
       for (const team of game.teams) {
         for (const r of team.members) {
-          if (r.isStuck() || !r.isGlitching() || r.type === "indep") continue;
+          if (r.isStuck() || !r.isGlitching() || !r.type.canAcceptGifts()) continue;
           for (const g of team.mates(r)) {
             if (!g.isBot || g.isStuck() || !r.isGlitching()) continue;
             if (EP.Gift.pending(game.round).some(x => x.receiver === r)) continue;
-            if (g.type !== "coop" && rng() >= Bots.SETTINGS.nonCoopGifts) continue;
+            const rate = Bots.SETTINGS.giftRate[g.type.key];   // Cooperative always, others 25%
+            if (rate < 1 && rng() >= rate) continue;
             const pts = g.hearts.has(EP.Gift.cost(g, 2)) ? 2 : g.hearts.has(EP.Gift.cost(g, 1)) ? 1 : 0;
             if (!pts) continue;
             const res = game.gift(g, r, pts);
@@ -119,7 +120,7 @@
         const open = KEYS().filter(k => a[k] < p.max(k));
         if (!open.length) break;
         let pool = open;
-        if (i % 2 === 0) { const b = p.typeInfo.bonus.filter(k => a[k] < p.max(k)); if (b.length) pool = b; }
+        if (i % 2 === 0) { const b = p.type.bonus.filter(k => a[k] < p.max(k)); if (b.length) pool = b; }
         add(pool.reduce((m, k) => (a[k] < a[m] ? k : m), pool[0]));
         i += 1;
       }
