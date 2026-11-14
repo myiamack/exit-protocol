@@ -4,7 +4,9 @@
   const EP = root.EP || (root.EP = {});
 
   const KEYS = ["focus", "initiative", "collab", "composure", "grit"];
-  const GIFT_TIE_ORDER = ["focus", "collab", "initiative", "grit", "composure"];
+  const TIE_ORDER = ["focus", "collab", "initiative", "grit", "composure"];   // the usual tie order
+  const GIFT_TIE_ORDER = TIE_ORDER;
+  const CAUGHT_LOSS = 1;   // points a caught Contrarian loses, once per round
 
   const START_EACH = 1;      // every attribute starts at 1
   const SPEND = 15;          // points the player spends at creation
@@ -107,14 +109,25 @@
 
     /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
     wasCaughtBy(teamId) { return this.caughtBy.includes(teamId); }
+    /* Caught: lose 1 point from the highest attribute, once per round (on any team; more than one
+       correct accuser in a round is still one catch). Ties: Focus, Collaboration, Initiative, Grit, Composure.
+       Returns the attribute that lost the point, or null if this round's catch already cost it. */
     markCaughtBy(teamId) {
-      this.caughtThisRound = true;
       if (!this.wasCaughtBy(teamId)) this.caughtBy.push(teamId);
+      if (this.caughtThisRound) return null;
+      this.caughtThisRound = true;
+      const k = this.highestKeyIn(TIE_ORDER);
+      this.lose(k, CAUGHT_LOSS);   // hearts cover any shortfall below 0, as for any cause
+      this.caughtLoss = k;
+      return k;
     }
+    /* Highest attribute; ties go to the first in the given order. */
+    highestKeyIn(order) { return order.reduce((m, k) => (this.attrs[k] > this.attrs[m] ? k : m), order[0]); }
 
     resetRoundFlags() {
       this.sabotagesThisRound = 0;
       this.caughtThisRound = false;
+      this.caughtLoss = null;   // attribute that lost a point when caught this round (own screen only)
       this.wasSabotagedThisRound = false;
       this.accusedThisRound = false;
       this.correctAccusation = false;
@@ -262,6 +275,8 @@
   }
 
   Player.ABILITY = ABILITY;
+  Player.TIE_ORDER = TIE_ORDER;
+  Player.CAUGHT_LOSS = CAUGHT_LOSS;
   Player.AT_RISK_COST = AT_RISK_COST;
   Player.GRAD_TOTAL = GRAD_TOTAL;
   Player.GRAD_MIN = GRAD_MIN;

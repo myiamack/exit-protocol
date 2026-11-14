@@ -78,7 +78,7 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 |---|---|---|---|---|---|---|
 | Cooperative | Collaboration, Composure | Initiative | 1 heart per point | Cheapest gifts | Empathy: loses 1 heart when a teammate's glitch locks in | **Lifeline: 1** rescue (a gift that cancels a teammate's glitch) |
 | Independent | Focus, Grit | Collaboration | 1 point costs 2, 2 points cost 3 | Cash Out: once per game, spend 2 hearts for 1 point; needs full hearts | Cannot accept gifts (refused and refunded to the giver) | Auditor: 1 own correct accusation |
-| Contrarian | Initiative, Grit | Composure | 1 heart per point | Skim: +1 point per uncaught sabotage round, max 2 per game | Sabotage costs hearts. If caught: no more sabotage this game, Exploit lost | **Exploit: 3** uncaught sabotage rounds (was 2, changed after playtest round 2) |
+| Contrarian | Initiative, Grit | Composure | 1 heart per point | Skim: +1 point per uncaught sabotage round, max 2 per game | Sabotage costs hearts. If caught: lose 1 point from highest attribute (once per round), no sabotage while on a team that caught them. Exploit is never lost | **Exploit: 3** uncaught sabotage rounds (was 2, changed after playtest round 2) |
 
 ### Hearts
 - Starts at 3. Cap 3. Refills 1 at the end of each round.
@@ -144,7 +144,8 @@ SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 t
 - Every round the all-hands asks: "Suspect a teammate? Accuse or Skip." Never say or imply that sabotage happened. Victims still get their private notice.
 - Correct: +1 point, added at Stats Update. Counts toward Auditor for Independents.
 - Wrong: accuser loses 1 point from their highest attribute. Can cause a glitch.
-- A Contrarian caught by any correct accusation loses 0 points, cannot sabotage again, and loses Exploit.
+- A Contrarian caught by a correct accusation loses 1 point from their highest attribute (ties: Focus, Collaboration, Initiative, Grit, Composure). This applies to every catch, on any team. More than one correct accuser in the same round is still one catch (1 point). Hearts cover a shortfall below 0, as for any cause. That round's sabotage does not count toward Exploit or Skim. They cannot sabotage while on a team that caught them; switching teams allows sabotage again. Exploit is never lost.
+- Caught notice: the caught player sees which attribute lost the point. Teammates see only that a point was lost, never the attribute.
 
 ### Sign in and sign out
 - Sign out keeps the display name only. It returns on the next sign-in with the same email. Look, tool and progress reset.
@@ -231,6 +232,8 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    2. A Contrarian who switches teams after every catch.
    3. Everyone picks the same type.
    4. Players form as many 3-person teams as possible to farm the small-team heart (Part 6).
+   First results: 1 not a cheese (-2 to -3). 2 cheese (+3.6 to +10.6). 3 all Cooperative is a cheese (+23 to +28). 4 not a cheese (small teams lose); but odd team counts lift win rates (rounding up), and the player vote favors bigger teams (Levels 5-6: 4-person teams win 73%, 3-person 45%).
+   Fix (a), switcher: a caught Contrarian loses 1 point from their highest attribute, once per round, on any team (see Accusations). Result: switcher edge +9.1 / +6.3 / +1.4 (16 / 20 / 24). Not closed at 16 and 20: the edge comes from extra Exploit progress, and Exploit wins without graduating. All Contrarians are weaker (type gap 17.7 typical, 23.4 aware).
    Tests/check_balance.js stays as a general check (type gap 1 to 3 under random mixes, typical and aware). Known issues it shows:
    1. Aware spending finishes lower than typical, because free heart refills make paying trial costs with hearts cheaper than with points. Careful play must not lose to careless play.
    2. Independents lead because Auditor gets easier as Contrarians increase. The gap grows from 1.6 at 2 Contrarians to 13.3 at 6 (16 players, typical spending).
