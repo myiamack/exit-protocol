@@ -66,7 +66,7 @@ for (let g = 0; g < GAMES; g++) {
 }
 
 console.log("Games: " + GAMES + "  (16 players, 4 teams, top half win each trial, 1-in-3 guessing)\n");
-console.log("Overall graduation:  " + pct("grad") + "   target about 52%");
+console.log("Overall graduation:  " + pct("grad") + "   target about 59% (16 players, Part 4b)");
 console.log("Stuck:               " + pct("stuck") + "\n");
 console.log("Type          Win      Graduate   Second path");
 for (const [t, n] of [["coop", "Cooperative"], ["indep", "Independent"], ["contra", "Contrarian"]]) {

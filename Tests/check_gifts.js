@@ -9,6 +9,7 @@ const path = require("path");
 ["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
+const NO = () => 0.999;   // rng that never fires an ability (below 10)
 
 let pass = 0, fail = 0;
 function expect(label, ok, detail) {
@@ -32,7 +33,7 @@ function setup() {
 }
 const set = (p, a) => { p.attrs = { ...a }; };
 const sendAccept = (round, g, r, team, pts) => {
-  const res = EP.Gift.apply(round, g, r, team, pts);
+  const res = EP.Gift.apply(round, g, r, team, pts, NO);
   return res.ok && res.gift.status === "pending" ? EP.Gift.accept(round, res.gift) : res;
 };
 function gameOf(types) {
@@ -45,7 +46,7 @@ console.log("-- Accept, Decline, no answer");
 { // Sending: giver pays now, gift waits for an answer
   const { ps: [g, r], team, round } = setup();
   set(r, { focus: 5, initiative: 4, collab: 6, composure: 2, grit: 7 });
-  const res = EP.Gift.apply(round, g, r, team, 2);
+  const res = EP.Gift.apply(round, g, r, team, 2, NO);
   expect("Sent gift is pending and nothing has landed yet", res.ok && res.gift.status === "pending" && r.attrs.composure === 2, res.gift && res.gift.status);
   expect("Giver pays when sending (3 -> 1)", g.hearts.count === 1, g.hearts.count);
   const acc = EP.Gift.accept(round, res.gift);
@@ -56,7 +57,7 @@ console.log("-- Accept, Decline, no answer");
 { // Decline: points go back to the giver
   const { ps: [g, r], team, round } = setup();
   set(r, { focus: 5, initiative: 4, collab: 6, composure: 2, grit: 7 });
-  const res = EP.Gift.apply(round, g, r, team, 2);
+  const res = EP.Gift.apply(round, g, r, team, 2, NO);
   const dec = EP.Gift.decline(round, res.gift);
   expect("Decline: nothing lands", dec.ok && r.attrs.composure === 2, JSON.stringify(r.attrs));
   expect("Decline: giver gets the hearts back (1 -> 3)", g.hearts.count === 3, g.hearts.count);
@@ -140,14 +141,14 @@ console.log("-- Who can gift");
 {
   const { ps: [g, , ind], team, round } = setup();
   const before = g.hearts.count;
-  const res = EP.Gift.apply(round, g, ind, team, 1);
+  const res = EP.Gift.apply(round, g, ind, team, 1, NO);
   expect("Independent refuses automatically and the giver keeps hearts", res.refused && res.gift.status === "refused" && g.hearts.count === before);
 }
 {
   const { ps: [g, r, , c], team, round } = setup();
   r.glitches = 2;
-  expect("Stuck player cannot receive a gift", !EP.Gift.apply(round, g, r, team, 1).ok);
-  expect("Stuck player cannot give a gift", !EP.Gift.apply(round, r, c, team, 1).ok);
+  expect("Stuck player cannot receive a gift", !EP.Gift.apply(round, g, r, team, 1, NO).ok);
+  expect("Stuck player cannot give a gift", !EP.Gift.apply(round, r, c, team, 1, NO).ok);
 }
 {
   const { ps, teams, game } = gameOf(Array(8).fill("coop"));

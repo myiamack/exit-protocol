@@ -6,8 +6,8 @@
     /* 1 heart for the first in a round, 2 for each extra in the same round. */
     static cost(actor) { return actor.sabotagesThisRound === 0 ? 1 : 2; }
 
-    /* 2 points, or 1 if the target's Composure is 6 or more. */
-    static drain(target) { return target.attrs.composure >= 6 ? 1 : 2; }
+    /* 2 points. Composure x 10% chance it is only 1 (Part 4b). */
+    static drain(target, rng) { return target.rollAbility("composure", rng) ? 1 : 2; }
 
     /* Returns null if allowed, or a reason string if not. */
     static check(actor, target, team) {
@@ -22,13 +22,13 @@
     }
 
     /* Apply it. The victim is told privately (victimNotice). */
-    static apply(round, actor, target, team) {
+    static apply(round, actor, target, team, rng) {
       const why = Sabotage.check(actor, target, team);
       if (why) return { ok: false, reason: why };
       const cost = Sabotage.cost(actor);
       actor.hearts.spend(cost);
       actor.sabotagesThisRound += 1;
-      const drain = Sabotage.drain(target);
+      const drain = Sabotage.drain(target, rng);
       target.lose(round.attr, drain);   // hearts cover a drain below 0
       target.wasSabotagedThisRound = true;
       const rec = { actor, target, drain, cost };

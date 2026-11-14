@@ -4,6 +4,7 @@ const path = require("path");
 ["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
+const NO = () => 0.999;   // rng that never fires an ability (below 10)
 
 let pass = 0, fail = 0;
 function expect(label, ok, detail) {
@@ -103,8 +104,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
   const [c, v] = ps;
   const tA = new EP.Team({ id: "A", name: "A", members: ps.slice(0, 4) });
   const r1 = new EP.Round(1);
-  expect("Sabotage on own team allowed before being caught", EP.Sabotage.apply(r1, c, v, tA).ok);
-  const acc = EP.Accusation.apply(r1, v, c, tA);
+  expect("Sabotage on own team allowed before being caught", EP.Sabotage.apply(r1, c, v, tA, NO).ok);
+  const acc = EP.Accusation.apply(r1, v, c, tA, NO);
   expect("Correct accusation catches the Contrarian", acc.ok && acc.correct && c.caughtThisRound);
   expect("Caught list holds team A only", c.caughtBy.join(",") === "A", c.caughtBy.join(","));
   expect("Caught Contrarian loses 0 points", c.total() === 24, c.total());
@@ -112,14 +113,92 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("Caught round gives no Skim", c.takeSkim() === 0);
   c.resetRoundFlags();
   const r2 = new EP.Round(2);
-  const again = EP.Sabotage.apply(r2, c, v, tA);
+  const again = EP.Sabotage.apply(r2, c, v, tA, NO);
   expect("Cannot sabotage team A again", !again.ok, again.reason);
   // Switch teams: leave A, join B.
   tA.members.splice(tA.members.indexOf(c), 1);
   const tB = new EP.Team({ id: "B", name: "B", members: [c, ...ps.slice(4)] });
-  expect("On team B, sabotage is allowed again", EP.Sabotage.apply(r2, c, ps[4], tB).ok);
+  expect("On team B, sabotage is allowed again", EP.Sabotage.apply(r2, c, ps[4], tB, NO).ok);
   expect("Exploit still counts after being caught", c.creditPath(EP.CharacterType.PATH_EVENTS.uncaughtSabotage) && c.pathProgress === 1, c.pathProgress);
   expect("Uncaught round gives Skim", c.takeSkim() === 1);
+}
+
+// Part 4b: stat abilities. "at" makes an rng that always returns x.
+{
+  const at = x => () => x;
+  const set = (p, a) => { p.attrs = { focus: 5, initiative: 5, collab: 5, composure: 5, grit: 5, ...a }; };
+  const ps = ["coop", "coop", "indep", "contra", "coop", "coop", "coop", "coop"].map((t, i) => EP.Bots.makePlayer(200 + i, "S" + i, t));
+  const [a, b, ind, con] = ps;
+  const team = new EP.Team({ id: "S", name: "S", members: ps.slice(0, 4) });
+
+  set(a, { focus: -2 }); expect("Negative stat counts as 0", a.abilityValue("focus") === 0);
+  set(a, { focus: 12 }); expect("Stat above 10 counts as 10", a.abilityValue("focus") === 10);
+  set(a, { focus: 6 });
+  expect("Own screen line: 'Focus 6: 60% safe accusation'", a.abilityLines()[0].text === "Focus 6: 60% safe accusation", a.abilityLines()[0].text);
+  throws("An ability roll without the seeded rng is refused", () => a.rollAbility("focus"));
+
+  // Focus: wrong accusation. Focus 6 = 60%.
+  let r = new EP.Round(1); let t0 = a.total();
+  let acc = EP.Accusation.apply(r, a, b, team, at(0.59));
+  expect("Focus 6, roll 0.59: wrong accusation costs nothing", acc.safe && a.total() === t0);
+  a.accusedThisRound = false; r = new EP.Round(1); t0 = a.total();
+  acc = EP.Accusation.apply(r, a, b, team, at(0.61));
+  expect("Focus 6, roll 0.61: wrong accusation costs 1", !acc.safe && a.total() === t0 - 1);
+
+  // Collaboration: free gift. Collab 3 = 30%.
+  set(a, { collab: 3 }); set(b, { composure: 2 });
+  r = new EP.Round(1);
+  let g = EP.Gift.apply(r, a, b, team, 2, at(0.29));
+  expect("Collab 3, roll 0.29: gift costs 0 hearts", g.ok && g.free && a.hearts.count === 3, a.hearts.count);
+  EP.Gift.decline(r, g.gift);
+  expect("Declined free gift refunds nothing", a.hearts.count === 3, a.hearts.count);
+  g = EP.Gift.apply(r, a, b, team, 2, at(0.31));
+  expect("Collab 3, roll 0.31: gift costs 2 hearts", g.ok && !g.free && a.hearts.count === 1, a.hearts.count);
+  EP.Gift.decline(r, g.gift);
+  g = EP.Gift.apply(r, a, ind, team, 1, at(0));
+  expect("Refused gift: no Collaboration roll, nothing spent", g.refused && !g.free && a.hearts.count === 3);
+  // Free gift that overflows: no refund (it cost nothing).
+  set(b, { focus: 10, collab: 10, initiative: b.max("initiative"), grit: 10, composure: 10 });
+  a.hearts.spend(1);
+  g = EP.Gift.apply(r, a, b, team, 1, at(0));
+  EP.Gift.accept(r, g.gift);
+  expect("Free gift that cannot land refunds nothing", g.free && a.hearts.count === 2, a.hearts.count);
+  a.hearts.refill();
+
+  // Composure: drain. Composure 6 = 60%.
+  set(b, { composure: 6 });
+  expect("Composure 6, roll 0.59: drain 1", EP.Sabotage.drain(b, at(0.59)) === 1);
+  expect("Composure 6, roll 0.61: drain 2", EP.Sabotage.drain(b, at(0.61)) === 2);
+  set(b, { composure: 9 });
+  expect("Old rule gone: Composure 9, roll 0.95: drain 2", EP.Sabotage.drain(b, at(0.95)) === 2);
+
+  // Grit: Grit 10 = 50%.
+  set(a, { grit: 10 });
+  expect("Grit 10, roll 0.49: extra heart", a.rollAbility("grit", at(0.49)));
+  expect("Grit 10, roll 0.51: no extra heart", !a.rollAbility("grit", at(0.51)));
+
+  // Initiative: vote points x (1 + Initiative / 10).
+  const vt = [0, 1].map(i => new EP.Team({ id: "V" + i, name: "V" + i, members: ps.slice(4 + i * 2, 6 + i * 2) }));
+  const tm = [new EP.Team({ id: "W", name: "W", members: [ps[0]] }), ...vt];
+  set(ps[0], { initiative: 5 });
+  const v = new EP.Vote(tm, at(0.5));
+  v.cast(ps[0], [ps[4], ps[5], ps[6]]);
+  const tl = v.tally();
+  const tot = name => tl.find(x => x.team.name === name).total;
+  expect("Initiative 5: 1st+2nd = (3+2) x 1.5 = 7.5, 3rd = 1 x 1.5 = 1.5", tot("V0") === 7.5 && tot("V1") === 1.5, tot("V0") + " / " + tot("V1"));
+
+  // Light influence: 0.5 x (team average minus all teams' average), Levels 1-4.
+  const i1 = new EP.Team({ id: "I1", name: "I1", members: ps.slice(4, 6) });
+  const i2 = new EP.Team({ id: "I2", name: "I2", members: ps.slice(6, 8) });
+  set(ps[4], { grit: 8 }); set(ps[5], { grit: 6 }); set(ps[6], { grit: 2 }); set(ps[7], { grit: -1 });
+  const inf = EP.Trial.influence(new EP.Round(1), [i1, i2]);   // averages 7 and 1, all 4
+  expect("Influence: +1.5 and -1.5 (negative grit counts as 0)", inf.get(i1) === 1.5 && inf.get(i2) === -1.5, inf.get(i1) + " / " + inf.get(i2));
+  const at2 = new EP.Trial.AutoTrial(at(0.5)).run(new EP.Round(2), [i1, i2]);
+  expect("AutoTrial: base is a whole number 0 to 7, score = base + influence",
+         at2.every(x => Number.isInteger(x.base) && x.base >= 0 && x.base <= 7 && x.score === x.base + x.influence));
+  const sop = new EP.Trial.SopTrial(at(0.5)); sop.setScore(i2, 7); sop.setScore(i1, 5);
+  const sr = sop.run(new EP.Round(1), [i1, i2]);
+  expect("SOP score includes influence: 5 + 1.5 = 6.5 beats 7 - 1.5 = 5.5", sr[0].team === i1 && sr[0].score === 6.5, sr.map(x => x.score).join(" / "));
 }
 
 // Hearts: only its own methods change the count.

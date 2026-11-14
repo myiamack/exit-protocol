@@ -81,7 +81,7 @@
     sabotage(actor, target) {
       const why = this.wrongStep("openFloor");
       if (why) return { ok: false, reason: why };
-      return EP.Sabotage.apply(this.round, actor, target, this.teamOf(actor));
+      return EP.Sabotage.apply(this.round, actor, target, this.teamOf(actor), this.rng);
     }
 
     /* 2. Trial. The round's Trial ranks the teams; the top half win.
@@ -119,7 +119,7 @@
     accuse(accuser, target) {
       const why = this.wrongStep("glitchReport") || (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null);
       if (why) return { ok: false, reason: why };
-      return EP.Accusation.apply(this.round, accuser, target, this.teamOf(accuser));
+      return EP.Accusation.apply(this.round, accuser, target, this.teamOf(accuser), this.rng);
     }
     endGlitchReport() {
       this.mustBe("glitchReport");
@@ -133,7 +133,7 @@
       const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
         "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
       if (why) return { ok: false, reason: why };
-      return EP.Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts);
+      return EP.Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts, this.rng);
     }
     /* The receiver answers a pending gift: accept (true) or decline (false). */
     answerGift(gift, accept) {
@@ -198,7 +198,15 @@
       const unplaced = this.players.find(p => !p.isStuck() && p.earned > 0);
       if (unplaced) throw new Error(unplaced.name + " has not placed their points.");
       this.once("finishRound");
-      for (const p of this.players) if (!p.isStuck()) p.hearts.refill();
+      const gritBonus = [];
+      for (const p of this.players) {
+        if (p.isStuck()) continue;
+        p.hearts.refill();
+        // Grit: after the normal refill, Grit x 5% chance of +1 heart, capped (Part 4b).
+        if (p.rollAbility("grit", this.rng)) { p.hearts.refill(); gritBonus.push(p); }
+      }
+      this.round.gritBonus = gritBonus;
+      return gritBonus;
     }
 
     /* Level 7 */

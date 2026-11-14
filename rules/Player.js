@@ -13,6 +13,15 @@
   const GRAD_TOTAL = 24, GRAD_MIN = 2;
   const SKIM_MAX = 2, CASHOUT_USES = 1, CASHOUT_COST = 2;
 
+  /* Stat abilities (Part 4b). per = chance per stat point. */
+  const ABILITY = {
+    focus:      { name: "Focus",         per: 0.10, what: "safe accusation" },
+    collab:     { name: "Collaboration", per: 0.10, what: "free gift" },
+    initiative: { name: "Initiative",    per: 0,    what: "vote points" },
+    grit:       { name: "Grit",          per: 0.05, what: "extra heart at round end" },
+    composure:  { name: "Composure",     per: 0.10, what: "sabotage drains only 1" },
+  };
+
   class Player {
     /* type: a key ("coop", "indep", "contra") or a CharacterType.
        spend: { focus: n, ... } adding up to 15. Boost is added here. */
@@ -74,6 +83,26 @@
       if (this.isGlitching()) return "Glitching";
       if (this.isAtRisk()) return "At risk";
       return "OK";
+    }
+
+    /* Stat abilities (Part 4b). The stat's value right now: negative counts as 0, max 10. */
+    abilityValue(k) { return Math.max(0, Math.min(10, this.attrs[k])); }
+    /* Chance (0 to 1) for the chance-based abilities. */
+    abilityChance(k) { return this.abilityValue(k) * ABILITY[k].per; }
+    /* Vote weight from Initiative: 1 + Initiative / 10. */
+    voteWeight() { return 1 + this.abilityValue("initiative") / 10; }
+    /* True if a chance ability fires. rng is the game's seeded rng. */
+    rollAbility(k, rng) {
+      if (typeof rng !== "function") throw new Error("rollAbility needs the game's seeded rng.");
+      return rng() < this.abilityChance(k);
+    }
+    /* Lines for this player's own screen only. Never show them for other players. */
+    abilityLines() {
+      return KEYS.map(k => {
+        const v = this.abilityValue(k), a = ABILITY[k];
+        const amount = k === "initiative" ? "x" + this.voteWeight().toFixed(1) : Math.round(v * a.per * 100) + "%";
+        return { key: k, value: v, text: a.name + " " + v + ": " + amount + " " + a.what };
+      });
     }
 
     /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
@@ -232,6 +261,7 @@
     }
   }
 
+  Player.ABILITY = ABILITY;
   Player.AT_RISK_COST = AT_RISK_COST;
   Player.GRAD_TOTAL = GRAD_TOTAL;
   Player.GRAD_MIN = GRAD_MIN;
