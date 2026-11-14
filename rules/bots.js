@@ -27,7 +27,7 @@
       for (const team of game.teams) {
         for (const p of team.members) {
           if (!p.isBot || p.type !== "contra" || p.isStuck() || p.sabotageLocked) continue;
-          if (p.backup < EP.Sabotage.cost(p)) continue;
+          if (!p.hearts.has(EP.Sabotage.cost(p))) continue;
           if (rng() >= Bots.SETTINGS.sabotageRate) continue;
           const targets = team.mates(p).filter(q => !q.isStuck());
           if (!targets.length) continue;
@@ -73,7 +73,7 @@
             if (!g.isBot || g.isStuck() || !r.isGlitching()) continue;
             if (EP.Gift.pending(game.round).some(x => x.receiver === r)) continue;
             if (g.type !== "coop" && rng() >= Bots.SETTINGS.nonCoopGifts) continue;
-            const pts = g.backup >= EP.Gift.cost(g, 2) ? 2 : g.backup >= EP.Gift.cost(g, 1) ? 1 : 0;
+            const pts = g.hearts.has(EP.Gift.cost(g, 2)) ? 2 : g.hearts.has(EP.Gift.cost(g, 1)) ? 1 : 0;
             if (!pts) continue;
             const res = game.gift(g, r, pts);
             if (res.ok && r.isBot) Bots.answer(game, res.gift, rng);

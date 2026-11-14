@@ -31,7 +31,7 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 ## Screen fixes queued (do after the refactor, step 4)
 
 - Points screen: show one number per stat, with the type bonus already applied. Bonus stats start at 3. Every stat can reach 10; weak stat max 4.
-- Use one name for backup everywhere. (Decide with me: "backup" or "hearts".)
+- Use one name for hearts everywhere. Done: "hearts" (code, screen text, this file).
 - Each type briefing shows the type's real drawback: Cooperative Empathy, Independent cannot accept gifts, Contrarian caught rules.
 
 ## Build path (decided)
@@ -46,7 +46,7 @@ Rule classes must contain **no screen code**. They only change numbers and retur
 
 | Class | Owns |
 |---|---|
-| Player | Type, 5 attributes, backup, glitch count, flags, second-path progress. Methods: pay trial cost, cover shortfall with backup, take points from highest, reboot, place earned points, status flags. |
+| Player | Type, 5 attributes, hearts (a Hearts object), glitch count, flags, second-path progress. Methods: pay trial cost, cover shortfall with hearts, take points from highest, reboot, place earned points, status flags. |
 | Team | Members, trial result for the round. |
 | Round | Level number, trial attribute, cost, judged or auto-scored, step order. |
 | Sabotage | Cost, drain, Composure shield, target rules. |
@@ -54,8 +54,9 @@ Rule classes must contain **no screen code**. They only change numbers and retur
 | Gift | Cost by type, Independent refusal and refund, overflow refund, Lifeline credit. |
 | Vote | Ranked top 3, team totals, top half wins, tie rule. |
 | Game | Runs rounds in step order, applies all rules, Stuck, graduation check, endings, host or no-host mode. |
+| Hearts | The heart count (start 3, cap 3). Only its methods change it: spend, refill, refund, lose, empty. Nothing else touches the number. |
 
-Small things (single attributes, backup pool, flags) are fields and methods inside these classes, not their own classes. Add a class later only if one gets too crowded.
+Small things (single attributes, flags) are fields and methods inside these classes, not their own classes. Add a class later only if one gets too crowded.
 
 ## Final rules
 
@@ -71,14 +72,14 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 ### Types
 | Type | Bonus | Penalty (max 4) | Gift cost | Incentive | Disincentive | Second path |
 |---|---|---|---|---|---|---|
-| Cooperative | Collaboration, Composure | Initiative | 1 backup per point | Cheapest gifts | Empathy: loses 1 backup when a teammate's glitch locks in | **Lifeline: 1** rescue (a gift that cancels a teammate's glitch) |
-| Independent | Focus, Grit | Collaboration | 1 point costs 2, 2 points cost 3 | Cash Out: once per game, spend 2 backup for 1 point; needs full backup | Cannot accept gifts (refused and refunded to the giver) | Auditor: 1 own correct accusation |
-| Contrarian | Initiative, Grit | Composure | 1 backup per point | Skim: +1 point per uncaught sabotage round, max 2 per game | Sabotage costs backup. If caught: no more sabotage this game, Exploit lost | **Exploit: 3** uncaught sabotage rounds (was 2, changed after playtest round 2) |
+| Cooperative | Collaboration, Composure | Initiative | 1 heart per point | Cheapest gifts | Empathy: loses 1 heart when a teammate's glitch locks in | **Lifeline: 1** rescue (a gift that cancels a teammate's glitch) |
+| Independent | Focus, Grit | Collaboration | 1 point costs 2, 2 points cost 3 | Cash Out: once per game, spend 2 hearts for 1 point; needs full hearts | Cannot accept gifts (refused and refunded to the giver) | Auditor: 1 own correct accusation |
+| Contrarian | Initiative, Grit | Composure | 1 heart per point | Skim: +1 point per uncaught sabotage round, max 2 per game | Sabotage costs hearts. If caught: no more sabotage this game, Exploit lost | **Exploit: 3** uncaught sabotage rounds (was 2, changed after playtest round 2) |
 
-### Backup
+### Hearts
 - Starts at 3. Cap 3. Refills 1 at the end of each round.
-- Covers any shortfall below 0, **from any cause** (trial cost, sabotage drain, wrong accusation): 1 backup per point in a bonus attribute, 2 backup per point in any other attribute.
-- Backup does not count toward graduation.
+- Covers any shortfall below 0, **from any cause** (trial cost, sabotage drain, wrong accusation): 1 heart per point in a bonus attribute, 2 hearts per point in any other attribute.
+- Hearts do not count toward graduation.
 
 ### Levels (Package A order; trial activities stay in their original levels)
 | Level | Trial activity | Attribute | Cost | Scored by |
@@ -95,25 +96,25 @@ If game.js scores any trial differently, show me and ask before changing it.
 
 ### Round step order (levels 1 to 6)
 1. **Open Floor:** Contrarians may sabotage. Any player may gift a teammate.
-2. **Trial:** every non-Stuck player pays the cost from the tested attribute. **Glitching players pay too.** Backup covers any shortfall.
+2. **Trial:** every non-Stuck player pays the cost from the tested attribute. **Glitching players pay too.** Hearts cover any shortfall.
 3. **Glitch Report:** accusations.
 4. **Gift window** (about 30 seconds): gifts to any teammate (see Gifts).
 5. **Lock-in:** any player still below 0 glitches. Reboot. Empathy.
-6. **Stats Update:** earn points, place them, refill backup by 1.
+6. **Stats Update:** earn points, place them, refill hearts by 1.
 
 ### Glitch, reboot, Stuck
 - Glitching: any attribute below 0. Exactly 0 is safe.
 - A gift that brings the attribute to 0 or more cancels the glitch.
-- Lock-in: glitch count +1. Reboot: take points evenly from the other attributes until the glitched one reaches 1. Any shortfall the others cannot cover is forgiven. Backup set to 0.
+- Lock-in: glitch count +1. Reboot: take points evenly from the other attributes until the glitched one reaches 1. Any shortfall the others cannot cover is forgiven. Hearts set to 0.
 - Second locked glitch: **Stuck**. Spectator for the rest of the game. Cannot be sabotaged.
-- At risk flag: shown if any attribute, plus the backup that could cover it, cannot pay a cost of 3. The check is fixed at 3 for every level (was 4, changed after playtest round 2). It is not the next trial's cost. The flag updates live, after every change.
+- At risk flag: shown if any attribute, plus the hearts that could cover it, cannot pay a cost of 3. The check is fixed at 3 for every level (was 4, changed after playtest round 2). It is not the next trial's cost. The flag updates live, after every change.
 - Other players see only flags (Glitching, At risk, Stuck), not numbers.
 
 ### Sabotage (Contrarian only)
 - Teammates only. Not Stuck targets.
-- Cost: 1 backup for the first in a round, 2 for each extra in the same round.
+- Cost: 1 heart for the first in a round, 2 for each extra in the same round.
 - Drain: 2 points from the target's trial attribute for this round. Only 1 if the target's Composure is 6 or more.
-- Backup covers a drain below 0, same as any shortfall.
+- Hearts cover a drain below 0, same as any shortfall.
 - The victim is told privately.
 
 ### Gifts
@@ -123,7 +124,7 @@ If game.js scores any trial differently, show me and ask before changing it.
 - Maxed attribute: if the lowest attribute is at its max, the points go to the lowest attribute that still has room (same tie order). If every attribute is at its max, the giver is refunded.
 - The receiver does not pick the attribute.
 - The receiver sees "Gift from [name]: Accept or Decline." The giver pays when sending.
-- Accept: points land using the rules above. Decline: the points (backup) return to the giver.
+- Accept: points land using the rules above. Decline: the points (hearts) return to the giver.
 - No answer: the gift is declined and refunded when the current step ends (Open Floor or the gift window).
 - Stuck players cannot give or receive gifts.
 - An Independent's automatic refusal shows to the giver as a normal decline: "[Name] declined your gift. Your hearts came back." Never mention the type. Gift buttons stay for every teammate.
@@ -174,7 +175,7 @@ Use the same assumptions as the balance simulation (`Tests\v2_balance\sim_v2.py`
 - After a sabotage on their team: the victim accuses 90% of the time, each other teammate 25%. No sabotage: each player 5%.
 - Cooperative bots always gift to Glitching teammates if they can afford it; other types 25% of the time. Gift 2 if affordable, else 1.
 - Bots accept 80% of gifts, and answer at once. Tests use a fixed random seed so results repeat run to run.
-- Independent bots Cash Out at the first Stats Update with full backup.
+- Independent bots Cash Out at the first Stats Update with full hearts.
 - In round 7, bots raise any attribute below 2 first.
 - Bot votes: rank 3 players from other teams at random.
 
