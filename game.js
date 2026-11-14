@@ -506,13 +506,15 @@ ${worldHTML("lobby")}
 <div class="cols">
   <div class="panel"><span class="label">Team Kestrel</span><div class="roster">${personRow({n:S.name,av:S.av,st:status()},true)}${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>
   <div class="panel"><span class="label">Secret path · ${t.path} <span class="tag s">${t.n}</span></span><p>${t.pathDesc}</p><span class="hint">Progress ${ME.pathProgress} / ${t.goal}. Only you can see this.</span></div>
-  <div class="panel"><span class="label">Graduation check (Level 7)</span>${gradChecks()}</div>
+  ${G&&G.level===7?`<div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>`:""}
 </div>`};
+/* Trial scores on screen: whole numbers, 0 to 7. The rules keep the exact value for ranking. */
+const shownScore=x=>Math.min(EP.Trial.MAX_BASE,Math.max(0,Math.round(x)));
 function gradChecks(){const tot=total(),low=ME.lowest(),GT=EP.Player.GRAD_TOTAL,GM=EP.Player.GRAD_MIN;
   return `<div class="check"><span class="${tot>=GT?"y":"x"}">${tot>=GT?"✓":"✗"}</span><span>Total points ${tot} (need ${GT}+)</span></div><div class="check"><span class="${low>=GM?"y":"x"}">${low>=GM?"✓":"✗"}</span><span>Lowest attribute ${low} (need ${GM}+)</span></div><div class="check"><span class="${ME.glitches<2?"y":"x"}">${ME.glitches<2?"✓":"✗"}</span><span>Glitches ${ME.glitches} (stuck at 2)</span></div>`}
 
 V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="margin-top:8px">Boot Up: Team Week</h2></div>
-<div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, Team Kestrel</p><p>Your first client, a national medical supply company, has sent a Request for Proposal. Before Sprint 1 starts on Sep 8, your team must show it can take the lead: write a Standard Operating Procedure everyone can follow.</p></div>
+<div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, Team Kestrel</p><p>Your first client, a national medical supply company, has sent a Request for Proposal. Before Sprint 1 starts on Sep 8, your team must show it has the grit to see a task through: write a Standard Operating Procedure everyone can follow.</p></div>
 <div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>${AN[R().attr]}</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>${R().cost} points</h3></div><div class="panel"><span class="label">Your ${AN[R().attr]}</span><h3>${ME.attrs[R().attr]}${isBonus(R().attr)?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${ME.attrs[R().attr]>=R().cost?"You can cover this.":"You'll need hearts to cover this."}</span></div></div>
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge</span></div><div class="panel"><span class="label">Workshops</span><span>LW2A Know Your Lens · LW2B Team Agreement</span></div></div>`;
 
@@ -532,10 +534,10 @@ ${worldHTML("floor")}`;
 
 V[7]=()=>{const s=S.sop;const hit=G.round.sabotages.filter(x=>x.target===ME).reduce((n,x)=>n+x.drain,0);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
 ${hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[R().attr]} −${hit}. Remember this at the all-hands.</div>`:""}
-<p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Your team wins with 5+ correct and nothing extra.</p>
+<p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Score: 1 point per step in the right place, +1 for leaving out the step that doesn't belong (0 to 7). The top half of teams win.</p>
 <div class="sop"><div><span class="label">Available steps</span><div class="pile">${s.pile.map((t,i)=>`<button class="scard" data-pile="${i}" ${s.checked?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
 <div><span class="label">Team SOP</span><div class="built">${s.built.map((t,i)=>`<button class="scard ${s.checked?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${s.checked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}: ${s.score} of 6 correct${!s.built.length?", no steps placed":s.decoyOut?", decoy left out":", decoy included"}${s.inTime?"":", time ran out"}.</b><span class="hint">SOP score ${s.points} of ${EP.Trial.SopTrial.MAX_SCORE}. Ranking: ${s.rank.map(x=>`${x.place}. ${esc(x.team.name)} (${x.score})`).join(" · ")}. Top ${EP.Trial.winners(s.rank.length)} of ${s.rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
+${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}. Score ${shownScore(s.rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${s.score} of 6 steps in place${!s.built.length?", no steps placed":s.decoyOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${s.rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(s.rank.length)} of ${s.rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
 :`<div class="row"><button class="btn green" id="check" ${s.built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
 
 V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
@@ -562,9 +564,9 @@ function giftRoster(){return `<p class="hint">${GIFT_RULE}</p><div class="roster
 const plural=(n,w)=>`${n} ${w}${n===1?"":"s"}`;
 function giftMsg(q,pts,g){
   /* An automatic refusal (Independent) reads exactly like a normal decline. Never mention the type. */
-  if(g.status==="refused"||g.status==="declined")return g.free?`${q.name} declined your gift. It was free, so nothing was lost.`:`${q.name} declined your gift. Your hearts came back.`;
+  if(g.status==="refused"||g.status==="declined")return `${q.name} declined your gift. Your hearts came back.`;
   if(g.status==="pending")return `Waiting for ${q.name} to answer. If they don't answer before this step ends, your hearts come back.`;
-  return `${q.name} accepted your ${plural(pts,"point")} (${g.free?"free: your Collaboration paid for it":"−"+plural(g.cost,"heart")}).${g.cancelled?` ${q.name} is safe.`:""}${g.cancelled&&T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.rescue)?` ${T().path} complete.`:""}${g.overflow?` ${plural(g.overflow,"point")} had nowhere to go${g.free?".":" and came back to you."}`:""}`}
+  return `${q.name} accepted your ${plural(pts,"point")} (−${plural(g.cost,"heart")}${g.discount?", 1 less thanks to your Collaboration":""}).${g.cancelled?` ${q.name} is safe.`:""}${g.cancelled&&T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.rescue)?` ${T().path} complete.`:""}${g.overflow?` ${plural(g.overflow,"point")} had nowhere to go. Your hearts for them came back.`:""}`}
 function bindGifts(onMsg){$$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;EP.Bots.answer(G,r.gift,RNG);onMsg(giftMsg(q,pts,r.gift));keepTimer()})}
 /* Gifts sent to you: "Gift from [name]: Accept or Decline." */
 function incomingGifts(){return G.round.gifts.map((x,i)=>{if(x.receiver!==ME||x.status==="refused")return "";const who=esc(x.giver.name),n=plural(x.pts,"point");
@@ -624,7 +626,7 @@ function elevatorScene(){const open=S.arr!=="elev",opening=open&&!S.doorsDone;
   ${S.arr==="elev"?`<div class="cinecap">Connecting<span class="dotsanim">...</span></div>`:""}
   ${S.arr==="admin"?vnBox("ADMIN_0","Host",adminPortrait(),ADMIN_LINES[S.arrLine],S.arrLine,ADMIN_LINES.length):""}
   ${S.arr==="role"?roleBrief():""}
-  ${S.arr!=="spawn"?`<button class="btn soft sm cineskip" id="skipIntro">Skip intro ▶</button>`:""}
+  ${S.arr==="elev"||S.arr==="admin"?`<button class="btn soft sm cineskip" id="skipIntro">Skip intro ▶</button>`:""}
   ${S.arr==="spawn"?`<div class="spawn"><div class="spfig">${avatarSVG(S.av,{label:S.name})}</div><span class="sptxt">SPAWNING ${esc(S.name.toUpperCase())} · FLOOR 60</span></div>`:""}
   </div>`}
 const ADMIN_LINES=[
@@ -644,7 +646,8 @@ function roleBrief(){const rb=ROLE_BRIEF[S.type],d=DIALOGS[rb.lead],t=T();
   const dossier=`<div class="dossier"><span><b>Strengths</b>${rb.face}</span><span><b>Weakness</b>${rb.weak}</span><span><b>Gifts</b>${giftCostText(t.ct)}</span><span><b>Secret path</b>${t.path}</span><span class="w"><b>Watch for</b>${rb.watch}</span></div>`;
   return vnBox(d.who,t.n+" briefing",`<div class="vnportrait">${d.draw("talk")}</div>`,rb.lines[S.arrLine],S.arrLine,rb.lines.length,S.arrLine===rb.lines.length-1?dossier:"")}
 /* Skip intro: skips the elevator animation, all dialogue and the spawn, straight to the floor. */
-function skipArrival(){elevTimers.forEach(clearTimeout);elevTimers=[];S.doorsDone=true;S.arr="spawn";S.arrived=true;render()}
+/* Skip intro skips the elevator and ADMIN_0 only. The work-style briefing is never skippable. */
+function skipArrival(){elevTimers.forEach(clearTimeout);elevTimers=[];S.doorsDone=true;S.arr="role";S.arrLine=0;render()}
 function arrivalAdvance(){
   if(S.arr==="elev"){S.arr="admin";S.arrLine=0;render();return}
   if(S.arr==="admin"){if(S.arrLine<ADMIN_LINES.length-1)S.arrLine++;else{S.arr="role";S.arrLine=0}render();return}

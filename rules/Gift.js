@@ -34,11 +34,12 @@
       if (!receiver.type.canAcceptGifts()) {
         rec = { giver, receiver, pts, cost: 0, status: "refused", refused: true, cancelled: false };
       } else {
-        // Collaboration x 10% chance the gift costs 0 hearts (Part 4b). Not rolled for refused gifts.
-        const free = giver.rollAbility("collab", rng);
-        const paid = free ? 0 : cost;
+        // Collaboration x 10% chance the gift costs 1 heart less. Every gift costs at least 1 heart.
+        // Not rolled for refused gifts.
+        const discount = giver.rollAbility("collab", rng);
+        const paid = discount ? Math.max(Gift.MIN_COST, cost - 1) : cost;
         giver.hearts.spend(paid);
-        rec = { giver, receiver, pts, cost: paid, free, status: "pending", refused: false, cancelled: false };
+        rec = { giver, receiver, pts, cost: paid, discount, status: "pending", refused: false, cancelled: false };
       }
       round.gifts.push(rec);
       return { ok: true, gift: rec, ...rec };
@@ -52,8 +53,8 @@
       const wasGlitching = receiver.isGlitching();
       rec.target = receiver.giftTarget();
       rec.overflow = receiver.receiveGift(pts);
-      if (rec.overflow && !rec.free) {   // a free gift has nothing to refund
-        giver.hearts.refund(rec.overflow * Gift.refundPerPoint(giver));
+      if (rec.overflow) {   // never refund more than the giver paid (a discounted gift paid less)
+        giver.hearts.refund(Math.min(rec.cost, rec.overflow * Gift.refundPerPoint(giver)));
       }
       rec.cancelled = wasGlitching && !receiver.isGlitching();   // only a real rescue counts
       if (rec.cancelled) giver.creditPath(EP.CharacterType.PATH_EVENTS.rescue);   // Lifeline
@@ -75,6 +76,7 @@
     static expireAll(round) { return Gift.pending(round).map(g => Gift.decline(round, g, "expired")); }
   }
 
+  Gift.MIN_COST = 1;   // every gift costs at least 1 heart
   EP.Gift = Gift;
   if (typeof module !== "undefined" && module.exports) module.exports = Gift;
 })(typeof globalThis !== "undefined" ? globalThis : this);
