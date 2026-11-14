@@ -217,15 +217,14 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Light influence (Trial base class, Levels 1 to 4 only): team score += 0.5 x (team's average in the tested attribute, active players only, minus the average of all teams). Judged levels unchanged. Base score for Levels 2 to 4: a random whole number 0 to 7 (same range as SOP), plus the influence.
    - The tested attribute for a level stays hidden on screen until that level's briefing.
    - Show each ability's chance on the player's own screen (for example "Focus 6: 60% safe accusation"). Never show other players' chances.
-4c. Tests/check_balance.js. For each setting run 2,000 seeded bot games.
+4c. Done. Tests/check_balance.js. For each setting run 2,000 seeded bot games.
    - Headcounts: 16 (4 teams of 4), 20 (5 of 4), 24 (three of 4 and four of 3).
-   - Spending: typical (current bot rule) and aware (bots put half their earned points into the next level's attribute).
-   - Report per setting: graduation %, win % by type, type gap, second path % by type, Stuck %, percent of sabotages caught, and how often Level 1 winners win later trials versus Level 1 losers.
-   - Report two checks for each player count (16 / 20 / 24):
-     - Match check: graduation and type gap within 2 points of the expected numbers (graduation 59 / 73 / 69, type gap 5 / 5 / 9, typical spending). Labeled MATCH or MISMATCH. These are the expected results of the current rules.
-     - Target check: type gap of 1 to 3 points. Labeled PASS or FAIL. This is the goal. Use it in every balance report.
-     - MISMATCH points to a possible bug. FAIL with MATCH means the rules need tuning.
-   - Note: the 49% to 55% graduation in check_rules.js (Part 4) was a run without stat abilities. Re-check after 4b against the expected numbers above.
+   - Type mix: random. In each game, every player's type is picked at random with equal odds.
+   - Spending: typical (current bot rule) and aware (bots put half their earned points, rounded up, into the next level's attribute; the rest the typical way).
+   - Report per setting: graduation %, win % by type, graduation % by type, type gap, second path % by type, Stuck %, percent of sabotages caught, and how often Level 1 winners win later trials versus Level 1 losers.
+   - Group games by Contrarian count and show the type gap for each group, so extreme mixes do not hide in the average. Groups under 50 games are marked "few games".
+   - Target check: type gap of 1 to 3 points, labeled PASS or FAIL, overall and by player count. This is the goal. Use it in every balance report.
+   - No match check (the old expected numbers came from a fixed mix).
 5. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
