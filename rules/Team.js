@@ -8,6 +8,7 @@
       this.name = name;
       this.members = [];
       this.won = null;   // trial result this round: true, false, or null (not set)
+      this.trialWins = 0;   // trials won so far this game (Progress board)
       members.forEach(p => this.add(p));
     }
     add(p) { p.teamId = this.id; this.members.push(p); }

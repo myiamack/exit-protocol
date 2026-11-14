@@ -12,6 +12,8 @@
   const TEAM_NAMES = ["Team Kestrel", "Team Wren", "Team Heron", "Team Finch"];
 
   let G = null, ME = null, timer = null;
+  const BOARD = BoardView.mount(() => (G ? G.board() : null));   // Progress board, read-only
+  document.querySelector("#boardBtn").onclick = () => BOARD.open();
   const S = { screen: "setup", name: "You", type: "coop", host: false, left: 0, draft: "", msg: "", result: null };
 
   /* ----- game setup: 16 players, 4 teams of 4 (8 Cooperative, 5 Independent, 3 Contrarian) ----- */
@@ -149,8 +151,10 @@
 
   function render() {
     $("#where").textContent = G && G.round ? "Level " + G.level + " · " + G.round.name : "";
+    $("#boardBtn").hidden = !G;
     $("#stage").innerHTML = V[S.screen]();
     bind();
+    BOARD.refresh();
   }
 
   function bind() {
