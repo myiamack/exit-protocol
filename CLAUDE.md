@@ -258,6 +258,48 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 12. Convert every file in rules/ to ES modules (export class / import). Browser prototype keeps working (script type="module"); all Node tests keep passing.
 13. Save and load. Game.toJSON() returns the whole state as plain data (players, teams, hearts, glitches, round, step, gifts, sabotages, accusations, votes, attendance, idle flags, rng state), with players and teams referenced by id. Game.fromJSON(data) rebuilds an identical game. Tests/check_save.js plays random bot games, saves and reloads after every step, and confirms final results match games that never reload. Reason: Base44 Actors sleep after about 10 seconds of quiet and lose anything not saved.
 
+## Levels 5-6 submissions and vote
+- Each active player writes one named submission to a prompt, max 300 characters.
+- Writing timer: 3 minutes. Closes early when every active player has submitted.
+- Typing counts as activity for the Attendance check.
+- No submission: player cannot be ranked, but can still vote.
+- Vote rules stay as they are: rank top 3 players from other teams, Stuck players cannot vote or be ranked, if fewer than 3 can be ranked, rank as many as exist, points divided by active players and by possible voters, Initiative weight applies first.
+- Voters see each submission with the writer's name and team.
+- Prompts: fixed list of 10 per level in the rules code (placeholders below, team may change). Host picks one or types a custom prompt (custom prompt saved on that game's record, not added to the list). No host: engine picks one at random.
+- Bots submit the text "Bot answer" so tests still run the vote.
+
+Level 5 prompts (Sprint 2, fixing problems):
+1. Halfway through the sprint, you find a bug that breaks the main feature. Fix it now or finish the planned work first? Why?
+2. A teammate keeps missing standups and their tasks are falling behind. What do you do first?
+3. The client changed a requirement after you built it. How do you respond?
+4. Two teammates disagree on a fix and work has stopped. How do you get it moving?
+5. Your code passed testing, but a teammate says it is hard to read. Rewrite it or move on? Why?
+6. A task will take twice as long as planned. What do you tell the client?
+7. You find a mistake in work a teammate already marked done. How do you raise it?
+8. The backlog has more fixes than time. How do you decide what to drop?
+9. A fix you made broke something else. What is your next step?
+10. Your team hits the same problem every sprint. What one change would you make?
+
+Level 6 prompts (Sprint 3, finishing and delivering):
+1. The deadline is tomorrow and one feature is not done. Cut it or ask for more time? Why?
+2. You have five minutes to demo to the client. What do you show first?
+3. The client asks for one more feature the day before delivery. What do you say?
+4. The product works but the documentation is thin. What is the minimum you write before handoff?
+5. A teammate wants to keep polishing. The rest want to ship. How do you decide?
+6. Final testing finds a small bug most users will never see. Ship or fix? Why?
+7. What one thing should the client know before using what you built?
+8. Your team finished a day early. How should you use the extra time?
+9. The client dislikes the final design, but it matches what they approved. How do you handle it?
+10. What would your team do differently on the next project?
+
+## Progress board
+- Open to all players at any time, including during voting.
+- Shows per player: name, team, status (Active, Glitching, Stuck, Idle).
+- Shows per team: trial wins so far.
+- Shows past Level 5 and 6 submissions with name and level.
+- Never shows: type, attributes, attribute total, hearts, gifts given or received, Skim, Cash Out, or anything else that could reveal a type.
+- Read-only. Uses data the game already stores, plus submissions.
+
 ## Not in this build (parked)
 
 - Base44 build and real multiplayer.
@@ -266,7 +308,8 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 - Clue system and special abilities.
 - Engine auto-dials.
 - Trial mini-games for levels 2 to 4. For now AutoTrial ranks teams in random order (top half win) with an on-screen placeholder note.
-- Levels 5-6 vote redesign (not built yet). Players write a short named submission to a prompt. Others rank submissions using the current vote rules. Prompts are a fixed, reviewed list in the rules code. Host picks or writes one; with no host, the engine picks one at random. Open: prompt rules sign-off, pool size, submission length, timer, no-submit rule, writing the prompts.
+- No-repeat prompts across games (Levels 5-6).
+- Ollama prompt generation (Levels 5-6).
 
 ## Known limits (do not try to fix now)
 
