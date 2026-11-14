@@ -4,7 +4,8 @@
    Engine calls (payTrialCosts, lockIn, ...) throw an Error with the reason.
    Order each level 1 to 6 (advance() moves to the next step):
      openFloor:    sabotage*, gift*, answerGift*, switchTeam*           > advance (unanswered gifts expire)
-     trial:        setSopScore (Level 1) / startVote + cast (Levels 5-6), runTrial, payTrialCosts  > advance
+     trial:        setSopScore (Level 1) / Levels 5-6: setPrompt (host only), startWriting, typeSubmission*, submit*,
+                   closeWriting (or early close), startVote + cast; then runTrial, payTrialCosts  > advance
      glitchReport: accuse*, endGlitchReport                   > advance
      giftWindow:   gift*, answerGift*                         > advance (unanswered gifts expire)
      lockIn:       lockIn                                     > advance
@@ -31,6 +32,7 @@
       this.level = 0;
       this.round = null;
       this.log = [];
+      this.prompts = [];         // game record: the prompt used at each judged level { level, index, text, custom }
     }
 
     teamOf(p) { return this.teams.find(t => t.has(p)); }
@@ -111,10 +113,50 @@
       if (!(this.round.trial instanceof EP.Trial.SopTrial)) throw new Error("This level has no SOP.");
       this.round.trial.setScore(team, score);
     }
-    startVote() {
+    judged() {
       this.mustBe("trial");
       if (!(this.round.trial instanceof EP.Trial.JudgedTrial)) throw new Error("This level is not judged.");
-      return this.round.trial.startVote(this.teams);
+      return this.round.trial;
+    }
+    /* Levels 5-6, host only: a list number (0 to 9) or custom text. A custom prompt is saved on this game's
+       record (game.prompts), not added to the list. */
+    setPrompt(choice) {
+      const jt = this.judged();
+      if (!this.host) return { ok: false, reason: "No host. The engine picks the prompt." };
+      return typeof choice === "number" ? jt.choosePrompt(choice) : jt.customPrompt(choice);
+    }
+    /* Opens writing. No host: the engine picks a prompt at random. */
+    startWriting() {
+      const jt = this.judged();
+      if (!jt.prompt) {
+        if (this.host) throw new Error("The host picks a prompt first.");
+        jt.randomPrompt();
+      }
+      jt.startWriting();
+      this.prompts.push({ ...jt.prompt });
+      return jt.prompt;
+    }
+    /* Called on every keystroke in the writing box. Typing counts as activity (Attendance check). */
+    typeSubmission(p, text, now) {
+      p.markActive(now);
+      const n = String(text || "").trim().length, max = EP.Trial.JudgedTrial.MAX_CHARS;
+      return { length: n, left: max - n, tooLong: n > max };
+    }
+    /* Writing closes early when every active player has submitted. */
+    submit(p, text, now) {
+      const jt = this.judged();
+      p.markActive(now);
+      const r = jt.submit(p, text);
+      if (r.ok && jt.allSubmitted(this.players)) { jt.closeWriting(); r.closed = true; }
+      return r;
+    }
+    /* The 3-minute timer ran out (or the host closes it). */
+    closeWriting() { this.judged().closeWriting(); }
+    startVote() {
+      const jt = this.judged();
+      if (jt.writing === "open") throw new Error("Writing is still open. Close it first (closeWriting).");
+      if (!jt.writing) throw new Error("Writing has not started (startWriting).");
+      return jt.startVote(this.teams);
     }
     /* Returns the ranked list: [{ team, place, won, ... }] best first. */
     runTrial() {

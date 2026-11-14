@@ -37,11 +37,25 @@
       }
     },
 
-    /* Trial: bots vote on judged levels, then the trial ranks the teams (top half win).
+    /* Trial: on judged levels bots submit "Bot answer" and vote, then the trial ranks the teams (top half win).
        Bot teams get a random SOP score on Level 1; Levels 2-4 are a random order. */
     trial(game, rng) {
-      if (game.round.trial instanceof EP.Trial.JudgedTrial) Bots.vote(game, game.startVote(), rng);
+      if (game.round.trial instanceof EP.Trial.JudgedTrial) {
+        game.startWriting();
+        Bots.submit(game);
+        game.closeWriting();
+        Bots.vote(game, game.startVote(), rng);
+      }
       return game.runTrial();
+    },
+
+    /* Levels 5-6: every active bot submits the text "Bot answer" so tests still run the vote. */
+    submit(game) {
+      const jt = game.round.trial;
+      for (const p of game.players) {
+        if (!p.isBot || p.isStuck() || jt.submissions.has(p) || jt.writing !== "open") continue;
+        game.submit(p, EP.Trial.JudgedTrial.BOT_ANSWER);
+      }
     },
 
     /* Glitch Report: victim accuses 90%, other teammates 25%, no sabotage 5%. */
