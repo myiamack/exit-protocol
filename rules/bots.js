@@ -26,7 +26,7 @@
     openFloor(game, rng) {
       for (const team of game.teams) {
         for (const p of team.members) {
-          if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.wasCaughtBy(team.id)) continue;
+          if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageBlockedThisRound || p.wasCaughtBy(team.id)) continue;
           if (!p.hearts.has(EP.Sabotage.cost(p))) continue;
           if (rng() >= Bots.SETTINGS.sabotageRate) continue;
           const targets = team.mates(p).filter(q => !q.isStuck());
