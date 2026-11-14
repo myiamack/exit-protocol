@@ -266,6 +266,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 - Clue system and special abilities.
 - Engine auto-dials.
 - Trial mini-games for levels 2 to 4. For now AutoTrial ranks teams in random order (top half win) with an on-screen placeholder note.
+- Levels 5-6 vote redesign (not built yet). Players write a short named submission to a prompt. Others rank submissions using the current vote rules. Prompts are a fixed, reviewed list in the rules code. Host picks or writes one; with no host, the engine picks one at random. Open: prompt rules sign-off, pool size, submission length, timer, no-submit rule, writing the prompts.
 
 ## Known limits (do not try to fix now)
 
