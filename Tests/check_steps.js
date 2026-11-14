@@ -108,39 +108,48 @@ throws("Finish the round before points are placed", () => game.finishRound());
   const acc = EP.Accusation.apply(r1, v, c, tA, NO);
   expect("Correct accusation catches the Contrarian", acc.ok && acc.correct && c.caughtThisRound);
   expect("Caught list holds team A only", c.caughtBy.join(",") === "A", c.caughtBy.join(","));
-  // Part 5b: caught = 1 point from the highest attribute (typical Contrarian: Initiative 8).
-  expect("Caught Contrarian loses 1 point from the highest (Initiative 8 -> 7)",
-         c.total() === 23 && c.attrs.initiative === 7 && c.caughtLoss === "initiative", c.total() + ", " + c.caughtLoss);
-  const acc2 = EP.Accusation.apply(r1, ps[2], c, tA, NO);
-  expect("Second correct accuser the same round: still one catch, no extra loss", acc2.correct && c.total() === 23, c.total());
+  expect("Caught Contrarian loses 0 points", c.total() === 24, c.total());
   // Game.endGlitchReport credits Exploit only if not caughtThisRound.
   expect("Caught round gives no Skim", c.takeSkim() === 0);
+  // Part 5b: the next round, no sabotage on any team.
   c.resetRoundFlags();
+  expect("Next round: sabotage blocked flag is on", c.sabotageBlockedThisRound === true);
   const r2 = new EP.Round(2);
   const again = EP.Sabotage.apply(r2, c, v, tA, NO);
-  expect("Cannot sabotage team A again", !again.ok, again.reason);
+  expect("Next round: blocked on team A", !again.ok, again.reason);
   // Switch teams: leave A, join B.
   tA.members.splice(tA.members.indexOf(c), 1);
   const tB = new EP.Team({ id: "B", name: "B", members: [c, ...ps.slice(4)] });
-  expect("On team B, sabotage is allowed again", EP.Sabotage.apply(r2, c, ps[4], tB, NO).ok);
+  const onB = EP.Sabotage.apply(r2, c, ps[4], tB, NO);
+  expect("Next round: blocked on team B too (any team)", !onB.ok && /any team/.test(onB.reason), onB.reason);
+  // The round after: old rule. A still refused, B allowed.
+  c.resetRoundFlags();
+  expect("Round after: block is off", c.sabotageBlockedThisRound === false);
+  const r3 = new EP.Round(3);
+  const onA3 = EP.Sabotage.check(c, v, tA);
+  expect("Round after: still refused on team A (caught there)", !!onA3, onA3);
+  expect("Round after: sabotage allowed on team B", EP.Sabotage.apply(r3, c, ps[4], tB, NO).ok);
   expect("Exploit still counts after being caught", c.creditPath(EP.CharacterType.PATH_EVENTS.uncaughtSabotage) && c.pathProgress === 1, c.pathProgress);
   expect("Uncaught round gives Skim", c.takeSkim() === 1);
-  // Caught again on team B: another point lost (every catch, any team). Exploit progress stays.
+  // Caught again on team B: no points lost, Exploit stays, blocked again next round.
   const before = c.total();
-  const accB = EP.Accusation.apply(r2, ps[4], c, tB, NO);
-  expect("Caught on team B also costs 1 point", accB.correct && c.total() === before - 1, before + " -> " + c.total());
+  const accB = EP.Accusation.apply(r3, ps[4], c, tB, NO);
+  expect("Caught on team B: 0 points lost", accB.correct && c.total() === before, before + " -> " + c.total());
   expect("Caught list now holds A and B", c.caughtBy.join(",") === "A,B", c.caughtBy.join(","));
   expect("Exploit never lost after a second catch", c.pathProgress === 1, c.pathProgress);
+  c.resetRoundFlags();
+  expect("Blocked again the round after the second catch", c.sabotageBlockedThisRound === true);
+  c.resetRoundFlags();
 }
 
-// Part 5b: caught point loss, tie order Focus, Collaboration, Initiative, Grit, Composure.
+// Part 5b: wrong accusation tie order Focus, Collaboration, Initiative, Grit, Composure.
 {
   const c = EP.Bots.makePlayer(200, "T", "contra");
   const tieCase = (label, attrs, want) => {
-    c.resetRoundFlags();
     Object.assign(c.attrs, attrs);
-    const k = c.markCaughtBy("X");
-    expect("Tie order: " + label, k === want && c.attrs[want] === attrs[want] - 1, k);
+    c.takeFromHighest(1);
+    const lost = Object.keys(attrs).filter(k => c.attrs[k] === attrs[k] - 1);
+    expect("Wrong accusation tie order: " + label, lost.length === 1 && lost[0] === want, lost.join(","));
   };
   tieCase("all equal -> Focus",        { focus: 4, collab: 4, initiative: 4, grit: 4, composure: 4 }, "focus");
   tieCase("Collab = Initiative -> Collaboration", { focus: 3, collab: 6, initiative: 6, grit: 6, composure: 4 }, "collab");
