@@ -3,7 +3,7 @@
    Player actions (sabotage, accuse, gift, cashOut) return { ok: false, reason }.
    Engine calls (payTrialCosts, lockIn, ...) throw an Error with the reason.
    Order each level 1 to 6 (advance() moves to the next step):
-     openFloor:    sabotage*, gift*, answerGift*              > advance (unanswered gifts expire)
+     openFloor:    sabotage*, gift*, answerGift*, switchTeam*           > advance (unanswered gifts expire)
      trial:        setSopScore (Level 1) / startVote + cast (Levels 5-6), runTrial, payTrialCosts  > advance
      glitchReport: accuse*, endGlitchReport                   > advance
      giftWindow:   gift*, answerGift*                         > advance (unanswered gifts expire)
@@ -82,6 +82,25 @@
       const why = this.wrongStep("openFloor");
       if (why) return { ok: false, reason: why };
       return EP.Sabotage.apply(this.round, actor, target, this.teamOf(actor), this.rng);
+    }
+
+    /* Team switching (Open Floor only). Teams stay 3 to 5 members.
+       A player who sabotaged this round cannot switch that round.
+       Stuck players are spectators and cannot switch. */
+    switchTeam(p, to) {
+      const from = this.teamOf(p);
+      const why = this.wrongStep("openFloor") ||
+        (!this.teams.includes(to) ? "No such team." : null) ||
+        (from === to ? "You are already on that team." : null) ||
+        (p.isStuck() ? "You are Stuck." : null) ||
+        (p.sabotagesThisRound > 0 ? "You sabotaged this round. You cannot switch teams this round." : null) ||
+        (from.size() - 1 < EP.Team.MIN ? from.name + " would drop below " + EP.Team.MIN + " members." : null) ||
+        (to.size() + 1 > EP.Team.MAX ? to.name + " is full (" + EP.Team.MAX + " members)." : null);
+      if (why) return { ok: false, reason: why };
+      from.remove(p);
+      to.add(p);
+      this.log.push({ level: this.level, event: "switchTeam", player: p.id, from: from.id, to: to.id });
+      return { ok: true, from, to };
     }
 
     /* 2. Trial. The round's Trial ranks the teams; the top half win.
