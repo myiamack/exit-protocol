@@ -294,7 +294,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 
 ## Progress board
 - Open to all players at any time, including during voting.
-- Shows per player: name, team, status (Active, Glitching, Stuck, Idle).
+- Shows per player: name, team, status (Active, At risk, Glitching, Stuck, Idle). At risk uses the same rule as elsewhere in the game.
 - Shows per team: trial wins so far.
 - Shows past Level 5 and 6 submissions with name and level.
 - Never shows: type, attributes, attribute total, hearts, gifts given or received, Skim, Cash Out, or anything else that could reveal a type.
