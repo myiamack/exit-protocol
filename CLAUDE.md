@@ -193,7 +193,7 @@ Do these in order. Finish and test each before starting the next.
 
 1. **Read first, change nothing.** Read game.js, index.html, styles.css, README.md, and everything in the `rules/` folder. Tell me in plain words how the code is organized, how a round runs, and where the rules live. Then propose a short plan.
 2. **Create or finish the 8 rule classes** in the `rules/` folder as JavaScript modules. Reuse what is already there if it fits. No screen code.
-3. **Check the classes against the simulation.** Write a small Node script that plays 1,000 bot games with 16 players (8 Cooperative, 5 Independent, 3 Contrarian), 4 teams of 4, 50% trial win rate, random guessing (accusers pick the saboteur 1 time in 3). The simulation got about 78% to 80% overall graduation for typical players, with types within about 5 points. If our results are far off, find out why before moving on.
+3. **Check the classes against the simulation.** Write a small Node script that plays 1,000 bot games with 16 players (8 Cooperative, 5 Independent, 3 Contrarian), 4 teams of 4, 50% trial win rate, random guessing (accusers pick the saboteur 1 time in 3). The simulation got about 78% to 80% overall graduation for typical players, with types within 1 to 3 points (type gap target). If our results are far off, find out why before moving on.
 4. **Connect the classes to the existing screens,** replacing the old rule logic. Keep the current look.
 5. **Add the vote screen** for levels 5 and 6.
 6. **Playtest checklist:** a short list of what I should watch for when I play.
@@ -214,14 +214,16 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Initiative (Vote): each voter's ranking points (3/2/1) are multiplied by 1 + Initiative / 10.
    - Grit (end of round, after the normal refill): Grit x 5% chance of +1 heart, capped at the max.
    - Composure (Sabotage.drain): Composure x 10% chance the drain is 1 instead of 2. Replaces the old "Composure 6 or more" rule.
-   - Light influence (Trial base class, Levels 1 to 4 only): team score += 0.5 x (team's average in the tested attribute, active players only, minus the average of all teams). Judged levels unchanged.
+   - Light influence (Trial base class, Levels 1 to 4 only): team score += 0.5 x (team's average in the tested attribute, active players only, minus the average of all teams). Judged levels unchanged. Base score for Levels 2 to 4: a random whole number 0 to 7 (same range as SOP), plus the influence.
    - The tested attribute for a level stays hidden on screen until that level's briefing.
    - Show each ability's chance on the player's own screen (for example "Focus 6: 60% safe accusation"). Never show other players' chances.
 4c. Tests/check_balance.js. For each setting run 2,000 seeded bot games.
    - Headcounts: 16 (4 teams of 4), 20 (5 of 4), 24 (three of 4 and four of 3).
    - Spending: typical (current bot rule) and aware (bots put half their earned points into the next level's attribute).
    - Report per setting: graduation %, win % by type, type gap, second path % by type, Stuck %, percent of sabotages caught, and how often Level 1 winners win later trials versus Level 1 losers.
+   - Type gap target (pass/fail): 1 to 3 points. Use this in check_balance.js and every balance report.
    - Expected with typical spending, roughly: graduation 59 / 73 / 69, type gap 5 / 5 / 9. Flag any result more than 3 points off.
+   - Note: the 49% to 55% graduation in check_rules.js (Part 4) was a run without stat abilities. Re-check after 4b against the expected numbers above.
 5. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).

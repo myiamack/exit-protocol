@@ -41,10 +41,9 @@
       // second path
       this.pathProgress = 0;
       this.pathDone = false;
-      this.pathLost = false;
 
       // Contrarian
-      this.sabotageLocked = false;   // caught once: no more sabotage this game
+      this.caughtBy = [];   // ids of teams that caught this player sabotaging
       this.skimUsed = 0;
       // Independent
       this.cashOutUsed = 0;
@@ -75,6 +74,13 @@
       if (this.isGlitching()) return "Glitching";
       if (this.isAtRisk()) return "At risk";
       return "OK";
+    }
+
+    /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
+    wasCaughtBy(teamId) { return this.caughtBy.includes(teamId); }
+    markCaughtBy(teamId) {
+      this.caughtThisRound = true;
+      if (!this.wasCaughtBy(teamId)) this.caughtBy.push(teamId);
     }
 
     resetRoundFlags() {
@@ -209,7 +215,7 @@
     /* An event happened (rescue, correctAccusation, uncaughtSabotage). It counts only if it is
        this type's second-path event. Returns true if it counted. */
     creditPath(event) {
-      if (!this.type.pathCounts(event) || this.pathDone || this.pathLost) return false;
+      if (!this.type.pathCounts(event) || this.pathDone) return false;
       this.pathProgress += 1;
       if (this.pathProgress >= this.type.goal) this.pathDone = true;
       return true;

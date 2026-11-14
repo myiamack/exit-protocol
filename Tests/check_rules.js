@@ -74,4 +74,4 @@ for (const [t, n] of [["coop", "Cooperative"], ["indep", "Independent"], ["contr
 }
 const wins = ["coop", "indep", "contra"].map(t => 100 * stats["win_" + t][0] / stats["win_" + t][1]);
 const gap = Math.max(...wins) - Math.min(...wins);
-console.log("\nGap between types: " + gap.toFixed(1) + " points  (target: within about 5)");
+console.log("\nGap between types: " + gap.toFixed(1) + " points  (target: 1 to 3)");
