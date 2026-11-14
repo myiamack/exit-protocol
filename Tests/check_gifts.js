@@ -6,7 +6,7 @@
    - Independents refuse automatically. Bots accept 80% (seeded, so results repeat).
    Run from the repo folder:  node Tests/check_gifts.js */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 
@@ -70,7 +70,7 @@ console.log("-- Accept, Decline, no answer");
   expect("No answer in Open Floor: expired when Open Floor ends", a.gift.status === "expired", a.gift.status);
   expect("No answer in Open Floor: giver refunded", ps[0].hearts.count === 3, ps[0].hearts.count);
   expect("An expired gift cannot be accepted later", !EP.Gift.accept(game.round, a.gift).ok);
-  teams.forEach(t => game.setTrialResult(t, true)); game.payTrialCosts(); game.advance();
+  game.runTrial(); game.payTrialCosts(); game.advance();
   game.endGlitchReport(); game.advance();
   const before = ps[2].hearts.count;
   const b = game.gift(ps[2], ps[3], 1);
@@ -156,7 +156,7 @@ console.log("-- Who can gift");
   expect("Gift to another team is refused", !game.gift(ps[0], ps[5], 1).ok);
   game.advance();
   expect("Gift in Trial is refused", !game.gift(ps[0], ps[1], 1).ok);
-  teams.forEach(t => game.setTrialResult(t, true)); game.payTrialCosts(); game.advance();
+  game.runTrial(); game.payTrialCosts(); game.advance();
   expect("Gift in Glitch Report is refused", !game.gift(ps[0], ps[1], 1).ok);
   game.endGlitchReport(); game.advance();
   expect("Gift in Gift window", game.gift(ps[0], ps[1], 1).ok);

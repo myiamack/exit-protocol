@@ -4,13 +4,13 @@
 
   // Package A order. Trial activities stay in their original levels.
   const LEVELS = [
-    { n: 1, name: "Boot Up",    trial: "SOP mini-game",                attr: "grit",       cost: 2, judged: false },
-    { n: 2, name: "Sprint 1",   trial: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false },
-    { n: 3, name: "The Mirror", trial: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false },
-    { n: 4, name: "Geek Week",  trial: "Testing challenge",            attr: "initiative", cost: 4, judged: false },
-    { n: 5, name: "Sprint 2",   trial: "Fix the broken team",          attr: "composure",  cost: 4, judged: true },
-    { n: 6, name: "Sprint 3",   trial: "Final build and dream speech", attr: "grit",       cost: 6, judged: true },
-    { n: 7, name: "Graduation", trial: "Crack the simulation",         attr: null,         cost: 0, judged: false }
+    { n: 1, name: "Boot Up",    trial: "SOP mini-game",                attr: "grit",       cost: 2, judged: false, trialKind: "sop" },
+    { n: 2, name: "Sprint 1",   trial: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "auto" },
+    { n: 3, name: "The Mirror", trial: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false, trialKind: "auto" },
+    { n: 4, name: "Geek Week",  trial: "Testing challenge",            attr: "initiative", cost: 4, judged: false, trialKind: "auto" },
+    { n: 5, name: "Sprint 2",   trial: "Fix the broken team",          attr: "composure",  cost: 4, judged: true,  trialKind: "judged" },
+    { n: 6, name: "Sprint 3",   trial: "Final build and dream speech", attr: "grit",       cost: 6, judged: true,  trialKind: "judged" },
+    { n: 7, name: "Graduation", trial: "Crack the simulation",         attr: null,         cost: 0, judged: false, trialKind: null }
   ];
 
   const STEPS = ["openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate"];

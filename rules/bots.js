@@ -7,7 +7,7 @@
 
   const Bots = {
     SETTINGS: { sabotageRate: 0.5, victimAccuses: 0.9, otherAccuses: 0.25, idleAccuses: 0.05,
-                pickSaboteur: 1 / 3, giftRate: { coop: 1, indep: 0.25, contra: 0.25 }, acceptGifts: 0.8, trialWinRate: 0.5 },
+                pickSaboteur: 1 / 3, giftRate: { coop: 1, indep: 0.25, contra: 0.25 }, acceptGifts: 0.8 },
 
     /* Typical build: 5/4/3/2/1, bonus attributes first, penalty last. */
     typicalSpend(type) {
@@ -37,9 +37,11 @@
       }
     },
 
-    /* Trial: random result for any team that has none yet. */
+    /* Trial: bots vote on judged levels, then the trial ranks the teams (top half win).
+       Bot teams get a random SOP score on Level 1; Levels 2-4 are a random order. */
     trial(game, rng) {
-      for (const t of game.teams) if (t.won === null) game.setTrialResult(t, rng() < Bots.SETTINGS.trialWinRate);
+      if (game.round.trial instanceof EP.Trial.JudgedTrial) Bots.vote(game, game.startVote(), rng);
+      return game.runTrial();
     },
 
     /* Glitch Report: victim accuses 90%, other teammates 25%, no sabotage 5%. */
