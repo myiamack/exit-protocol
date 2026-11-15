@@ -14,6 +14,9 @@
   let G = null, ME = null, timer = null;
   const BOARD = BoardView.mount(() => (G ? G.board() : null));   // Progress board, read-only
   document.querySelector("#boardBtn").onclick = () => BOARD.open();
+  /* Attendance check on the submission and Vote screens. Rules in rules/Attendance.js and rules/Game.js;
+     the popup is shared screen code (attendance-view.js). Game pauses it in briefings and intermissions. */
+  AttendanceView.mount({ game: () => G, me: () => ME, onChange: () => render() });
   const S = { screen: "setup", name: "You", type: "coop", host: false, left: 0, draft: "", msg: "", result: null };
 
   /* ----- game setup: 16 players, 4 teams of 4 (8 Cooperative, 5 Independent, 3 Contrarian) ----- */
