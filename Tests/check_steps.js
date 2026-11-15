@@ -563,7 +563,10 @@ throws("Finish the round before points are placed", () => game.finishRound());
     expect("Pending miss leaves attributes and hearts unchanged",
            JSON.stringify(me.attrs) === JSON.stringify(attrs) && me.hearts.count === hearts);
     expect("Pending miss is not a locked glitch yet (no glitchedThisRound)", me.glitchedThisRound === false);
-    expect("Teammates see Glitching on the Board", g.board().players.find(x => x.name === me.name).status === "Glitching");
+    // Part 8: the miss also makes the player idle. Board order is Stuck, Idle, Glitching, so it shows Idle.
+    expect("Board shows Idle while idle (Idle comes before Glitching)", g.board().players.find(x => x.name === me.name).status === "Idle");
+    g.activity(me, s(76));
+    expect("After the next input: teammates see Glitching on the Board", g.board().players.find(x => x.name === me.name).status === "Glitching");
     expect("Bots are never checked", g.players.filter(p => p.isBot).every(p => p.glitches === 0));
   }
 
@@ -731,12 +734,13 @@ throws("Finish the round before points are placed", () => game.finishRound());
     expect("Still pending in the gift window", g.step === "giftWindow" && me.attendancePending && me.flag() === "Glitching");
     const h = coopMate.hearts.count;
     const r = g.gift(coopMate, me, 1);
+    g.activity(me, s(80));                        // the player comes back (input clears idle), then accepts
     const a = g.answerGift(r.gift, true);
     expect("Accepted gift in the gift window cancels the pending glitch", a.ok && !me.attendancePending && me.flag() !== "Glitching");
     expect("Normal gift cost (1 heart for a Cooperative)", coopMate.hearts.count === h - 1, h + " > " + coopMate.hearts.count);
     expect("Points go to the lowest attribute (Initiative 3)", a.target === "initiative" && me.attrs.initiative === 4, a.target);
     expect("Counts for Lifeline", a.cancelled && coopMate.pathDone, "progress " + coopMate.pathProgress);
-    const again = miss(s(150));
+    const again = miss(s(155));                   // popup 60 s after the input at 80 s, missed 15 s later
     expect("A miss saved by a gift still uses the cap: next miss not counted", again && !again.counted && !me.attendancePending);
     g.advance(); const locked = g.lockIn();
     expect("Saved: nothing locks in", !locked.includes(me) && me.glitches === 0 && !me.glitchedThisRound);
@@ -745,7 +749,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   {
     const { g, me, coopMate, miss } = mk();
     miss(s(75));
-    const r = g.gift(coopMate, me, 1); const a = g.answerGift(r.gift, true);
+    const r = g.gift(coopMate, me, 1); g.activity(me, s(80)); const a = g.answerGift(r.gift, true);
     expect("Open Floor gift lands but does not cancel the pending glitch, no Lifeline",
            a.ok && me.attendancePending && !a.cancelled && !coopMate.pathDone);
   }
@@ -801,7 +805,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
     EP.Bots.gifts(g, NO);
     const gift = g.round.gifts.find(x => x.receiver === me && x.status === "pending");
     expect("Cooperative bot gifts to a pending teammate", !!gift && gift.giver.type.key === "coop");
-    if (gift) { g.answerGift(gift, true); expect("Accepting it saves the player", !me.attendancePending); }
+    if (gift) { g.activity(me, s(80)); g.answerGift(gift, true); expect("Accepting it saves the player", !me.attendancePending); }
   }
 }
 
@@ -932,6 +936,167 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("Endings locked at results(): no later change alters them", before === after && before === live);
   expect("Both kinds of ending were tested (some Graduated, some not)",
          res.some(r => r.ending === "Graduated") && res.some(r => r.ending !== "Graduated"), before);
+}
+
+// Part 8: idle auto-pilot. A missed check-in sets idle; any input clears it. Idle players take no optional
+// actions (gifts, answering gifts, accusations, sabotage, votes) and are left out of active counts.
+// Bots are never checked by Attendance, so tests that need an idle bot set p.idle directly.
+{
+  const s = n => n * 1000;
+  const mk = () => {
+    const ps = ["coop", "contra", "indep", "coop", "coop", "coop", "indep", "coop"].map((t, i) => EP.Bots.makePlayer(700 + i, "I" + i, t));
+    ps[0].isBot = false;   // the one human
+    const ts = [0, 1].map(i => new EP.Team({ id: i, name: "IT" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+    const clock = { now: 0 };
+    const g = new EP.Game({ teams: ts, rng: NO, clock: () => clock.now });
+    return { g, ps, ts, me: ps[0], contra: ps[1], indep: ps[2], coopMate: ps[3] };
+  };
+  // Input at t - 75 s, popup at t - 15 s, missed at t.
+  const goIdle = (g, me, t) => { g.activity(me, t - s(75)); g.checkAttendance(t - s(15)); return g.checkAttendance(t)[0]; };
+
+  // Set and clear.
+  {
+    const { g, me } = mk();
+    g.startNextRound(); g.advance();
+    expect("Part 8: not idle at the start", !me.idle && me.isActive());
+    const r = goIdle(g, me, s(75));
+    expect("Part 8: a missed check-in sets idle", r.state === "missed" && r.counted && me.idle && !me.isActive());
+    expect("Part 8: Team.active() leaves out idle players", !g.teamOf(me).active().includes(me) && g.teamOf(me).active().length === 3);
+    g.activity(me, s(80));
+    expect("Part 8: the next input clears idle", !me.idle && me.isActive() && g.teamOf(me).active().includes(me));
+    const r2 = goIdle(g, me, s(160));
+    expect("Part 8: a miss over the per-round cap still sets idle (the cap limits glitches only)",
+           r2.state === "missed" && !r2.counted && me.idle, r2.state + " counted " + r2.counted);
+    g.advance(); g.runTrial(); g.payTrialCosts(); g.advance();
+    expect("Glitch Report: Attendance paused", g.step === "glitchReport" && me.attendancePaused);
+    g.activity(me, s(200));
+    expect("Part 8: input on a paused screen also clears idle", !me.idle);
+    expect("Part 8: bots never go idle", g.players.filter(p => p.isBot).every(p => !p.idle));
+  }
+
+  // Blocks, gifts, trial cost, Cash Out, Stats Update auto-placement.
+  {
+    const { g, me, contra, indep, coopMate } = mk();
+    g.startNextRound(); g.advance();
+    goIdle(g, me, s(75));
+    refusedResult("Part 8: idle player cannot give a gift", g.gift(me, coopMate, 1));
+    const h = coopMate.hearts.count;
+    const toMe = g.gift(coopMate, me, 1);
+    expect("Part 8: a gift to an idle player can be sent (giver pays)", toMe.ok && toMe.gift.status === "pending" && coopMate.hearts.count === h - 1);
+    refusedResult("Part 8: idle player cannot accept a gift", g.answerGift(toMe.gift, true));
+    refusedResult("Part 8: idle player cannot decline a gift", g.answerGift(toMe.gift, false));
+    expect("Part 8: idle players can still be sabotaged (only Stuck are protected)", g.sabotage(contra, me).ok);
+    contra.idle = true;
+    refusedResult("Part 8: idle player cannot sabotage", g.sabotage(contra, coopMate));
+    contra.idle = false;
+    g.advance();
+    expect("Part 8: gift to an idle player expires at the end of the step, giver refunded",
+           toMe.gift.status === "expired" && coopMate.hearts.count === h, toMe.gift.status + " hearts " + coopMate.hearts.count);
+    g.runTrial();
+    const paid = g.payTrialCosts();
+    expect("Part 8: idle players pay trial costs as normal", me.idle && paid.has(me));
+    g.advance();
+    refusedResult("Part 8: idle player cannot accuse", g.accuse(me, contra));
+    g.endGlitchReport();
+    expect("Part 8: idle player's Glitch Report counts as Skip", !me.accusedThisRound && me.idle);
+    g.advance();
+    const back = g.gift(coopMate, me, 1);
+    g.activity(me, s(300));                       // comes back before the gift window closes
+    expect("Part 8: back in time, the player can answer a gift sent while idle", g.answerGift(back.gift, true).ok);
+    g.advance(); g.lockIn(); g.advance(); g.computeEarnings();
+    me.idle = true;                               // idle from a miss earlier (Stats Update itself is paused)
+    indep.idle = true;
+    expect("Part 8: Cash Out is not blocked for idle players", g.cashOut(indep).ok);
+    indep.idle = false;
+    const earned = me.earned, total = me.total();
+    g.autoPlacePoints(me, {});                    // the 30 s timer ran out
+    expect("Part 8: idle player's points are auto-placed at Stats Update",
+           earned > 0 && me.earned === 0 && me.total() === total + earned, earned + " points, total " + total + " > " + me.total());
+    EP.Bots.statsUpdate(g);
+    g.finishRound();
+    expect("Round finishes with the idle player's points placed", g.step === "intermission");
+  }
+
+  // Team switching is not blocked for idle players.
+  {
+    const { g, me } = mk();
+    g.startNextRound(); g.advance();
+    goIdle(g, me, s(75));
+    expect("Part 8: team switching is not blocked for idle players", me.idle && g.switchTeam(me, g.teams[1]).ok);
+  }
+
+  // Light influence: active players only.
+  {
+    const { ps, ts } = mk();
+    for (const p of ps) p.attrs.grit = 2;
+    ps[1].attrs.grit = 10; ps[1].idle = true;     // team 0 has one idle player with high Grit
+    const inf = EP.Trial.influence({ attr: "grit" }, ts);
+    expect("Part 8: light influence leaves out idle players", inf.get(ts[0]) === 0 && inf.get(ts[1]) === 0,
+           inf.get(ts[0]) + " / " + inf.get(ts[1]));
+  }
+
+  // Levels 5-6: writing and the vote.
+  {
+    const { g, ps, ts, me } = mk();
+    g.startNextRound(); g.level = 4; g.round = null;   // jump to Level 5
+    g.startNextRound(); g.advance(); g.advance();
+    expect("Level 5 trial", g.level === 5 && g.step === "trial");
+    g.startWriting();
+    ps[6].idle = true;                            // never writes
+    let last;
+    for (const p of ps) if (p !== ps[6]) last = g.submit(p, "Bot answer", s(10));
+    expect("Part 8: writing closes early when every active player has submitted (idle not waited for)", last.closed === true);
+    const vote = g.startVote();
+    vote.cast(ps[2], vote.choicesFor(ps[2]).slice(0, 3));   // votes, then goes idle
+    ps[1].idle = true; ps[2].idle = true; ps[5].idle = true;
+    expect("Part 8: idle players are not in the ranking choices", !vote.choicesFor(me).includes(ps[5]));
+    // Team 1 has 2 active players left (ps4, ps7), so a ranking has 2 slots.
+    expect("Only the 2 active players on team 1 can be ranked", vote.slotsFor(me) === 2, vote.slotsFor(me));
+    const idleRank = vote.cast(me, [ps[5], ps[4]]);
+    expect("Part 8: an idle player cannot be ranked", idleRank.ok === false && /idle/.test(idleRank.reason), idleRank.reason);
+    refusedResult("Part 8: an idle player cannot vote", vote.cast(ps[1], vote.choicesFor(ps[1]).slice(0, 3)));
+    expect("Ranking without idle players works", vote.cast(me, [ps[4], ps[7]]).ok);
+    EP.Bots.vote(g, vote, () => 0.5);
+    expect("Part 8: a ballot cast before going idle stays", vote.ballots.has(ps[2]) && !vote.ballots.has(ps[1]));
+    const res = g.runTrial();
+    const t0 = res.find(r => r.team === ts[0]), t1 = res.find(r => r.team === ts[1]);
+    expect("Part 8: vote math leaves out idle players (each team: 2 active, 2 possible voters)",
+           t0.active === 2 && t0.voters === 2 && t1.active === 2 && t1.voters === 2,
+           "t0 " + t0.active + "/" + t0.voters + ", t1 " + t1.active + "/" + t1.voters);
+  }
+
+  // Graduation: 60 s placement timer; idle at results() = Contract renewed, unless the second path is done.
+  {
+    const { g, ps } = mk();
+    const fill = (p, v) => { for (const k of EP.Player.KEYS) p.attrs[k] = Math.min(v, p.max(k)); };
+    ps.forEach(p => fill(p, 5));                  // total 24 or 25, every attribute 2+: graduates
+    const [idleGrad, idlePath, activeGrad, cameBack, lowFocus, partial] = ps;
+    fill(lowFocus, 6); lowFocus.attrs.focus = 0;  // one attribute below 2
+    g.startNextRound(); g.level = 6; g.round = null;
+    g.startNextRound(); g.advance();
+    expect("Graduation step", g.step === "graduation");
+    expect("Level 7 placement timer is 60 seconds", EP.Game.GRADUATION_PLACE_SECONDS === 60);
+    g.autoPlacePoints(lowFocus, {});
+    expect("Level 7 auto-placement: Round 7 bot rule (attributes below 2 first)", lowFocus.earned === 0 && lowFocus.attrs.focus >= 2,
+           "focus " + lowFocus.attrs.focus);
+    const g0 = partial.attrs.grit;
+    g.autoPlacePoints(partial, { grit: 1 });
+    expect("Level 7 auto-placement keeps points already placed", partial.earned === 0 && partial.attrs.grit >= g0 + 1);
+    idleGrad.idle = true; idlePath.idle = true; idlePath.pathDone = true; cameBack.idle = true;
+    g.activity(cameBack, s(10));
+    for (const p of ps) if (p.earned > 0) g.autoPlacePoints(p, {});   // timer ran out for everyone else
+    const res = g.results();
+    const end = p => res.find(r => r.player === p);
+    expect("Part 8: idle at Graduation = Contract renewed, even with graduating stats",
+           idleGrad.graduates() && end(idleGrad).ending === "Contract renewed" && !end(idleGrad).wins, end(idleGrad).ending);
+    expect("Part 8: idle with a completed second path still wins",
+           end(idlePath).wins && end(idlePath).ending === idlePath.type.pathName + " complete", end(idlePath).ending);
+    expect("Not idle with graduating stats: Graduated", end(activeGrad).ending === "Graduated" && end(activeGrad).wins);
+    expect("Part 8: input before results() clears idle: Graduated", end(cameBack).ending === "Graduated", end(cameBack).ending);
+    idleGrad.idle = false;
+    expect("Ending stays locked after idle clears", g.results().find(r => r.player === idleGrad).ending === "Contract renewed");
+    throws("Level 7 auto-placement refused after results()", () => g.autoPlacePoints(partial, {}));
+  }
 }
 
 // Hearts: only its own methods change the count.

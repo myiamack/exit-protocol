@@ -48,7 +48,7 @@
 
       this.hearts = new EP.Hearts();
       this.glitches = 0;
-      this.idle = false;          // set by the Attendance check (Part 8); idle until the next input
+      this.idle = false;          // Part 8: set by any missed Attendance check; cleared by the next input
       this.lastActivity = null;   // time of the last key, click or touch (read by the Attendance check, Part 7)
       this.attendanceMissAt = null;   // time of the last missed Attendance check (restarts the timer)
       this.attendancePopupAt = null;  // time the "Still there?" popup opened; null when closed
@@ -82,6 +82,8 @@
     lowestKey() { return KEYS.reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m), KEYS[0]); }
 
     isStuck() { return this.glitches >= STUCK_AT; }
+    /* Active: not Stuck and not idle (Part 8). Used for team counts, the vote math and the light influence. */
+    isActive() { return !this.isStuck() && !this.idle; }
     /* Any input (including typing a submission) counts as activity and resets the Attendance check. */
     markActive(now = Date.now()) { this.lastActivity = now; }
     isGlitching() { return KEYS.some(k => this.attrs[k] < 0); }   // an attribute below 0; exactly 0 is safe
@@ -304,13 +306,15 @@
       const ending = this.ending(), wins = this.wins();
       this.locked = Object.freeze({ ending, wins });
     }
+    /* Idle at Graduation (when results() runs): Contract renewed, even if the stats would graduate.
+       A second path already completed still wins. */
     wins() {
       if (this.locked) return this.locked.wins;
-      return this.graduates() || this.pathDone;
+      return (this.graduates() && !this.idle) || this.pathDone;
     }
     ending() {
       if (this.locked) return this.locked.ending;
-      if (this.graduates()) return "Graduated";
+      if (this.graduates() && !this.idle) return "Graduated";
       if (this.pathDone) return this.type.pathName + " complete";
       return "Contract renewed";
     }

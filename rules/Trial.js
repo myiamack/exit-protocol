@@ -196,7 +196,7 @@
       return { ok: true, text: t };
     }
     closeWriting() { if (this.writing === "open") this.writing = "closed"; }
-    allSubmitted(players) { return players.filter(p => !p.isStuck()).every(p => this.submissions.has(p)); }
+    allSubmitted(players) { return players.filter(p => p.isActive()).every(p => this.submissions.has(p)); }   // idle players are not waited for
 
     /* With submissions in use, only players who submitted can be ranked. */
     startVote(teams) {

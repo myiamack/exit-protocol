@@ -32,8 +32,8 @@
       return this.settings;
     }
 
-    /* Any input. Resets the timer and closes the popup. */
-    activity(p, now) { p.markActive(now); }
+    /* Any input. Resets the timer, closes the popup and clears idle (Part 8). Works while paused too. */
+    activity(p, now) { p.idle = false; p.markActive(now); }
 
     /* Pause on screens with no player input (intro, briefings, intermissions).
        Closes any open popup with no glitch. While paused, check() never opens a popup or adds a glitch. */

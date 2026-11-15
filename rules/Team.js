@@ -14,7 +14,7 @@
     add(p) { p.teamId = this.id; this.members.push(p); }
     remove(p) { this.members = this.members.filter(q => q !== p); }
     size() { return this.members.length; }
-    active() { return this.members.filter(p => !p.isStuck()); }
+    active() { return this.members.filter(p => p.isActive()); }   // not Stuck, not idle
     mates(p) { return this.members.filter(q => q !== p); }
     has(p) { return this.members.includes(p); }
     resetRound() { this.won = null; }

@@ -196,6 +196,7 @@ Each level opens with a **Briefing** (no player actions). After Stats Update the
 - Graduate: total of all 5 attributes 24 or more (was 22, changed after playtest round 2), every attribute 2 or more, not Stuck.
 - A second path completed at any point also counts as a win.
 - Placement timer: 60 seconds, with a countdown on screen. Points not placed when it ends are placed by the bot placement rule; points the player already placed stay.
+- Idle when results() runs: ending is Contract renewed, even with graduating stats. An idle player with a completed second path still wins.
 - Each player's ending is locked when results() runs. No later change can alter it.
 
 ## Bot behavior for the prototype
@@ -226,7 +227,7 @@ After each step: tell me what changed, then give me the exact git commands to co
 
 One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
 
-Next up: Part 8 (idle auto-pilot), then Part 6 (quiet heart buff). Part 6 needs idle to count active players.
+Next up: Part 6 (quiet heart buff). Part 8 is done; Part 6 needed idle to count active players.
 
 1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
 2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
@@ -284,7 +285,17 @@ Next up: Part 8 (idle auto-pilot), then Part 6 (quiet heart buff). Part 6 needs 
    Done. The "Still there?" countdown always shows in full before any glitch. The timer runs only on screens that need player input: it is paused on the intro, every briefing, every intermission, every Glitch Report and every Stats Update. While paused, nothing opens a popup or adds a glitch, however long. Pausing closes any open popup with no glitch. Resuming starts a fresh 60-second clock from the resume time.
    The pause decision lives in rules/Game.js, not in screen code. Game keeps the list of paused steps (Briefing, Intermission, Glitch Report, Stats Update) and pauses or resumes every player on each step change, for every level. The intro happens while the game is still in its starting Intermission, so it is paused too; game.js has no pause calls.
    Graduation: the timer runs for a player only until they have placed all their Round 7 points. Once placed, that player is paused for the rest of the game. A player with 0 points to place (already at their maxes) is paused from the start of Graduation. Everyone is paused after results(). Also in Game.js.
-8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
+8. Done. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
+   Idle details (decided):
+   - Any miss sets idle, including a miss over the per-round cap. The cap limits glitches only.
+   - Any input clears idle, on any screen (paused screens too).
+   - Active players = not Stuck and not idle (Team.active()). Used by the vote math, the light influence and the early close of Level 5-6 writing.
+   - Idle players cannot give, accept or decline gifts, accuse, sabotage or vote. Their Glitch Report counts as Skip.
+   - Gifts to an idle player can be sent. They expire at the end of the step (Open Floor or the gift window) and the giver is refunded. A player who comes back before then can still answer.
+   - Idle players' points are placed when the timer ends (Stats Update 30 seconds, Graduation 60 seconds), the same way as anyone's unplaced points.
+   - Vote: idle players cannot be ranked. A ballot cast before the voter went idle stays.
+   - Not blocked while idle: Cash Out, team switching, being sabotaged.
+   - Graduation: idle is checked when results() runs. Idle = Contract renewed, even with graduating stats. A completed second path still wins.
    Note for Base44: the server must run the Attendance check() for every player, because a closed browser tab never calls check().
 9. Move all rule math out of game.js (checkSop, payCost, lockPoints and any other). game.js only draws screens and calls the rules classes. Remove global rule state that duplicates Game.
 10. Full screen button on the game screens.

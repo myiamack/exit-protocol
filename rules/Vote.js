@@ -1,4 +1,5 @@
-/* Vote: judged trials with no host. Each non-Stuck player ranks top 3 non-Stuck players from other teams.
+/* Vote: judged trials with no host. Each active player (not Stuck, not idle) ranks top 3 active players from other teams.
+   A ballot cast before the voter went idle stays.
    1st = 3, 2nd = 2, 3rd = 1, times the voter's 1 + Initiative / 10. Points go to the ranked players' teams,
    then each team's total is divided by its active players and by the active players not on that team. Top half of teams win
    (rounded up: 5 teams -> 3 win, 7 teams -> 4).
@@ -18,9 +19,9 @@
 
     teamOf(p) { return this.teams.find(t => t.has(p)); }
 
-    /* Players this voter may rank: not themselves, not their own team, not Stuck, and (Levels 5-6) submitted. */
+    /* Players this voter may rank: not themselves, not their own team, not Stuck, not idle, and (Levels 5-6) submitted. */
     choicesFor(voter) {
-      return this.teams.filter(t => !t.has(voter)).flatMap(t => t.members).filter(p => !p.isStuck() && this.canBeRanked(p));
+      return this.teams.filter(t => !t.has(voter)).flatMap(t => t.members).filter(p => p.isActive() && this.canBeRanked(p));
     }
 
     /* Normally 3. Fewer only if fewer than 3 players can be ranked at all. */
@@ -28,12 +29,14 @@
 
     check(voter, ranking) {
       if (voter.isStuck()) return "Stuck players do not vote.";
+      if (voter.idle) return "You are idle.";
       const n = this.slotsFor(voter);
       if (ranking.length !== n) return "Rank exactly " + n + " players.";
       if (new Set(ranking).size !== n) return "Pick " + n + " different players.";
       for (const p of ranking) {
         if (p === voter) return "You cannot rank yourself.";
         if (p.isStuck()) return "Stuck players cannot be ranked.";
+        if (p.idle) return p.name + " is idle and cannot be ranked.";
         if (!this.canBeRanked(p)) return p.name + " has no submission and cannot be ranked.";
         if (this.teamOf(p) === this.teamOf(voter)) return "You cannot rank your own team.";
       }
@@ -50,7 +53,7 @@
     /* Returns teams in final order, and sets team.won.
        total = the team's vote points (each voter's points already x Initiative weight).
        score = total / (team's active players x active players who could rank them, i.e. active players not on
-       that team). Active = not Stuck (idle too once Part 8 exists). Teams rank by score, so team size does not
+       that team). Active = not Stuck and not idle. Teams rank by score, so team size does not
        matter: big teams have more players to rank, small teams have more possible voters. Either count 0 = score 0. */
     tally() {
       const allActive = this.teams.reduce((n, t) => n + t.active().length, 0);

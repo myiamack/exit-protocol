@@ -5,6 +5,7 @@
   class Accusation {
     static check(accuser, target, team) {
       if (accuser.isStuck()) return "You are Stuck.";
+      if (accuser.idle) return "You are idle.";
       if (accuser.accusedThisRound) return "One accusation per round.";
       if (target === accuser) return "You cannot accuse yourself.";
       if (!team.has(target)) return "Teammates only.";

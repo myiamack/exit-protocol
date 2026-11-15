@@ -3,7 +3,9 @@
    Accept: points go to the glitching attribute if the receiver is Glitching, else to their lowest
    attribute that still has room (ties: Focus, Collaboration, Initiative, Grit, Composure).
    Decline, or no answer by the end of the step: the giver gets the hearts back.
-   Independents refuse automatically. The receiver does not pick the attribute. */
+   Independents refuse automatically. The receiver does not pick the attribute.
+   Idle players (Part 8) cannot give or answer gifts. Gifts sent to them stay pending and expire
+   (refunded) at the end of the step, unless they come back and answer in time. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
@@ -16,6 +18,7 @@
     static check(giver, receiver, team, pts) {
       if (pts !== 1 && pts !== 2) return "Gift 1 or 2 points.";
       if (giver.isStuck()) return "You are Stuck.";
+      if (giver.idle) return "You are idle.";
       if (giver === receiver) return "You cannot gift yourself.";
       if (!team.has(receiver)) return "Teammates only.";
       if (receiver.isStuck()) return "Stuck players cannot receive gifts.";
@@ -51,6 +54,7 @@
        Lifeline: only a gift that cancels a glitch counts (Glitching before, not Glitching after). */
     static accept(round, rec, { savesAttendance = false } = {}) {
       if (rec.status !== "pending") return { ok: false, reason: "This gift was already answered." };
+      if (rec.receiver.idle) return { ok: false, reason: "You are idle." };
       const { giver, receiver, pts } = rec;
       const wasGlitching = receiver.isGlitchingAny();
       rec.target = receiver.giftTarget();
@@ -69,6 +73,7 @@
     /* Decline (or "expired" when no one answered): the giver gets the hearts back. */
     static decline(round, rec, status = "declined") {
       if (rec.status !== "pending") return { ok: false, reason: "This gift was already answered." };
+      if (status === "declined" && rec.receiver.idle) return { ok: false, reason: "You are idle." };
       rec.giver.hearts.refund(rec.cost);
       rec.status = status;
       return { ok: true, gift: rec, ...rec };

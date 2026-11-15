@@ -13,7 +13,10 @@
      statsUpdate:  computeEarnings, cashOut*, place points (autoPlacePoints after 30 s), finishRound
    finishRound puts the game in intermission (no round running, Attendance paused) until startNextRound.
    The game also starts in intermission, before Level 1.
-   Level 7: startNextRound (briefing) > advance > graduation: place points > results. */
+   Level 7: startNextRound (briefing) > advance > graduation: place points (autoPlacePoints after 60 s) > results.
+   Idle (Part 8): any missed Attendance check sets p.idle; any input (activity) clears it. Idle players take no
+   optional actions (gifts, answering gifts, accusations, sabotage, votes); the rule classes refuse them.
+   Trial costs are paid as normal. Their points are placed when the timer ends, like anyone else's. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
@@ -31,6 +34,9 @@
   // Steps that end on their own after this many seconds. The screen shows the countdown.
   // Glitch Report: anyone who has not accused skips. Stats Update: unplaced points are placed by the bot rule.
   const AUTO_ADVANCE_SECONDS = { glitchReport: 30, statsUpdate: 30 };
+
+  // Level 7 placement timer. Points not placed when it ends are placed by the bot placement rule (Round 7 way).
+  const GRADUATION_PLACE_SECONDS = 60;
 
   // What must happen before advance() may leave each step.
   const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };
@@ -85,6 +91,7 @@
         if (p.isBot) continue;
         let r = this.attendance.check(p, now);
         if (r.state === "missed") {
+          p.idle = true;   // Part 8: any miss, counted or not; the next input clears it
           r = { ...r, ...this.attendanceMiss(p, r.counted) };
           this.log.push({ level: this.level, event: "attendanceMiss", player: p.id, counted: r.counted, pending: r.pending, locked: r.locked, stuck: r.stuck });
         }
@@ -351,16 +358,19 @@
       p.cashOut();
       return { ok: true };
     }
-    /* Stats Update ran out of time: keep the points this player already placed (partial), and place the rest
-       by the bot placement rule. Returns the full placement used. */
+    /* Stats Update (30 s) or Graduation (60 s) ran out of time: keep the points this player already placed
+       (partial), and place the rest by the bot placement rule (at Graduation, the Round 7 way: attributes below
+       2 first). Idle players are placed this way too. Returns the full placement used. */
     autoPlacePoints(p, partial = {}) {
-      this.mustBe("statsUpdate");
-      if (!this.didRun("computeEarnings")) throw new Error("Compute earnings first.");
+      const final = this.step === "graduation";
+      if (!final) this.mustBe("statsUpdate");
+      if (final && this.over) throw new Error("Results are locked.");
+      if (!final && !this.didRun("computeEarnings")) throw new Error("Compute earnings first.");
       const KEYS = EP.Player.KEYS;
       p.earned = Math.min(p.earned, p.roomLeft());
       const mine = KEYS.reduce((n, k) => n + (partial[k] || 0), 0);
       for (const k of KEYS) p.attrs[k] += partial[k] || 0;        // place the rest on top of what was picked
-      const rest = EP.Bots.allocate(p, Math.max(0, p.earned - mine), false);
+      const rest = EP.Bots.allocate(p, Math.max(0, p.earned - mine), final);
       for (const k of KEYS) p.attrs[k] -= partial[k] || 0;
       const alloc = {};
       for (const k of KEYS) if ((partial[k] || 0) + (rest[k] || 0)) alloc[k] = (partial[k] || 0) + (rest[k] || 0);
@@ -412,6 +422,7 @@
   Game.STEP_NAME = STEP_NAME;
   Game.PAUSED_STEPS = PAUSED_STEPS;
   Game.AUTO_ADVANCE_SECONDS = AUTO_ADVANCE_SECONDS;
+  Game.GRADUATION_PLACE_SECONDS = GRADUATION_PLACE_SECONDS;
   EP.Game = Game;
   if (typeof module !== "undefined" && module.exports) module.exports = Game;
 })(typeof globalThis !== "undefined" ? globalThis : this);
