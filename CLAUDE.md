@@ -106,14 +106,25 @@ SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 t
 Each level opens with a **Briefing** (no player actions). After Stats Update the game is in **Intermission** until the next level starts; a new game also starts in Intermission. Level 7: Briefing, then Graduation.
 1. **Open Floor:** Contrarians may sabotage. Any player may gift a teammate.
 2. **Trial:** every non-Stuck player pays the cost from the tested attribute. **Glitching players pay too.** Hearts cover any shortfall.
-3. **Glitch Report:** accusations.
+3. **Glitch Report:** accusations. Ends on its own after 30 seconds, with a countdown on screen. No answer counts as Skip.
 4. **Gift window** (about 30 seconds): gifts to any teammate (see Gifts).
-5. **Lock-in:** any player still below 0 glitches. Reboot. Empathy.
-6. **Stats Update:** earn points, place them, refill hearts by 1.
+5. **Lock-in:** any player still below 0, or with a missed check-in nobody saved, glitches. Reboot. Empathy.
+6. **Stats Update:** earn points, place them, refill hearts by 1. Ends on its own after 30 seconds, with a countdown on screen. Points not placed by then are placed by the bot placement rule; points the player already placed stay.
 
 ### Glitch, reboot, Stuck
-- Glitching: any attribute below 0. Exactly 0 is safe.
+- Glitching: any attribute below 0. Exactly 0 is safe. A missed Attendance check-in before the gift window closes also sets Glitching (see Attendance glitch below).
 - A gift that brings the attribute to 0 or more cancels the glitch.
+- Attendance glitch (a missed check-in, see Part 7):
+  - Before the gift window closes: the player is Glitching. Teammates see Glitching on the Board. Nothing locks in yet.
+  - Any accepted gift to that player during the gift window cancels the pending attendance glitch. Normal gift costs. Points go to the lowest attribute (normal tie order), or to the glitching attribute if one is below 0. It counts for Lifeline.
+  - If not saved when the gift window closes, it locks in: glitch count +1, glitched this round, status Glitched, reboot.
+  - A miss after the gift window closed locks in at once, with the same reboot.
+  - Reboot for an attendance glitch: hearts to 0, 1 point that round, Empathy. No attribute refill.
+  - An attendance glitch and an attribute glitch in the same round count as one glitch.
+  - Message on a miss before the window closes: "You missed the check-in. You are Glitching. A teammate's gift can save you before the gift window closes." Button: "OK".
+  - Message on a miss after the window closed: "You missed the check-in. +1 glitch (x/2)." Button: "OK".
+- HUD (owner only): "GLITCHES x/2" next to hearts. Counts all locked glitches of any kind. ANOMALIES stays as it is and never counts glitches.
+- Gift window message: never show "No glitch for you this round" if the player has a pending or locked glitch this round. Open window: show that they are Glitching and a gift can save them. Closed window: show the locked glitch (for an attendance glitch: hearts set to 0, attributes unchanged).
 - Lock-in: glitch count +1. Reboot: take points evenly from the other attributes until the glitched one reaches 1. Any shortfall the others cannot cover is forgiven. Hearts set to 0.
 - Second locked glitch: **Stuck**. Spectator for the rest of the game. Cannot be sabotaged.
 - At risk flag: shown if any attribute, plus the hearts that could cover it, cannot pay a cost of 3. The check is fixed at 3 for every level (was 4, changed after playtest round 2). It is not the next trial's cost. The flag updates live, after every change.
@@ -139,7 +150,8 @@ Each level opens with a **Briefing** (no player actions). After Stats Update the
 - Stuck players cannot give or receive gifts.
 - An Independent's automatic refusal shows to the giver as a normal decline: "[Name] declined your gift. Your hearts came back." Never mention the type. Gift buttons stay for every teammate.
 - Cost by type, Independent refusal and refund, and overflow refund are unchanged (see Types).
-- Lifeline counts only a gift that cancels a glitch (the receiver was Glitching before the gift and is not after it).
+- Lifeline counts only a gift that cancels a glitch (the receiver was Glitching before the gift and is not after it). This includes a gift-window gift that cancels a pending attendance glitch.
+- Bots treat a teammate with a pending attendance glitch as Glitching (same as the Board).
 
 ### Accusations
 - One per player per round, against a teammate.
@@ -156,6 +168,7 @@ Each level opens with a **Briefing** (no player actions). After Stats Update the
 ### Anomalies
 - There are 3 anomalies: ERROR (the capital L on the sign-in screen), WATCHER (the badge says ATTEMPT 02), LOOP (leaving the endless step out of the SOP).
 - The HUD shows anomalies found out of 3. The HUD and the Glitch Report use the same count.
+- An attendance glitch never changes ANOMALIES. ANOMALIES counts clues only.
 - Ghosts (USER_???, ATTEMPT_01, NULL) give hints only. They do not count as anomalies.
 
 ### Points
@@ -252,15 +265,19 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
    - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
-7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: a missed check-in. Idle time, popup time and the per-round max are settings (host dials).
+7. Attendance class. Any input resets a 60-second timer: key press, click, touch, mouse movement and scrolling. Mouse movement counts at most once per second. At 60 seconds, a popup with a 15-second countdown. No input before it ends: a missed check-in. Idle time, popup time and the per-round max are settings (host dials).
    Attendance rules (changed after playtest):
    - Attendance is one more way to get a glitch. A missed check-in follows the normal glitch path (see Glitch, reboot, Stuck).
    - Max 1 attendance miss per player per round. A miss saved by a gift still uses the cap. A second miss in the same round does nothing.
    - An attendance glitch never changes ANOMALIES. ANOMALIES counts clues only.
    - An attendance glitch and an attribute glitch in the same round count as one glitch.
    - Two locked glitches of any kind = Stuck.
-   Done. The "Still there?" countdown always shows in full before any glitch. The timer runs only on screens that need player input: it is paused on the intro, every briefing and every intermission. While paused, nothing opens a popup or adds a glitch, however long. Pausing closes any open popup with no glitch. Resuming starts a fresh 60-second clock from the resume time.
-   The pause decision lives in rules/Game.js, not in screen code. Game keeps the list of paused steps (Briefing, Intermission) and pauses or resumes every player on each step change, for every level. The intro happens while the game is still in its starting Intermission, so it is paused too; game.js has no pause calls.
+   - Popup keys: while the check-in popup is open, a key press only closes it. The key never reaches any other element. Opening the popup clears focus from the footer button. Space or Enter never advances the game.
+   - Attendance runs on every input screen, including the Levels 5-6 submission screen and the Vote screen (pages/vote-test.html and pages/vote-test.js).
+   - Attendance does not fire on the Glitch Report or Stats Update (both end on their own after 30 seconds).
+   - Screen code for the popup is shared in attendance-view.js (used by index.html and pages/vote-test.html). Rules stay in rules/Attendance.js and rules/Game.js.
+   Done. The "Still there?" countdown always shows in full before any glitch. The timer runs only on screens that need player input: it is paused on the intro, every briefing, every intermission, every Glitch Report and every Stats Update. While paused, nothing opens a popup or adds a glitch, however long. Pausing closes any open popup with no glitch. Resuming starts a fresh 60-second clock from the resume time.
+   The pause decision lives in rules/Game.js, not in screen code. Game keeps the list of paused steps (Briefing, Intermission, Glitch Report, Stats Update) and pauses or resumes every player on each step change, for every level. The intro happens while the game is still in its starting Intermission, so it is paused too; game.js has no pause calls.
    Graduation: the timer runs for a player only until they have placed all their Round 7 points. Once placed, that player is paused for the rest of the game. A player with 0 points to place (already at their maxes) is paused from the start of Graduation. Everyone is paused after results(). Also in Game.js.
 8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
    Note for Base44: the server must run the Attendance check() for every player, because a closed browser tab never calls check().
@@ -273,7 +290,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 ## Levels 5-6 submissions and vote
 - Each active player writes one named submission to a prompt, max 300 characters.
 - Writing timer: 3 minutes. Closes early when every active player has submitted.
-- Typing counts as activity for the Attendance check.
+- Typing counts as activity for the Attendance check. Attendance runs on the submission screen and the Vote screen.
 - No submission: player cannot be ranked, but can still vote.
 - Vote rules stay as they are: rank top 3 players from other teams, Stuck players cannot vote or be ranked, if fewer than 3 can be ranked, rank as many as exist, points divided by active players and by possible voters, Initiative weight applies first.
 - Voters see each submission with the writer's name and team.
