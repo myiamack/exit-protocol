@@ -252,7 +252,13 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
    - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
-7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
+7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: a missed check-in. Idle time, popup time and the per-round max are settings (host dials).
+   Attendance rules (changed after playtest):
+   - Attendance is one more way to get a glitch. A missed check-in follows the normal glitch path (see Glitch, reboot, Stuck).
+   - Max 1 attendance miss per player per round. A miss saved by a gift still uses the cap. A second miss in the same round does nothing.
+   - An attendance glitch never changes ANOMALIES. ANOMALIES counts clues only.
+   - An attendance glitch and an attribute glitch in the same round count as one glitch.
+   - Two locked glitches of any kind = Stuck.
    Done. The "Still there?" countdown always shows in full before any glitch. The timer runs only on screens that need player input: it is paused on the intro, every briefing and every intermission. While paused, nothing opens a popup or adds a glitch, however long. Pausing closes any open popup with no glitch. Resuming starts a fresh 60-second clock from the resume time.
    The pause decision lives in rules/Game.js, not in screen code. Game keeps the list of paused steps (Briefing, Intermission) and pauses or resumes every player on each step change, for every level. The intro happens while the game is still in its starting Intermission, so it is paused too; game.js has no pause calls.
    Graduation: the timer runs for a player only until they have placed all their Round 7 points. Once placed, that player is paused for the rest of the game. A player with 0 points to place (already at their maxes) is paused from the start of Graduation. Everyone is paused after results(). Also in Game.js.
