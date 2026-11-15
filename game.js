@@ -557,9 +557,20 @@ ${a.done?`<div class="panel"><div class="row" style="justify-content:space-betwe
   ${incomingGifts()}
   ${!g.closed?giftRoster():""}
   ${g.sent.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
-  ${g.closed?`<p>${ME.glitchedThisRound?`<b style="color:var(--pink)">Glitch locked in.</b> Reboot: points taken evenly from your other attributes to bring it back to 1. Hearts set to 0. Glitches: ${ME.glitches}/2.`:"Window closed. No glitch for you this round."}</p>`:`<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0 when it closes becomes a glitch.</span>`}
+  ${g.closed?`<p>${gwClosedText()}</p>`:`${gwOpenText()}<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0, or a missed check-in nobody saved, becomes a glitch when it closes.</span>`}
 </div>`:""}`};
 
+/* Gift window state for you. Never says "No glitch" while a glitch is pending or locked this round. */
+function gwOpenText(){
+  if(ME.attendancePending)return `<p><b style="color:var(--pink)">You missed the check-in. You are Glitching.</b> A teammate's gift can save you before the gift window closes.</p>`;
+  if(ME.isGlitching())return `<p><b style="color:var(--pink)">You are Glitching.</b> A teammate's gift can save you before the gift window closes.</p>`;
+  return ""}
+function gwClosedText(){
+  const n=`Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}.`;
+  if(ME.glitchedThisRound&&ME.attendanceGlitchThisRound)return `<b style="color:var(--pink)">Glitch locked in.</b> You missed the check-in and no gift saved you. Hearts set to 0. Your attributes are unchanged. ${n}`;
+  if(ME.glitchedThisRound)return `<b style="color:var(--pink)">Glitch locked in.</b> Reboot: points taken evenly from your other attributes to bring it back to 1. Hearts set to 0. ${n}`;
+  if(ME.isGlitchingAny())return `<b style="color:var(--pink)">You are Glitching.</b> ${n}`;
+  return "Window closed. No glitch for you this round."}
 /* Gift buttons for every teammate (Open Floor and gift window). Stuck players are spectators. */
 const GIFT_RULE="They choose Accept or Decline. Accepted points go to their glitching attribute if they are Glitching, otherwise to their lowest attribute with room. You don't pick the attribute. If they decline, or don't answer before this step ends, your hearts come back.";
 function giftRoster(){return `<p class="hint">${GIFT_RULE}</p><div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.flag())}${!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n),why=EP.Gift.check(ME,q,MYTEAM,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${why?`disabled title="${esc(why)}"`:""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`}
