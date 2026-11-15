@@ -3,6 +3,8 @@
    and rules/Game.js: this file only reports input to Game.activity() and draws what Game.checkAttendance() returns.
    Pausing is decided in Game (briefings and intermissions), never here. */
 (function (root) {
+  const MOVE_THROTTLE_MS = 1000;   // mouse movement counts as input at most once per second
+
   /* opts.game(): the Game, or null. opts.me(): your Player, or null. opts.onChange(): redraw after a miss. */
   function mount(opts) {
     const el = document.createElement("div");
@@ -56,11 +58,17 @@
       e.preventDefault(); e.stopImmediatePropagation();
     }, true);
 
-    /* Any key, click or touch counts as input, and closes the "Still there?" popup. */
-    ["keydown", "pointerdown", "touchstart"].forEach(ev => addEventListener(ev, () => {
-      input();
-      if (api.kind() === "popup") api.close();
-    }, { capture: true, passive: true }));
+    /* Key press, click, touch, mouse movement and scrolling all count as input, and close the "Still there?" popup.
+       Mouse movement fires many times a second, so it counts at most once per second. */
+    const answer = () => { input(); if (api.kind() === "popup") api.close(); };
+    ["keydown", "pointerdown", "touchstart", "wheel", "scroll"].forEach(ev => addEventListener(ev, answer, { capture: true, passive: true }));
+    let lastMove = -Infinity;
+    addEventListener("pointermove", () => {
+      const now = Date.now();
+      if (now - lastMove < MOVE_THROTTLE_MS) return;
+      lastMove = now;
+      answer();
+    }, { capture: true, passive: true });
 
     setInterval(api.tick, 1000);
     return api;

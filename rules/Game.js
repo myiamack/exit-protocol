@@ -68,7 +68,7 @@
     }
 
     /* ----- Attendance (any time) ----- */
-    /* Any key, click or touch by this player. */
+    /* Any input by this player: key press, click, touch, mouse movement (at most once per second) or scrolling. */
     activity(p, now) { this.attendance.activity(p, now); }
     /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
        Returns [{ player, state, msLeft, glitched, stuck }] for players with the popup open or a miss. */

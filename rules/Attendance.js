@@ -1,5 +1,5 @@
 /* Attendance: checks that each player is still at the keyboard.
-   Any key, click or touch resets a timer. After idleMs with no input, a popup opens with a
+   Any input resets a timer: key press, click, touch, mouse movement (counted at most once per second) or scrolling. After idleMs with no input, a popup opens with a
    popupMs countdown. No input before it ends: +1 glitch count, attributes unchanged.
    At most maxPerRound Attendance glitches per player per round. Two glitches of any kind = Stuck
    (Player.isStuck already counts every glitch).
