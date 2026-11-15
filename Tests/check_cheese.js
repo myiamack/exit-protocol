@@ -78,7 +78,7 @@ function playGame(opts, rng) {
   const game = new EP.Game({ teams, rng });
 
   for (let level = 1; level <= 6; level++) {
-    game.startNextRound();
+    game.startNextRound(); game.advance();
     if (opts.buff) smallTeamHeart(game);
     for (const p of players) if (p.strategy === "switcher") switchAfterCatch(game, p, rng);
     EP.Bots.openFloor(game, rng);
@@ -105,7 +105,7 @@ function playGame(opts, rng) {
     }
     game.finishRound();
   }
-  game.startNextRound();
+  game.startNextRound(); game.advance();
   EP.Bots.graduation(game);
   return game.results().map(r => ({ p: r.player, startSize: startSize.get(r.player) }));
 }

@@ -3,6 +3,7 @@
    Player actions (sabotage, accuse, gift, cashOut) return { ok: false, reason }.
    Engine calls (payTrialCosts, lockIn, ...) throw an Error with the reason.
    Order each level 1 to 6 (advance() moves to the next step):
+     briefing:     no player actions (Attendance paused)             > advance
      openFloor:    sabotage*, gift*, answerGift*, switchTeam*           > advance (unanswered gifts expire)
      trial:        setSopScore (Level 1) / Levels 5-6: setPrompt (host only), startWriting, typeSubmission*, submit*,
                    closeWriting (or early close), startVote + cast; then runTrial, payTrialCosts  > advance
@@ -10,7 +11,9 @@
      giftWindow:   gift*, answerGift*                         > advance (unanswered gifts expire)
      lockIn:       lockIn                                     > advance
      statsUpdate:  computeEarnings, cashOut*, place points, finishRound
-   Then startNextRound. Level 7: startNextRound > place points > results. */
+   finishRound puts the game in intermission (no round running, Attendance paused) until startNextRound.
+   The game also starts in intermission, before Level 1.
+   Level 7: startNextRound (briefing) > advance > graduation: place points > results. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
@@ -18,14 +21,19 @@
 
   const STEP_NAME = { openFloor: "Open Floor", trial: "Trial", glitchReport: "Glitch Report",
                       giftWindow: "Gift window", lockIn: "Lock-in", statsUpdate: "Stats Update",
-                      graduation: "Graduation" };
+                      graduation: "Graduation", briefing: "Briefing", intermission: "Intermission" };
+
+  // Steps with no player input. Game pauses the Attendance timer for every player while in one,
+  // and resumes it (fresh 60 s clock) on entering any other step. Applies to every level.
+  const PAUSED_STEPS = ["briefing", "intermission"];
 
   // What must happen before advance() may leave each step.
   const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };
 
   class Game {
-    /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }. */
-    constructor({ teams, rng = Math.random, host = false, attendance = {} }) {
+    /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }.
+       clock: returns the time in ms. Used only to time Attendance pause and resume. Tests pass a fake one. */
+    constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now() }) {
       this.teams = teams;
       this.players = teams.flatMap(t => t.members);
       this.rng = rng;
@@ -36,14 +44,22 @@
       this.prompts = [];         // game record: the prompt used at each judged level { level, index, text, custom }
       this.submissions = [];     // game record: Level 5-6 submissions once writing closes { level, name, text }
       this.attendance = new EP.Attendance(attendance);
+      this.clock = clock;
+      this.syncAttendance();   // starts in intermission: paused
+    }
+
+    /* Called on every step change. Pause in a briefing or intermission; resume in any step that needs input. */
+    syncAttendance() {
+      const paused = PAUSED_STEPS.includes(this.step), now = this.clock();
+      for (const p of this.players) {
+        if (paused && !p.attendancePaused) this.attendance.pause(p, now);
+        else if (!paused && p.attendancePaused) this.attendance.resume(p, now);
+      }
     }
 
     /* ----- Attendance (any time) ----- */
     /* Any key, click or touch by this player. */
     activity(p, now) { this.attendance.activity(p, now); }
-    /* A no-input screen (intro, briefing, intermission) opens or closes for this player. */
-    pauseAttendance(p, now) { this.attendance.pause(p, now); }
-    resumeAttendance(p, now) { this.attendance.resume(p, now); }
     /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
        Returns [{ player, state, msLeft, glitched, stuck }] for players with the popup open or a miss. */
     checkAttendance(now) {
@@ -61,7 +77,11 @@
     get over() { return this.level === 7 && this.round && this.round.done; }
 
     /* ----- step order ----- */
-    get step() { return this.round ? this.round.step : null; }
+    /* No round yet, or the round is finished: intermission. */
+    get step() {
+      if (!this.round || this.round.completed.has("finishRound")) return "intermission";
+      return this.round.step;
+    }
     stepName() { return STEP_NAME[this.step] || "no round"; }
     didRun(action) { return !!this.round && this.round.completed.has(action); }
 
@@ -78,13 +98,15 @@
 
     /* Move to the next step. Refused if the current step is not finished. */
     advance() {
-      if (!this.round) throw new Error("No round yet. Call startNextRound.");
-      if (this.round.isFinal) throw new Error("Graduation is the last step.");
+      if (this.step === "intermission") throw new Error("Intermission. Call startNextRound.");
+      if (this.step === "graduation") throw new Error("Graduation is the last step.");
       if (this.step === "statsUpdate") throw new Error("Stats Update is the last step. Call finishRound, then startNextRound.");
       const need = REQUIRED[this.step];
       if (need && !this.didRun(need)) throw new Error("Finish " + this.stepName() + " first (" + need + ").");
       if (this.step === "openFloor" || this.step === "giftWindow") EP.Gift.expireAll(this.round);   // no answer = declined
-      return this.round.nextStep();
+      const step = this.round.nextStep();
+      this.syncAttendance();
+      return step;
     }
 
     startNextRound() {
@@ -98,6 +120,7 @@
       if (this.round.isFinal) {
         for (const p of this.players) if (!p.isStuck()) p.earned = Math.min(POINTS.final, p.roomLeft());
       }
+      this.syncAttendance();   // briefing: paused
       return this.round;
     }
 
@@ -286,6 +309,7 @@
       const unplaced = this.players.find(p => !p.isStuck() && p.earned > 0);
       if (unplaced) throw new Error(unplaced.name + " has not placed their points.");
       this.once("finishRound");
+      this.syncAttendance();   // intermission: paused
       const gritBonus = [];
       for (const p of this.players) {
         if (p.isStuck()) continue;
@@ -317,6 +341,7 @@
 
   Game.POINTS = POINTS;
   Game.STEP_NAME = STEP_NAME;
+  Game.PAUSED_STEPS = PAUSED_STEPS;
   EP.Game = Game;
   if (typeof module !== "undefined" && module.exports) module.exports = Game;
 })(typeof globalThis !== "undefined" ? globalThis : this);

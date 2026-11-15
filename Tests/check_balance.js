@@ -71,7 +71,7 @@ function playGame(hc, spending, rng) {
   teams.forEach(t => out.laterWins.set(t, 0));
 
   for (let level = 1; level <= 6; level++) {
-    game.startNextRound();
+    game.startNextRound(); game.advance();
     EP.Bots.openFloor(game, rng);
     game.advance();
     EP.Bots.trial(game, rng);
@@ -93,7 +93,7 @@ function playGame(hc, spending, rng) {
     statsUpdate(game, spending);
     game.finishRound();
   }
-  game.startNextRound();
+  game.startNextRound(); game.advance();
   EP.Bots.graduation(game);
   out.results = game.results();
   out.contras = types.filter(t => t === "contra").length;

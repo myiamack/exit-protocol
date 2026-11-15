@@ -46,7 +46,7 @@
   }
   function playLevelsOneToFour() {
     for (let n = 1; n <= 4; n++) {
-      G.startNextRound();
+      G.startNextRound(); G.advance();
       EP.Bots.openFloor(G, RNG); G.advance();
       EP.Bots.trial(G, RNG);
       finishRoundWithBots();
@@ -54,7 +54,7 @@
   }
   /* Start a judged level: Open Floor with bots, then the Trial step. */
   function startJudgedLevel() {
-    G.startNextRound();
+    G.startNextRound(); G.advance();
     EP.Bots.openFloor(G, RNG); G.advance();
     S.draft = ""; S.msg = ""; S.result = null;
     if (G.host) { S.screen = "prompt"; render(); }

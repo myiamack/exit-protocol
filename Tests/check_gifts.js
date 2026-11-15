@@ -65,7 +65,7 @@ console.log("-- Accept, Decline, no answer");
 }
 { // No answer: declined and refunded when the step ends (Open Floor, then the gift window)
   const { ps, teams, game } = gameOf(Array(8).fill("coop"));
-  game.startNextRound();
+  game.startNextRound(); game.advance();
   const a = game.gift(ps[0], ps[1], 1);
   game.advance();   // Open Floor ends
   expect("No answer in Open Floor: expired when Open Floor ends", a.gift.status === "expired", a.gift.status);
@@ -82,7 +82,7 @@ console.log("-- Accept, Decline, no answer");
 }
 { // Answering is only allowed during Open Floor or the gift window
   const { ps, teams, game } = gameOf(Array(8).fill("coop"));
-  game.startNextRound();
+  game.startNextRound(); game.advance();
   const a = game.gift(ps[0], ps[1], 1);
   expect("Answer during Open Floor is allowed", game.answerGift(a.gift, true).ok);
   game.advance();
@@ -152,7 +152,7 @@ console.log("-- Who can gift");
 }
 {
   const { ps, teams, game } = gameOf(Array(8).fill("coop"));
-  game.startNextRound();
+  game.startNextRound(); game.advance();
   expect("Gift in Open Floor", game.gift(ps[0], ps[1], 1).ok);
   expect("Gift to another team is refused", !game.gift(ps[0], ps[5], 1).ok);
   game.advance();
@@ -169,7 +169,7 @@ function botRate(seed, n) {
   let yes = 0;
   for (let i = 0; i < n; i++) {
     const { ps, game } = gameOf(Array(8).fill("coop"));
-    game.startNextRound();
+    game.startNextRound(); game.advance();
     const res = game.gift(ps[0], ps[1], 1);
     EP.Bots.answer(game, res.gift, rng);
     if (res.gift.status === "accepted") yes++;

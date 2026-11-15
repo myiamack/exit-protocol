@@ -13,7 +13,9 @@
     { n: 7, name: "Graduation", trial: "Crack the simulation",         attr: null,         cost: 0, judged: false, trialKind: null }
   ];
 
-  const STEPS = ["openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate"];
+  // Every level opens with a briefing (no player actions). Level 7: briefing, then graduation.
+  const STEPS = ["briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate"];
+  const FINAL_STEPS = ["briefing", "graduation"];
 
   class Round {
     constructor(levelNumber) {
@@ -29,8 +31,9 @@
     }
     static get LEVELS() { return LEVELS; }
     static get STEPS() { return STEPS; }
-    get step() { return this.isFinal ? "graduation" : STEPS[this.stepIndex]; }
-    nextStep() { if (this.stepIndex < STEPS.length - 1) this.stepIndex += 1; return this.step; }
+    get steps() { return this.isFinal ? FINAL_STEPS : STEPS; }
+    get step() { return this.steps[this.stepIndex]; }
+    nextStep() { if (this.stepIndex < this.steps.length - 1) this.stepIndex += 1; return this.step; }
     saboteurs() { return [...new Set(this.sabotages.map(s => s.actor))]; }
   }
 

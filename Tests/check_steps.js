@@ -24,7 +24,7 @@ const teams = [0, 1].map(i => new EP.Team({ id: i, name: "Team " + i, members: p
 const game = new EP.Game({ teams, rng: () => 0.5 });
 const [contra, mate] = players;
 
-game.startNextRound();
+game.startNextRound(); game.advance();
 expect("Round starts in Open Floor", game.step === "openFloor", game.step);
 refusedResult("Accuse during Open Floor", game.accuse(mate, contra));
 throws("Pay trial costs during Open Floor", () => game.payTrialCosts());
@@ -260,7 +260,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   const B = new EP.Team({ id: 11, name: "Team B", members: ps.slice(4, 9) });
   const C = new EP.Team({ id: 12, name: "Team C", members: ps.slice(9) });
   const g = new EP.Game({ teams: [A, B, C], rng: NO });
-  g.startNextRound();
+  g.startNextRound(); g.advance();
 
   refusedResult("Switch to your own team", g.switchTeam(ps[1], A));
   refusedResult("Switch into a full team (5)", g.switchTeam(ps[1], B));
@@ -280,7 +280,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Caught by team A, then switch: sabotage allowed again on the new team.
   const stuck = ps[7]; stuck.glitches = 2;
   const g2 = new EP.Game({ teams: [A, B, C], rng: NO });
-  g2.startNextRound();
+  g2.startNextRound(); g2.advance();
   refusedResult("Stuck player switches", g2.switchTeam(stuck, A));
   expect("Move back to A (A 4, C 3)", g2.switchTeam(ps[1], A).ok);
   ps[0].markCaughtBy(A.id);
@@ -349,8 +349,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
     const ps = Array.from({ length: 9 }, (_, i) => EP.Bots.makePlayer(300 + i, "J" + i, ["coop", "indep", "contra"][i % 3]));
     const ts = [0, 1, 2].map(i => new EP.Team({ id: "J" + i, name: "Team J" + i, members: ps.slice(i * 3, i * 3 + 3) }));
     const g = new EP.Game({ teams: ts, rng, host });
-    g.startNextRound(); g.level = 4; g.round = null;   // jump straight to Level 5
-    g.startNextRound(); g.advance();                   // Open Floor > Trial
+    g.startNextRound(); g.advance(); g.level = 4; g.round = null;   // jump straight to Level 5
+    g.startNextRound(); g.advance(); g.advance();                   // Open Floor > Trial
     return { g, ps, ts };
   }
 
@@ -494,7 +494,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Play all 6 levels with bots; check team wins after each trial.
   let ok = true, detail = "";
   for (let n = 1; n <= 6; n++) {
-    g.startNextRound();
+    g.startNextRound(); g.advance();
     EP.Bots.openFloor(g, rng); g.advance();
     const before = g.board().teams.map(x => x.wins);
     EP.Bots.trial(g, rng);
@@ -533,7 +533,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
     const ps = ["coop", "coop", "indep", "contra", "coop", "coop", "indep", "coop"].map((t, i) => EP.Bots.makePlayer(200 + i, "A" + i, t));
     ps[0].isBot = false;   // the one human; bots are not checked
     const ts = [0, 1].map(i => new EP.Team({ id: i, name: "T" + i, members: ps.slice(i * 4, i * 4 + 4) }));
-    return { g: new EP.Game({ teams: ts, rng: NO, attendance }), me: ps[0], bot: ps[1] };
+    const clock = { now: 0 };   // fake clock for Game's pause and resume; set clock.now to move time
+    return { g: new EP.Game({ teams: ts, rng: NO, attendance, clock: () => clock.now }), me: ps[0], bot: ps[1], clock };
   };
 
   const d = new EP.Attendance().settings;
@@ -547,7 +548,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // A miss adds 1 glitch, attributes unchanged.
   {
     const { g, me } = mkGame();
-    g.startNextRound();
+    g.startNextRound(); g.advance();
     g.activity(me, 0);
     const attrs = { ...me.attrs }, hearts = me.hearts.count;
     expect("No popup before 60 s", g.checkAttendance(s(59)).length === 0);
@@ -566,7 +567,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Only 1 Attendance glitch per player per round.
   {
     const { g, me } = mkGame();
-    g.startNextRound();
+    g.startNextRound(); g.advance();
     g.activity(me, 0);
     missAt(g, s(75));                             // first miss
     const again = missAt(g, s(150));              // second miss, same round
@@ -576,14 +577,14 @@ throws("Finish the round before points are placed", () => game.finishRound());
     // Finish the round and start the next; the per-round max resets.
     g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
     g.computeEarnings(); me.isBot = true; EP.Bots.statsUpdate(g); me.isBot = false;   // place my points the bot way
-    g.finishRound(); g.startNextRound();
+    g.finishRound(); g.startNextRound(); g.advance();
     const had = me.glitches;
     const next = missAt(g, s(225));
     expect("Next round: a miss counts again", had === 1 && next[0].glitched && me.glitches === 2, had + " > " + me.glitches);
   }
   {
     const { g, me } = mkGame({ maxPerRound: 2 });
-    g.startNextRound(); g.activity(me, 0);
+    g.startNextRound(); g.advance(); g.activity(me, 0);
     missAt(g, s(75)); missAt(g, s(150));
     expect("Per-round max is a setting (max 2: two misses count)", me.glitches === 2, "glitches " + me.glitches);
   }
@@ -591,7 +592,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Two glitches of any kind make the player Stuck.
   {
     const { g, me } = mkGame();
-    g.startNextRound(); g.activity(me, 0);
+    g.startNextRound(); g.advance(); g.activity(me, 0);
     me.attrs.focus = -1; me.lockIn();             // one locked (attribute) glitch
     expect("One locked glitch: not Stuck", me.glitches === 1 && !me.isStuck());
     const r = missAt(g, s(75));
@@ -600,7 +601,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   }
   {
     const { g, me } = mkGame({ maxPerRound: 2 });
-    g.startNextRound(); g.activity(me, 0);
+    g.startNextRound(); g.advance(); g.activity(me, 0);
     missAt(g, s(75)); missAt(g, s(150));
     expect("Two Attendance glitches = Stuck", me.isStuck() && me.boardStatus() === "Stuck");
   }
@@ -608,7 +609,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Any input resets the timer.
   {
     const { g, me } = mkGame();
-    g.startNextRound(); g.activity(me, 0);
+    g.startNextRound(); g.advance(); g.activity(me, 0);
     g.activity(me, s(50));
     expect("Input at 50 s: no popup at 75 s", g.checkAttendance(s(75)).length === 0);
     expect("Popup opens 60 s after the last input (110 s)", g.checkAttendance(s(110))[0].state === "popup");
@@ -624,7 +625,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // player was quiet much longer than 75 s (intro, intermission, or late checks in a background tab).
   {
     const { g, me } = mkGame();
-    g.startNextRound();
+    g.startNextRound(); g.advance();
     const first = g.checkAttendance(s(0));         // first check: starts the clock
     expect("First check of the game starts the clock (no popup, no glitch)", first.length === 0 && me.glitches === 0);
     const late = g.checkAttendance(s(300));        // next check is very late: 300 s quiet
@@ -637,7 +638,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   }
   {
     const { g, me } = mkGame();
-    g.startNextRound();
+    g.startNextRound(); g.advance();
     me.markActive(s(0));                           // last input long ago (for example, during the intro)
     const r = g.checkAttendance(s(400));
     expect("Old input before the first check: popup first, no glitch", r[0].state === "popup" && me.glitches === 0, r[0].state);
@@ -648,12 +649,12 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Pause and resume: the timer runs only on screens that need input.
   {
     const { g, me } = mkGame();
-    g.startNextRound(); g.activity(me, 0);
-    g.pauseAttendance(me, s(10));
+    g.startNextRound(); g.advance(); g.activity(me, 0);
+    g.attendance.pause(me, s(10));
     const quiet = [s(60), s(75), s(1000), s(100000)].map(t => g.checkAttendance(t));
     expect("Paused: no popup or glitch, however long", quiet.every(r => r.length === 0) && me.glitches === 0, "glitches " + me.glitches);
     expect("Paused: check() says paused", g.attendance.check(me, s(200000)).state === "paused");
-    g.resumeAttendance(me, s(200000));
+    g.attendance.resume(me, s(200000));
     expect("Resume: no popup at 59 s after resume", g.checkAttendance(s(200059)).length === 0);
     const r = g.checkAttendance(s(200060));
     expect("Resume gives a full 60 s before the popup", r.length === 1 && r[0].state === "popup" && r[0].msLeft === s(15), r[0] && r[0].state);
@@ -662,22 +663,22 @@ throws("Finish the round before points are placed", () => game.finishRound());
   }
   {
     const { g, me } = mkGame();
-    g.startNextRound(); g.activity(me, 0);
+    g.startNextRound(); g.advance(); g.activity(me, 0);
     expect("Popup open at 65 s", g.checkAttendance(s(65))[0].state === "popup");
-    g.pauseAttendance(me, s(70));
+    g.attendance.pause(me, s(70));
     expect("Pausing during an open popup closes it with no glitch",
            me.attendancePopupAt === null && g.checkAttendance(s(90)).length === 0 && me.glitches === 0, "glitches " + me.glitches);
-    g.resumeAttendance(me, s(500));
+    g.attendance.resume(me, s(500));
     expect("After resume, the old popup does not come back (no popup until 60 s later)",
            g.checkAttendance(s(501)).length === 0 && g.checkAttendance(s(559)).length === 0 && me.glitches === 0);
     expect("After resume, popup at 60 s", g.checkAttendance(s(560))[0].state === "popup");
   }
   {
     const { g, me } = mkGame();
-    g.startNextRound();
-    g.pauseAttendance(me, 0);                     // paused before any input or check (intro)
+    g.startNextRound(); g.advance();
+    g.attendance.pause(me, 0);                     // paused before any input or check (intro)
     expect("Paused from the start: nothing happens", g.checkAttendance(s(5000)).length === 0 && me.glitches === 0);
-    g.resumeAttendance(me, s(5000));
+    g.attendance.resume(me, s(5000));
     expect("First resume starts the clock: popup at resume + 60 s",
            g.checkAttendance(s(5059)).length === 0 && g.checkAttendance(s(5060))[0].state === "popup");
   }
@@ -685,11 +686,62 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // A miss restarts the timer: the next popup comes 60 s after the miss, not at once.
   {
     const { g, me } = mkGame({ maxPerRound: 2 });
-    g.startNextRound(); g.activity(me, 0);
+    g.startNextRound(); g.advance(); g.activity(me, 0);
     missAt(g, s(75));
     expect("After a miss, no popup until 60 s later", g.checkAttendance(s(134)).length === 0 &&
            g.checkAttendance(s(135))[0].state === "popup");
   }
+}
+
+// Game decides Attendance pausing from its own steps (no screen). Briefing and intermission: paused.
+// Every other step: running. Checked at every step of Levels 1 to 7.
+{
+  let a = 7;
+  const rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const ps = Array.from({ length: 12 }, (_, i) => EP.Bots.makePlayer(300 + i, "G" + i, ["coop", "indep", "contra"][i % 3]));
+  const ts = [0, 1, 2].map(i => new EP.Team({ id: i, name: "GT" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+  const clock = { now: 0 };
+  const g = new EP.Game({ teams: ts, rng, clock: () => clock.now });
+  const me = ps[0];
+  expect("Paused steps are kept in Game: briefing and intermission",
+         JSON.stringify(EP.Game.PAUSED_STEPS) === JSON.stringify(["briefing", "intermission"]));
+  const allPaused = () => g.players.every(p => p.attendancePaused);
+  const nonePaused = () => g.players.every(p => !p.attendancePaused);
+  const seen = {}, bad = [];
+  const at = (label, wantPaused) => {
+    seen[g.step] = true;
+    const ok = wantPaused ? allPaused() : nonePaused();
+    if (!ok) bad.push("Level " + g.level + " " + label + " (" + g.step + ")");
+  };
+  expect("New game starts in intermission (covers the intro), paused", g.step === "intermission" && allPaused());
+  for (let lv = 1; lv <= 6; lv++) {
+    clock.now += 1000;
+    g.startNextRound();                 at("briefing", true);
+    if (lv === 1) {
+      refusedResult("Gift during the briefing is refused", g.gift(ps[1], ps[2], 1));
+      expect("Check during the briefing: nothing, however long", g.attendance.check(me, 10 ** 9).state === "paused");
+    }
+    clock.now += 1000;
+    const resumeAt = clock.now;
+    g.advance();                        at("Open Floor", false);
+    if (lv === 1) expect("Leaving the briefing starts a fresh clock (resume time = Game's clock)",
+                         me.attendanceResumeAt === resumeAt, me.attendanceResumeAt + " vs " + resumeAt);
+    EP.Bots.openFloor(g, rng); g.advance(); at("Trial", false);
+    EP.Bots.trial(g, rng); g.payTrialCosts(); g.advance(); at("Glitch Report", false);
+    EP.Bots.accusations(g, rng); g.endGlitchReport(); g.advance(); at("Gift window", false);
+    EP.Bots.gifts(g, rng); g.advance(); at("Lock-in", false);
+    g.lockIn(); g.advance();            at("Stats Update", false);
+    g.computeEarnings(); EP.Bots.statsUpdate(g);
+    clock.now += 1000;
+    g.finishRound();                    at("intermission", true);
+  }
+  g.startNextRound();                   at("Level 7 briefing", true);
+  g.advance();                          at("Graduation", false);
+  expect("Every step was visited, Levels 1 to 7",
+         ["briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate", "intermission", "graduation"]
+           .every(k => seen[k]), Object.keys(seen).join(","));
+  expect("Paused in every briefing and intermission, running in every input step", bad.length === 0, bad.join("; "));
 }
 
 // Hearts: only its own methods change the count.

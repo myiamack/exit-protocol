@@ -103,6 +103,7 @@ Every trial ranks the teams. **Top half win, rounded up** (5 teams: 3 win; 7 tea
 SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 to 6), +1 if the endless step is left out (max 7). Placing nothing does not count as leaving it out. Higher score ranks higher; ties random. Bot teams get a random score from 0 to 7. The old pass mark (5 right and endless step out) is gone.
 
 ### Round step order (levels 1 to 6)
+Each level opens with a **Briefing** (no player actions). After Stats Update the game is in **Intermission** until the next level starts; a new game also starts in Intermission. Level 7: Briefing, then Graduation.
 1. **Open Floor:** Contrarians may sabotage. Any player may gift a teammate.
 2. **Trial:** every non-Stuck player pays the cost from the tested attribute. **Glitching players pay too.** Hearts cover any shortfall.
 3. **Glitch Report:** accusations.
@@ -252,6 +253,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
    Done. The "Still there?" countdown always shows in full before any glitch. The timer runs only on screens that need player input: it is paused on the intro, every briefing and every intermission. While paused, nothing opens a popup or adds a glitch, however long. Pausing closes any open popup with no glitch. Resuming starts a fresh 60-second clock from the resume time.
+   The pause decision lives in rules/Game.js, not in screen code. Game keeps the list of paused steps (Briefing, Intermission) and pauses or resumes every player on each step change, for every level. The intro happens while the game is still in its starting Intermission, so it is paused too; game.js has no pause calls.
 8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
    Note for Base44: the server must run the Attendance check() for every player, because a closed browser tab never calls check().
 9. Move all rule math out of game.js (checkSop, payCost, lockPoints and any other). game.js only draws screens and calls the rules classes. Remove global rule state that duplicates Game.

@@ -35,7 +35,7 @@ for (let g = 0; g < GAMES; g++) {
   const game = new EP.Game({ teams, rng });
 
   for (let level = 1; level <= 6; level++) {
-    game.startNextRound();
+    game.startNextRound(); game.advance();
     EP.Bots.openFloor(game, rng);      // 1. Open Floor
     game.advance();
     EP.Bots.trial(game, rng);          // 2. Trial result (50% win)
@@ -52,7 +52,7 @@ for (let g = 0; g < GAMES; g++) {
     EP.Bots.statsUpdate(game);
     game.finishRound();
   }
-  game.startNextRound();               // 7. Graduation
+  game.startNextRound(); game.advance();               // 7. Graduation
   EP.Bots.graduation(game);
 
   for (const r of game.results()) {
