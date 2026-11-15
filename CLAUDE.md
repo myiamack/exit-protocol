@@ -102,6 +102,8 @@ Every trial ranks the teams. **Top half win, rounded up** (5 teams: 3 win; 7 tea
 
 SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 to 6), +1 if the endless step is left out (max 7). Placing nothing does not count as leaving it out. Higher score ranks higher; ties random. Bot teams get a random score from 0 to 7. The old pass mark (5 right and endless step out) is gone.
 
+SOP sharing (Level 1): the team SOP is shared. Any active teammate can edit it. The board state when the 60-second timer ends is scored. No input from anyone: it scores as it stands (placing nothing scores 0 steps and no endless-step point).
+
 ### Round step order (levels 1 to 6)
 Each level opens with a **Briefing** (no player actions). After Stats Update the game is in **Intermission** until the next level starts; a new game also starts in Intermission. Level 7: Briefing, then Graduation.
 1. **Open Floor:** Contrarians may sabotage. Any player may gift a teammate.
@@ -193,6 +195,7 @@ Each level opens with a **Briefing** (no player actions). After Stats Update the
 - Stats Update hides the graduation check until Level 7.
 - Graduate: total of all 5 attributes 24 or more (was 22, changed after playtest round 2), every attribute 2 or more, not Stuck.
 - A second path completed at any point also counts as a win.
+- Placement timer: 60 seconds, with a countdown on screen. Points not placed when it ends are placed by the bot placement rule; points the player already placed stay.
 - Each player's ending is locked when results() runs. No later change can alter it.
 
 ## Bot behavior for the prototype
@@ -222,6 +225,8 @@ After each step: tell me what changed, then give me the exact git commands to co
 ## Refactor queue (Parts 1 to 13, decided)
 
 One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
+
+Next up: Part 8 (idle auto-pilot), then Part 6 (quiet heart buff). Part 6 needs idle to count active players.
 
 1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
 2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
@@ -264,7 +269,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
    - Parked, not fixed: (b) all-Cooperative lobby; odd team counts at 20 players; aware play not paying off; the small 5-person vote gap.
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
    - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
-6. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
+6. Not built. Do after Part 8. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any input resets a 60-second timer: key press, click, touch, mouse movement and scrolling. Mouse movement counts at most once per second. At 60 seconds, a popup with a 15-second countdown. No input before it ends: a missed check-in. Idle time, popup time and the per-round max are settings (host dials).
    Attendance rules (changed after playtest):
    - Attendance is one more way to get a glitch. A missed check-in follows the normal glitch path (see Glitch, reboot, Stuck).
