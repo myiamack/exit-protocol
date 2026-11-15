@@ -545,7 +545,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
          custom.idleMs === 30000 && custom.popupMs === 5000 && custom.maxPerRound === 2, JSON.stringify(custom));
   throws("A bad setting is refused", () => new EP.Attendance({ idleMs: -5 }));
 
-  // A miss adds 1 glitch, attributes unchanged.
+  // A miss before the gift window closes: Glitching (pending). Nothing locks in yet.
   {
     const { g, me } = mkGame();
     g.startNextRound(); g.advance();
@@ -557,10 +557,13 @@ throws("Finish the round before points are placed", () => game.finishRound());
            pop[0] && pop[0].state + " " + pop[0].msLeft);
     expect("Popup still open at 74 s", g.checkAttendance(s(74))[0].state === "popup");
     const miss = g.checkAttendance(s(75));
-    expect("No input by 75 s: missed, +1 glitch count", miss[0].state === "missed" && miss[0].glitched && me.glitches === 1, "glitches " + me.glitches);
-    expect("Missed check leaves attributes and hearts unchanged",
+    expect("No input by 75 s (Open Floor): missed, pending, Glitching, glitch count unchanged",
+           miss[0].state === "missed" && miss[0].counted && miss[0].pending && !miss[0].locked &&
+           me.attendancePending && me.flag() === "Glitching" && me.glitches === 0, "glitches " + me.glitches);
+    expect("Pending miss leaves attributes and hearts unchanged",
            JSON.stringify(me.attrs) === JSON.stringify(attrs) && me.hearts.count === hearts);
-    expect("Missed check is not a locked glitch (no glitchedThisRound)", me.glitchedThisRound === false);
+    expect("Pending miss is not a locked glitch yet (no glitchedThisRound)", me.glitchedThisRound === false);
+    expect("Teammates see Glitching on the Board", g.board().players.find(x => x.name === me.name).status === "Glitching");
     expect("Bots are never checked", g.players.filter(p => p.isBot).every(p => p.glitches === 0));
   }
 
@@ -571,39 +574,46 @@ throws("Finish the round before points are placed", () => game.finishRound());
     g.activity(me, 0);
     missAt(g, s(75));                             // first miss
     const again = missAt(g, s(150));              // second miss, same round
-    expect("Second miss in the same round adds no glitch",
-           again[0].state === "missed" && !again[0].glitched && me.glitches === 1, "glitches " + me.glitches);
-    expect("Player is not Stuck from one round of misses", !me.isStuck());
+    expect("Second miss in the same round is not counted",
+           again[0].state === "missed" && !again[0].counted && !again[0].pending && me.glitches === 0, "glitches " + me.glitches);
     // Finish the round and start the next; the per-round max resets.
     g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+    expect("Unsaved miss locks in at Lock-in: 1 glitch, not Stuck", me.glitches === 1 && me.glitchedThisRound && !me.isStuck(), "glitches " + me.glitches);
     g.computeEarnings(); me.isBot = true; EP.Bots.statsUpdate(g); me.isBot = false;   // place my points the bot way
     g.finishRound(); g.startNextRound(); g.advance();
     const had = me.glitches;
     const next = missAt(g, s(225));
-    expect("Next round: a miss counts again", had === 1 && next[0].glitched && me.glitches === 2, had + " > " + me.glitches);
+    expect("Next round: a miss counts again (pending)", had === 1 && next[0].counted && next[0].pending, JSON.stringify(next[0].counted));
   }
   {
     const { g, me } = mkGame({ maxPerRound: 2 });
     g.startNextRound(); g.advance(); g.activity(me, 0);
-    missAt(g, s(75)); missAt(g, s(150));
-    expect("Per-round max is a setting (max 2: two misses count)", me.glitches === 2, "glitches " + me.glitches);
+    const a = missAt(g, s(75)), b = missAt(g, s(150));
+    expect("Per-round max is a setting (max 2: two misses count)", a[0].counted && b[0].counted && me.attendanceMissesThisRound === 2);
+    g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn();
+    expect("Two misses in one round still lock in as one glitch", me.glitches === 1, "glitches " + me.glitches);
   }
 
   // Two glitches of any kind make the player Stuck.
   {
     const { g, me } = mkGame();
     g.startNextRound(); g.advance(); g.activity(me, 0);
-    me.attrs.focus = -1; me.lockIn();             // one locked (attribute) glitch
+    me.attrs.focus = -1; me.lockIn();             // one locked (attribute) glitch, an earlier round
+    me.glitchedThisRound = false;
     expect("One locked glitch: not Stuck", me.glitches === 1 && !me.isStuck());
-    const r = missAt(g, s(75));
-    expect("Locked glitch + Attendance glitch = Stuck", r[0].glitched && r[0].stuck && me.isStuck(), "glitches " + me.glitches);
+    missAt(g, s(75));
+    g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn();
+    expect("Locked glitch + locked Attendance glitch = Stuck", me.isStuck(), "glitches " + me.glitches);
     expect("Stuck players are no longer checked", g.checkAttendance(s(500)).length === 0 && me.glitches === 2);
   }
   {
-    const { g, me } = mkGame({ maxPerRound: 2 });
+    const { g, me } = mkGame();
+    const playOut = () => { g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+                            g.computeEarnings(); me.isBot = true; EP.Bots.statsUpdate(g); me.isBot = false; g.finishRound(); };
     g.startNextRound(); g.advance(); g.activity(me, 0);
-    missAt(g, s(75)); missAt(g, s(150));
-    expect("Two Attendance glitches = Stuck", me.isStuck() && me.boardStatus() === "Stuck");
+    missAt(g, s(75)); playOut();
+    g.startNextRound(); g.advance(); missAt(g, s(150)); playOut();
+    expect("Two Attendance glitches (two rounds) = Stuck", me.isStuck() && me.boardStatus() === "Stuck", "glitches " + me.glitches);
   }
 
   // Any input resets the timer.
@@ -634,7 +644,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
            late[0] && late[0].state + " " + late[0].msLeft + ", glitches " + me.glitches);
     expect("Still the popup 14 s later, no glitch", g.checkAttendance(s(314))[0].state === "popup" && me.glitches === 0);
     const m = g.checkAttendance(s(315));
-    expect("Glitch only after the 15 s countdown", m[0].state === "missed" && me.glitches === 1, "glitches " + me.glitches);
+    expect("Miss only after the 15 s countdown", m[0].state === "missed" && m[0].pending && me.attendancePending, m[0].state);
   }
   {
     const { g, me } = mkGame();
@@ -660,8 +670,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
     expect("Resume: no popup at 59 s after resume", chk(g, me, s(200059)).length === 0);
     const r = chk(g, me, s(200060));
     expect("Resume gives a full 60 s before the popup", r.length === 1 && r[0].state === "popup" && r[0].msLeft === s(15), r[0] && r[0].state);
-    expect("Then a full 15 s countdown before a glitch", chk(g, me, s(200074))[0].state === "popup" &&
-           chk(g, me, s(200075))[0].state === "missed" && me.glitches === 1, "glitches " + me.glitches);
+    expect("Then a full 15 s countdown before a miss", chk(g, me, s(200074))[0].state === "popup" &&
+           chk(g, me, s(200075))[0].state === "missed");
   }
   {
     const { g, me } = mkGame();
@@ -692,6 +702,106 @@ throws("Finish the round before points are placed", () => game.finishRound());
     missAt(g, s(75));
     expect("After a miss, no popup until 60 s later", g.checkAttendance(s(134)).length === 0 &&
            g.checkAttendance(s(135))[0].state === "popup");
+  }
+}
+
+// A missed check-in follows the normal glitch path: pending until the gift window closes, a gift saves it,
+// otherwise it locks in (hearts to 0, no attribute refill, 1 point, Empathy). Same round as an attribute glitch: one glitch.
+{
+  const s = n => n * 1000;
+  const mk = () => {
+    const ps = ["coop", "coop", "indep", "contra", "coop", "coop", "indep", "coop"].map((t, i) => EP.Bots.makePlayer(500 + i, "M" + i, t));
+    ps[0].isBot = false;
+    const ts = [0, 1].map(i => new EP.Team({ id: i, name: "MT" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+    const clock = { now: 0 };
+    const g = new EP.Game({ teams: ts, rng: NO, clock: () => clock.now });
+    const me = ps[0], coopMate = ps[1];
+    g.startNextRound(); g.advance(); g.activity(me, 0);
+    me.attrs = { focus: 5, initiative: 3, collab: 6, composure: 6, grit: 6 };   // Level 1 costs 2 Grit: stays above 0
+    const miss = t => { g.checkAttendance(t - s(15)); return g.checkAttendance(t)[0]; };
+    const toGiftWindow = () => { g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); };
+    return { g, me, coopMate, miss, toGiftWindow };
+  };
+
+  // Saved by a gift in the gift window.
+  {
+    const { g, me, coopMate, miss, toGiftWindow } = mk();
+    miss(s(75));
+    toGiftWindow();
+    expect("Still pending in the gift window", g.step === "giftWindow" && me.attendancePending && me.flag() === "Glitching");
+    const h = coopMate.hearts.count;
+    const r = g.gift(coopMate, me, 1);
+    const a = g.answerGift(r.gift, true);
+    expect("Accepted gift in the gift window cancels the pending glitch", a.ok && !me.attendancePending && me.flag() !== "Glitching");
+    expect("Normal gift cost (1 heart for a Cooperative)", coopMate.hearts.count === h - 1, h + " > " + coopMate.hearts.count);
+    expect("Points go to the lowest attribute (Initiative 3)", a.target === "initiative" && me.attrs.initiative === 4, a.target);
+    expect("Counts for Lifeline", a.cancelled && coopMate.pathDone, "progress " + coopMate.pathProgress);
+    const again = miss(s(150));
+    expect("A miss saved by a gift still uses the cap: next miss not counted", again && !again.counted && !me.attendancePending);
+    g.advance(); const locked = g.lockIn();
+    expect("Saved: nothing locks in", !locked.includes(me) && me.glitches === 0 && !me.glitchedThisRound);
+  }
+  // A gift in Open Floor does not save a pending miss (only the gift window does).
+  {
+    const { g, me, coopMate, miss } = mk();
+    miss(s(75));
+    const r = g.gift(coopMate, me, 1); const a = g.answerGift(r.gift, true);
+    expect("Open Floor gift lands but does not cancel the pending glitch, no Lifeline",
+           a.ok && me.attendancePending && !a.cancelled && !coopMate.pathDone);
+  }
+  // Not saved: locks in when the gift window closes.
+  {
+    const { g, me, coopMate, miss, toGiftWindow } = mk();
+    miss(s(75));
+    toGiftWindow(); g.advance();
+    const attrs = JSON.stringify(me.attrs), h = coopMate.hearts.count;
+    const locked = g.lockIn();
+    expect("Not saved: locks in at Lock-in (+1 glitch, glitchedThisRound)", locked.includes(me) && me.glitches === 1 && me.glitchedThisRound && me.attendanceGlitchThisRound);
+    expect("Reboot: hearts to 0, no attribute refill", me.hearts.count === 0 && JSON.stringify(me.attrs) === attrs, me.attrs && JSON.stringify(me.attrs));
+    expect("Empathy: Cooperative teammate loses 1 heart", coopMate.hearts.count === h - 1, h + " > " + coopMate.hearts.count);
+    g.advance(); g.computeEarnings();
+    expect("1 point that round", me.earned === 1, me.earned);
+  }
+  // Attendance glitch and attribute glitch in the same round: one glitch.
+  {
+    const { g, me, miss, toGiftWindow } = mk();
+    miss(s(75));
+    toGiftWindow(); me.attrs.focus = -1; g.advance(); g.lockIn();
+    expect("Pending miss + attribute below 0 in the same round = 1 glitch", me.glitches === 1 && me.attrs.focus === 1 && !me.attendanceGlitchThisRound, "glitches " + me.glitches);
+  }
+  // A miss after the gift window closed locks in at once, same reboot.
+  {
+    const { g, me, coopMate, toGiftWindow } = mk();
+    toGiftWindow(); g.advance(); g.lockIn(); g.advance();
+    expect("In Stats Update a miss cannot wait", g.step === "statsUpdate" && !g.attendanceCanWait());
+    const attrs = JSON.stringify(me.attrs), h = coopMate.hearts.count;
+    const r = g.attendanceMiss(me, true);
+    expect("Miss after the window closed: locks in at once", r.locked && !r.pending && me.glitches === 1 && me.glitchedThisRound && !me.attendancePending);
+    expect("Same reboot: hearts to 0, attributes unchanged, Empathy",
+           me.hearts.count === 0 && JSON.stringify(me.attrs) === attrs && coopMate.hearts.count === h - 1);
+    const r2 = g.attendanceMiss(me, true);
+    expect("A second locked glitch in the same round counts as one", !r2.locked && me.glitches === 1);
+  }
+  {
+    const { g, me, toGiftWindow } = mk();
+    toGiftWindow(); me.attrs.focus = -1; g.advance(); g.lockIn(); g.advance();
+    const r = g.attendanceMiss(me, true);
+    expect("Attribute glitch locked, then a miss after the window: still 1 glitch", !r.locked && me.glitches === 1, "glitches " + me.glitches);
+  }
+  // A miss that is not counted (over the cap) does nothing.
+  {
+    const { g, me } = mk();
+    const r = g.attendanceMiss(me, false);
+    expect("Uncounted miss: no pending, no glitch", !r.counted && !r.pending && !r.locked && !me.attendancePending && me.glitches === 0);
+  }
+  // Bots treat a pending teammate as Glitching: a Cooperative bot gifts in the gift window.
+  {
+    const { g, me, coopMate, miss, toGiftWindow } = mk();
+    miss(s(75)); toGiftWindow();
+    EP.Bots.gifts(g, NO);
+    const gift = g.round.gifts.find(x => x.receiver === me && x.status === "pending");
+    expect("Cooperative bot gifts to a pending teammate", !!gift && gift.giver.type.key === "coop");
+    if (gift) { g.answerGift(gift, true); expect("Accepting it saves the player", !me.attendancePending); }
   }
 }
 
@@ -777,7 +887,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("Still placing: popup at 60 s", pop.some(r => r.player === placing && r.state === "popup"));
   expect("Placed all points: paused at the next check", placer.attendancePaused && !pop.some(r => r.player === placer));
   const miss = g.checkAttendance(s(1075));
-  expect("Still placing: can take a glitch at Graduation", miss.some(r => r.player === placing && r.glitched) && placing.glitches === 1,
+  expect("Still placing: a miss at Graduation locks in at once", miss.some(r => r.player === placing && r.locked && !r.pending) && placing.glitches === 1,
          "glitches " + placing.glitches);
   const late = [s(5000), s(100000), s(10 ** 7)].map(t => g.checkAttendance(t));
   expect("Placed all points: no popup or glitch however long", late.every(l => !l.some(r => r.player === placer)) && placer.glitches === 0,

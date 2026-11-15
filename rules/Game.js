@@ -71,17 +71,49 @@
     /* Any input by this player: key press, click, touch, mouse movement (at most once per second) or scrolling. */
     activity(p, now) { this.attendance.activity(p, now); }
     /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
-       Returns [{ player, state, msLeft, glitched, stuck }] for players with the popup open or a miss. */
+       Returns [{ player, state, msLeft }] for players with the popup open, and for a miss
+       [{ player, state: "missed", counted, pending, locked, stuck }] (see attendanceMiss). */
     checkAttendance(now) {
       const out = [];
       this.syncAttendance(now);
       for (const p of this.players) {
         if (p.isBot) continue;
-        const r = this.attendance.check(p, now);
+        let r = this.attendance.check(p, now);
+        if (r.state === "missed") {
+          r = { ...r, ...this.attendanceMiss(p, r.counted) };
+          this.log.push({ level: this.level, event: "attendanceMiss", player: p.id, counted: r.counted, pending: r.pending, locked: r.locked, stuck: r.stuck });
+        }
         if (r.state === "popup" || r.state === "missed") out.push({ player: p, ...r });
-        if (r.state === "missed") this.log.push({ level: this.level, event: "attendanceMiss", player: p.id, glitched: r.glitched, stuck: r.stuck });
       }
       return out;
+    }
+
+    /* True while a missed check-in can still be saved: from Open Floor until the gift window closes
+       (Lock-in locks it). Level 7 has no gift window. */
+    attendanceCanWait() {
+      if (!this.round || this.round.isFinal) return false;
+      if (["openFloor", "trial", "glitchReport", "giftWindow"].includes(this.step)) return true;
+      return this.step === "lockIn" && !this.didRun("lockIn");
+    }
+    /* A missed check-in follows the normal glitch path. Only counted misses (max 1 per round) do anything.
+       Before the gift window closes: the player is Glitching (pending). A teammate's gift accepted in the
+       gift window saves them; if not saved, it locks in at Lock-in.
+       After the gift window closed: it locks in at once. Reboot: hearts to 0, no attribute refill,
+       1 point that round, Empathy. An attribute glitch and an attendance glitch in one round count as one.
+       Returns { counted, pending, locked, stuck }. */
+    attendanceMiss(p, counted) {
+      const out = { counted: !!counted, pending: false, locked: false };
+      if (counted) {
+        if (this.attendanceCanWait()) { p.attendancePending = true; out.pending = true; }
+        else if (p.lockAttendanceGlitch()) { out.locked = true; this.empathy(p); }
+      }
+      out.stuck = p.isStuck();
+      return out;
+    }
+    /* Empathy: each Cooperative teammate (not Stuck) loses 1 heart when this player's glitch locks in. */
+    empathy(p) {
+      const team = this.teamOf(p);
+      for (const q of team.mates(p)) if (q.type.hasEmpathy() && !q.isStuck()) q.hearts.lose(1);
     }
 
     teamOf(p) { return this.teams.find(t => t.has(p)); }
@@ -262,10 +294,12 @@
       const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
         "Not allowed now. Gifts are answered in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
       if (why) return { ok: false, reason: why };
-      return accept ? EP.Gift.accept(this.round, gift) : EP.Gift.decline(this.round, gift);
+      // Only a gift accepted in the gift window saves a player from a missed check-in.
+      return accept ? EP.Gift.accept(this.round, gift, { savesAttendance: this.step === "giftWindow" })
+                    : EP.Gift.decline(this.round, gift);
     }
 
-    /* 5. Lock-in: glitches count, reboot, Empathy. */
+    /* 5. Lock-in: glitches count (attribute below 0, or a missed check-in nobody saved), reboot, Empathy. */
     lockIn() {
       this.mustBe("lockIn");
       this.once("lockIn");
@@ -274,9 +308,7 @@
         for (const p of team.members) {
           if (!p.lockIn()) continue;
           locked.push(p);
-          for (const q of team.mates(p)) {
-            if (q.type.hasEmpathy() && !q.isStuck()) q.hearts.lose(1);   // Empathy
-          }
+          this.empathy(p);
         }
       }
       return locked;

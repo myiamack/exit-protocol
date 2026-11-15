@@ -46,17 +46,21 @@
     }
 
     /* Accept: points land. Points with nowhere to go are refunded to the giver.
-       Lifeline: only a gift that cancels a glitch counts. */
-    static accept(round, rec) {
+       savesAttendance (true in the gift window): the gift also cancels a pending missed check-in.
+       Its points still go to the lowest attribute (or the glitching attribute, if one is below 0).
+       Lifeline: only a gift that cancels a glitch counts (Glitching before, not Glitching after). */
+    static accept(round, rec, { savesAttendance = false } = {}) {
       if (rec.status !== "pending") return { ok: false, reason: "This gift was already answered." };
       const { giver, receiver, pts } = rec;
-      const wasGlitching = receiver.isGlitching();
+      const wasGlitching = receiver.isGlitchingAny();
       rec.target = receiver.giftTarget();
       rec.overflow = receiver.receiveGift(pts);
       if (rec.overflow) {   // never refund more than the giver paid (a discounted gift paid less)
         giver.hearts.refund(Math.min(rec.cost, rec.overflow * Gift.refundPerPoint(giver)));
       }
-      rec.cancelled = wasGlitching && !receiver.isGlitching();   // only a real rescue counts
+      rec.savedAttendance = savesAttendance && receiver.attendancePending;
+      if (rec.savedAttendance) receiver.attendancePending = false;
+      rec.cancelled = wasGlitching && !receiver.isGlitchingAny();   // only a real rescue counts
       if (rec.cancelled) giver.creditPath(EP.CharacterType.PATH_EVENTS.rescue);   // Lifeline
       rec.status = "accepted";
       return { ok: true, gift: rec, ...rec };

@@ -84,9 +84,9 @@
     gifts(game, rng) {
       for (const team of game.teams) {
         for (const r of team.members) {
-          if (r.isStuck() || !r.isGlitching() || !r.type.canAcceptGifts()) continue;
+          if (r.isStuck() || !r.isGlitchingAny() || !r.type.canAcceptGifts()) continue;
           for (const g of team.mates(r)) {
-            if (!g.isBot || g.isStuck() || !r.isGlitching()) continue;
+            if (!g.isBot || g.isStuck() || !r.isGlitchingAny()) continue;
             if (EP.Gift.pending(game.round).some(x => x.receiver === r)) continue;
             const rate = Bots.SETTINGS.giftRate[g.type.key];   // Cooperative always, others 25%
             if (rate < 1 && rng() >= rate) continue;

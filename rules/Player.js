@@ -83,14 +83,17 @@
     isStuck() { return this.glitches >= 2; }
     /* Any input (including typing a submission) counts as activity and resets the Attendance check. */
     markActive(now = Date.now()) { this.lastActivity = now; }
-    isGlitching() { return KEYS.some(k => this.attrs[k] < 0); }   // exactly 0 is safe
+    isGlitching() { return KEYS.some(k => this.attrs[k] < 0); }   // an attribute below 0; exactly 0 is safe
+    /* Glitching for any reason: an attribute below 0, or a missed check-in waiting to lock in.
+       This is what the player and their teammates see. */
+    isGlitchingAny() { return this.isGlitching() || this.attendancePending; }
     isAtRisk() {
       return KEYS.some(k => this.attrs[k] + Math.floor(this.hearts.count / this.rate(k)) < AT_RISK_COST);
     }
     /* What other players see. Never numbers. */
     flag() {
       if (this.isStuck()) return "Stuck";
-      if (this.isGlitching()) return "Glitching";
+      if (this.isGlitchingAny()) return "Glitching";
       if (this.isAtRisk()) return "At risk";
       return "OK";
     }
@@ -142,7 +145,9 @@
       this.accusedThisRound = false;
       this.correctAccusation = false;
       this.glitchedThisRound = false;
-      this.attendanceGlitchesThisRound = 0;
+      this.attendanceMissesThisRound = 0;      // counted misses (max 1 per round); a miss saved by a gift still counts
+      this.attendancePending = false;          // missed check-in, not yet locked: Glitching until a gift saves it or it locks in
+      this.attendanceGlitchThisRound = false;  // this round's locked glitch came only from a missed check-in
       this.earned = 0;
     }
 
@@ -200,22 +205,28 @@
       return overflow;
     }
 
-    /* Lock-in: if still below 0, the glitch counts. Reboot. Returns true if a glitch locked in. */
+    /* Lock-in: if still below 0, or a missed check-in is still pending, the glitch counts. Reboot.
+       An attribute glitch and an attendance glitch in the same round count as one glitch.
+       Returns true if a glitch locked in. */
     lockIn() {
-      if (this.isStuck() || !this.isGlitching()) return false;
+      if (this.isStuck() || !this.isGlitchingAny()) return false;
+      if (this.glitchedThisRound && !this.isGlitching()) { this.attendancePending = false; return false; }   // counts as one
+      if (!this.isGlitching()) this.attendanceGlitchThisRound = true;   // attendance only
+      this.attendancePending = false;
       this.glitches += 1;
       this.glitchedThisRound = true;
       this.reboot();
       return true;
     }
 
-    /* Missed Attendance check: +1 glitch count, attributes unchanged. Only maxPerRound per round.
-       Two glitches of any kind = Stuck. Returns true if the glitch counted. */
-    attendanceGlitch(maxPerRound) {
-      if (this.isStuck() || this.attendanceGlitchesThisRound >= maxPerRound) return false;
-      this.attendanceGlitchesThisRound += 1;
-      this.glitches += 1;
-      return true;
+    /* A missed check-in after the gift window closed locks in at once, with the same reboot
+       (hearts to 0; no attribute refill, because no attribute is below 0).
+       If a glitch already locked in this round, they count as one: nothing more happens.
+       Returns true if a glitch locked in. */
+    lockAttendanceGlitch() {
+      if (this.isStuck() || this.glitchedThisRound) return false;
+      this.attendancePending = true;
+      return this.lockIn();
     }
 
     /* Take points evenly from the other attributes until the glitched one reaches 1.

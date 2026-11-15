@@ -74,9 +74,12 @@
     return api;
   }
 
+  /* r comes from Game.checkAttendance: { counted, pending, locked, stuck }. */
   function missedText(r, ME) {
-    if (!r.glitched) return "You missed the check-in. No extra glitch: you already took one for attendance this round.";
-    return `You missed the check-in. +1 glitch (${ME.glitches}/2). Your attributes and hearts are unchanged.${r.stuck ? " You are Stuck: you watch the rest of the game." : ""}`;
+    if (r.pending) return "You missed the check-in. You are Glitching. A teammate's gift can save you before the gift window closes.";
+    if (r.locked) return `You missed the check-in. +1 glitch (${ME.glitches}/2).${r.stuck ? " You are Stuck: you watch the rest of the game." : ""}`;
+    if (r.counted) return `You missed the check-in. You already have a glitch this round, so it counts as the same one (${ME.glitches}/2).`;
+    return "You missed the check-in. You already missed one this round, so nothing more happens.";
   }
 
   root.AttendanceView = { mount };

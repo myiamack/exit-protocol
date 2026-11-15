@@ -1,8 +1,10 @@
 /* Attendance: checks that each player is still at the keyboard.
    Any input resets a timer: key press, click, touch, mouse movement (counted at most once per second) or scrolling. After idleMs with no input, a popup opens with a
-   popupMs countdown. No input before it ends: +1 glitch count, attributes unchanged.
-   At most maxPerRound Attendance glitches per player per round. Two glitches of any kind = Stuck
-   (Player.isStuck already counts every glitch).
+   popupMs countdown. No input before it ends: a missed check-in.
+   A missed check-in is one more way to get a glitch. It follows the normal glitch path, run by Game:
+   before the gift window closes the player is Glitching and a teammate's gift can save them;
+   otherwise it locks in. At most maxPerRound misses count per player per round (a miss saved by a gift
+   still counts). Two locked glitches of any kind = Stuck. An attendance glitch never changes ANOMALIES.
    Rule code only. No screen code, no clock: the caller passes the time (ms) in, so tests can fake it.
    The screen calls activity() on every input and check() about once a second.
    The timer runs only on screens that need input: the screen calls pause() when the intro, a briefing or
@@ -10,7 +12,7 @@
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
-  // Host dials. Defaults: 60 s idle, 15 s popup, 1 Attendance glitch per player per round.
+  // Host dials. Defaults: 60 s idle, 15 s popup, 1 counted miss per player per round.
   const DEFAULTS = { idleMs: 60000, popupMs: 15000, maxPerRound: 1 };
 
   class Attendance {
@@ -57,9 +59,10 @@
        { state: "paused" }                     a no-input screen is showing; nothing happens
        { state: "ok", msLeft }                 time until the popup opens
        { state: "popup", msLeft }              popup open, time left to answer
-       { state: "missed", glitched, stuck }    countdown ran out; timer restarts from now
+       { state: "missed", counted }            countdown ran out; timer restarts from now
        A miss only happens popupMs after the popup opened, so the player always sees the full countdown.
-       A miss adds 1 glitch only if this player is under the per-round max. */
+       counted: true if this player was under the per-round max. Game then sends a counted miss down the
+       glitch path (Game.attendanceMiss). This class never changes the glitch count itself. */
     check(p, now) {
       if (p.isStuck()) return { state: "off" };
       if (p.attendancePaused) return { state: "paused" };
@@ -78,8 +81,9 @@
       if (left > 0) return { state: "popup", msLeft: left };
       p.attendancePopupAt = null;
       p.attendanceMissAt = now;
-      const glitched = p.attendanceGlitch(maxPerRound);
-      return { state: "missed", glitched, stuck: p.isStuck() };
+      const counted = p.attendanceMissesThisRound < maxPerRound;
+      if (counted) p.attendanceMissesThisRound += 1;
+      return { state: "missed", counted };
     }
   }
 
