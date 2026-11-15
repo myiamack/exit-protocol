@@ -1109,6 +1109,49 @@ throws("Finish the round before points are placed", () => game.finishRound());
   }
 }
 
+// Part 6: quiet heart buff. At round start, every non-Stuck player on a team with 3 or fewer active players
+// (Team.active(): not Stuck, not idle) gets +1 heart, capped. Not shown on screen; logged for the host only.
+{
+  const types = ["coop", "indep", "contra", "coop", "indep", "contra", "coop", "coop", "indep", "contra", "coop", "coop", "indep", "contra", "coop"];
+  const ps = types.map((t, i) => EP.Bots.makePlayer(800 + i, "Q" + i, t));
+  let at = 0;
+  const ts = [3, 4, 4, 4].map((n, i) => { const t = new EP.Team({ id: i, name: "QT" + i, members: ps.slice(at, at + n) }); at += n; return t; });
+  const [three, four, fourIdle, fourStuck] = ts;
+  const idler = fourIdle.members[0]; idler.idle = true;
+  const stuck = fourStuck.members[0]; stuck.glitches = 2;
+  const g = new EP.Game({ teams: ts, rng: NO });
+  ps.forEach(p => p.hearts.spend(2));             // everyone at 1 heart so the +1 shows
+  const full = three.members[2]; full.hearts.refill(2);   // already at the cap
+  let before = new Map(ps.map(p => [p, p.hearts.count]));
+  const gained = p => p.hearts.count - before.get(p);
+  const logs = () => g.log.filter(e => e.event === "quietHeart");
+
+  g.startNextRound();
+  expect("Part 6: team with 3 active players: +1 heart each at round start",
+         three.active().length === 3 && three.members.filter(p => p !== full).every(p => gained(p) === 1));
+  expect("Part 6: capped at the normal max", full.hearts.count === 3, full.hearts.count);
+  expect("Part 6: team with 4 active players gets nothing", four.active().length === 4 && four.members.every(p => gained(p) === 0));
+  expect("Part 6: team of 4 with 1 idle (3 active) gets the buff, idle player included",
+         fourIdle.active().length === 3 && fourIdle.members.every(p => gained(p) === 1));
+  expect("Part 6: team of 4 with 1 Stuck (3 active): the 3 get the buff",
+         fourStuck.members.filter(p => p !== stuck).every(p => gained(p) === 1));
+  expect("Part 6: Stuck players get nothing", gained(stuck) === 0);
+  expect("Part 6: logged for the host only (10 players)", logs().length === 1 && logs()[0].hostOnly && logs()[0].players.length === 10,
+         logs().length + " entries");
+  expect("Part 6: not shown on the Board (no hearts in board data)", !/heart/i.test(JSON.stringify(g.board())));
+
+  // Once per round: no second buff while the round plays out.
+  ps.forEach(p => { if (!p.isStuck()) { p.hearts.empty(); p.hearts.refill(1); } });   // back to 1 heart
+  before = new Map(ps.map(p => [p, p.hearts.count]));
+  g.advance();
+  expect("Part 6: leaving the briefing gives no second buff", ps.every(p => gained(p) === 0));
+  g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+  g.computeEarnings(); EP.Bots.statsUpdate(g);
+  expect("Part 6: the buff happens once per round (1 log entry after the whole round)", logs().length === 1, logs().length);
+  g.finishRound(); g.startNextRound();
+  expect("Part 6: the next round gets its own buff", logs().length === 2 && logs()[1].level === 2, logs().length);
+}
+
 // Hearts: only its own methods change the count.
 {
   const h = new EP.Hearts();

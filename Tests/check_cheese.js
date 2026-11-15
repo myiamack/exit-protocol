@@ -9,8 +9,8 @@
      2. Switcher: a Contrarian who switches to another team after every catch.
         Half the Contrarians (random) do this; compared with the other half.
      3. Same type: every player picks the same type. Compared with a random mix.
-     4. Small teams: as many 3-person teams as possible. Run with and without a preview of the
-        Part 6 small-team heart (not in the rules yet; applied by this script only). */
+     4. Small teams: as many 3-person teams as possible. The Part 6 quiet heart buff is in the rules
+        (Game.startNextRound), so every game here includes it. */
 const path = require("path");
 ["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
@@ -55,15 +55,7 @@ function switchAfterCatch(game, p, rng) {
   if (options.length) game.switchTeam(p, options[Math.floor(rng() * options.length)]);
 }
 
-/* Preview of Part 6: +1 heart at round start for every active player on a team of 3 or fewer active. */
-function smallTeamHeart(game) {
-  for (const t of game.teams) {
-    const active = t.active();
-    if (active.length <= 3) active.forEach(p => p.hearts.refill(1));
-  }
-}
-
-/* opts: { layout, typeOf(i, rng), tag(p, rng) -> strategy name, buff } */
+/* opts: { layout, typeOf(i, rng), tag(p, rng) -> strategy name } */
 function playGame(opts, rng) {
   const n = opts.layout.reduce((s, x) => s + x, 0);
   const players = Array.from({ length: n }, (_, i) => EP.Bots.makePlayer(i, "Bot " + i, opts.typeOf(i, rng)));
@@ -78,8 +70,7 @@ function playGame(opts, rng) {
   const game = new EP.Game({ teams, rng });
 
   for (let level = 1; level <= 6; level++) {
-    game.startNextRound(); game.advance();
-    if (opts.buff) smallTeamHeart(game);
+    game.startNextRound(); game.advance();   // startNextRound gives the Part 6 quiet heart buff
     for (const p of players) if (p.strategy === "switcher") switchAfterCatch(game, p, rng);
     EP.Bots.openFloor(game, rng);
     game.advance();
@@ -181,23 +172,20 @@ console.log("Diff = all-same lobby win minus that type's win in a random mix.");
 
 // 4. Small teams
 console.log("\n=== 4. As many 3-person teams as possible vs normal teams ===");
-console.log("Small-team heart = preview of Part 6, applied by this script only.");
+console.log("Quiet heart buff (Part 6) is in the rules, so it is on in every game.");
 const W4 = [9, 18, 13, 9, 13, 13, 9, 8];
 console.log(line(["Players", "Teams", "Small heart", "Win", "On 3-team", "On 4+ team", "Diff", ""], W4));
 for (const n of COUNTS) {
-  for (const buff of [false, true]) {
-    const base = run({ layout: NORMAL[n], typeOf: randomType, buff }, r => ["all", r.startSize <= 3 ? "small" : "big"]);
-    const small = run({ layout: SMALL[n], typeOf: randomType, buff }, r => ["all", r.startSize <= 3 ? "small" : "big"]);
-    const d = small.pct("all", "win") - base.pct("all", "win");
-    const heart = buff ? "on" : "off";
-    console.log(line([n, NORMAL[n].join("/"), heart, f1(base.pct("all", "win")), f1(base.pct("small", "win")), f1(base.pct("big", "win")), "", ""], W4));
-    console.log(line(["", SMALL[n].join("/"), heart, f1(small.pct("all", "win")), f1(small.pct("small", "win")), f1(small.pct("big", "win")),
-                      (d >= 0 ? "+" : "") + d.toFixed(1), verdict(d)], W4));
-  }
+  const base = run({ layout: NORMAL[n], typeOf: randomType }, r => ["all", r.startSize <= 3 ? "small" : "big"]);
+  const small = run({ layout: SMALL[n], typeOf: randomType }, r => ["all", r.startSize <= 3 ? "small" : "big"]);
+  const d = small.pct("all", "win") - base.pct("all", "win");
+  console.log(line([n, NORMAL[n].join("/"), "on", f1(base.pct("all", "win")), f1(base.pct("small", "win")), f1(base.pct("big", "win")), "", ""], W4));
+  console.log(line(["", SMALL[n].join("/"), "on", f1(small.pct("all", "win")), f1(small.pct("small", "win")), f1(small.pct("big", "win")),
+                    (d >= 0 ? "+" : "") + d.toFixed(1), verdict(d)], W4));
 }
 console.log("Diff = whole-lobby win with small teams minus normal teams. Team size is the size at the start.");
 
-// 5. Trial win rate by team size and level (normal play, no small-team heart).
+// 5. Trial win rate by team size and level (normal play; the quiet heart buff is in the rules).
 //    Levels 5-6 vote points are divided by active players, so team size should not matter.
 console.log("\n=== 5. Trial win rate by team size (size when the trial runs) ===");
 const LAYOUTS = [["24 players", NORMAL[24]], ["16 players", SMALL[16]], ["20 players", SMALL[20]]];

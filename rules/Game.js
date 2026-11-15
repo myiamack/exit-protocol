@@ -13,6 +13,7 @@
      statsUpdate:  computeEarnings, cashOut*, place points (autoPlacePoints after 30 s), finishRound
    finishRound puts the game in intermission (no round running, Attendance paused) until startNextRound.
    The game also starts in intermission, before Level 1.
+   startNextRound also gives the quiet heart buff (Part 6) to small teams.
    Level 7: startNextRound (briefing) > advance > graduation: place points (autoPlacePoints after 60 s) > results.
    Idle (Part 8): any missed Attendance check sets p.idle; any input (activity) clears it. Idle players take no
    optional actions (gifts, answering gifts, accusations, sabotage, votes); the rule classes refuse them.
@@ -21,6 +22,9 @@
   const EP = root.EP || (root.EP = {});
 
   const POINTS = { win: 4, lose: 2, glitched: 1, correctAccusation: 1, final: 3 };
+
+  // Part 6: a team with this many active players or fewer gets the quiet heart buff at round start.
+  const QUIET_HEART_TEAM_MAX = 3;
 
   const STEP_NAME = { openFloor: "Open Floor", trial: "Trial", glitchReport: "Glitch Report",
                       giftWindow: "Gift window", lockIn: "Lock-in", statsUpdate: "Stats Update",
@@ -175,8 +179,27 @@
       if (this.round.isFinal) {
         for (const p of this.players) if (!p.isStuck()) p.earned = Math.min(POINTS.final, p.roomLeft());
       }
+      this.quietHeartBuff();
       this.syncAttendance();   // briefing: paused
       return this.round;
+    }
+
+    /* Part 6, quiet heart buff. At the start of each round (called only by startNextRound, so once per round),
+       every non-Stuck player on a team with 3 or fewer active players (Team.active(): not Stuck, not idle)
+       gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only. */
+    quietHeartBuff() {
+      const got = [];
+      for (const t of this.teams) {
+        if (t.active().length > QUIET_HEART_TEAM_MAX) continue;
+        for (const p of t.members) {
+          if (p.isStuck()) continue;
+          p.hearts.refill(1);
+          got.push(p);
+        }
+      }
+      this.round.quietHearts = got;
+      if (got.length) this.log.push({ level: this.level, event: "quietHeart", hostOnly: true, players: got.map(p => p.id) });
+      return got;
     }
 
     /* 1. Open Floor */
@@ -419,6 +442,7 @@
   }
 
   Game.POINTS = POINTS;
+  Game.QUIET_HEART_TEAM_MAX = QUIET_HEART_TEAM_MAX;
   Game.STEP_NAME = STEP_NAME;
   Game.PAUSED_STEPS = PAUSED_STEPS;
   Game.AUTO_ADVANCE_SECONDS = AUTO_ADVANCE_SECONDS;
