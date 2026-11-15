@@ -39,14 +39,24 @@
        { state: "ok", msLeft }                 time until the popup opens
        { state: "popup", msLeft }              popup open, time left to answer
        { state: "missed", glitched, stuck }    countdown ran out; timer restarts from now
+       A miss only happens popupMs after the popup opened, so the player always sees the full countdown.
        A miss adds 1 glitch only if this player is under the per-round max. */
     check(p, now) {
       if (p.isStuck()) return { state: "off" };
       if (p.lastActivity == null) p.markActive(now);   // first check starts the clock
       const { idleMs, popupMs, maxPerRound } = this.settings;
-      const quiet = now - this.since(p);
-      if (quiet < idleMs) return { state: "ok", msLeft: idleMs - quiet };
-      if (quiet < idleMs + popupMs) return { state: "popup", msLeft: idleMs + popupMs - quiet };
+      // Input after the popup opened answers it.
+      if (p.attendancePopupAt != null && p.lastActivity > p.attendancePopupAt) p.attendancePopupAt = null;
+      if (p.attendancePopupAt == null) {
+        const quiet = now - this.since(p);
+        if (quiet < idleMs) return { state: "ok", msLeft: idleMs - quiet };
+        // Quiet too long. Always open the popup first with the full countdown, even if checks were late.
+        p.attendancePopupAt = now;
+        return { state: "popup", msLeft: popupMs };
+      }
+      const left = p.attendancePopupAt + popupMs - now;
+      if (left > 0) return { state: "popup", msLeft: left };
+      p.attendancePopupAt = null;
       p.attendanceMissAt = now;
       const glitched = p.attendanceGlitch(maxPerRound);
       return { state: "missed", glitched, stuck: p.isStuck() };

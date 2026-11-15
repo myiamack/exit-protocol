@@ -527,6 +527,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
 // Attendance (Part 7). Time is passed in, so these tests fake the clock in seconds.
 {
   const s = n => n * 1000;
+  // A full miss: the popup opens 15 s before, then the countdown runs out.
+  const missAt = (g, t) => { g.checkAttendance(t - s(15)); return g.checkAttendance(t); };
   const mkGame = (attendance) => {
     const ps = ["coop", "coop", "indep", "contra", "coop", "coop", "indep", "coop"].map((t, i) => EP.Bots.makePlayer(200 + i, "A" + i, t));
     ps[0].isBot = false;   // the one human; bots are not checked
@@ -566,8 +568,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
     const { g, me } = mkGame();
     g.startNextRound();
     g.activity(me, 0);
-    g.checkAttendance(s(75));                     // first miss
-    const again = g.checkAttendance(s(150));      // second miss, same round
+    missAt(g, s(75));                             // first miss
+    const again = missAt(g, s(150));              // second miss, same round
     expect("Second miss in the same round adds no glitch",
            again[0].state === "missed" && !again[0].glitched && me.glitches === 1, "glitches " + me.glitches);
     expect("Player is not Stuck from one round of misses", !me.isStuck());
@@ -576,13 +578,13 @@ throws("Finish the round before points are placed", () => game.finishRound());
     g.computeEarnings(); me.isBot = true; EP.Bots.statsUpdate(g); me.isBot = false;   // place my points the bot way
     g.finishRound(); g.startNextRound();
     const had = me.glitches;
-    const next = g.checkAttendance(s(225));
+    const next = missAt(g, s(225));
     expect("Next round: a miss counts again", had === 1 && next[0].glitched && me.glitches === 2, had + " > " + me.glitches);
   }
   {
     const { g, me } = mkGame({ maxPerRound: 2 });
     g.startNextRound(); g.activity(me, 0);
-    g.checkAttendance(s(75)); g.checkAttendance(s(150));
+    missAt(g, s(75)); missAt(g, s(150));
     expect("Per-round max is a setting (max 2: two misses count)", me.glitches === 2, "glitches " + me.glitches);
   }
 
@@ -592,14 +594,14 @@ throws("Finish the round before points are placed", () => game.finishRound());
     g.startNextRound(); g.activity(me, 0);
     me.attrs.focus = -1; me.lockIn();             // one locked (attribute) glitch
     expect("One locked glitch: not Stuck", me.glitches === 1 && !me.isStuck());
-    const r = g.checkAttendance(s(75));
+    const r = missAt(g, s(75));
     expect("Locked glitch + Attendance glitch = Stuck", r[0].glitched && r[0].stuck && me.isStuck(), "glitches " + me.glitches);
     expect("Stuck players are no longer checked", g.checkAttendance(s(500)).length === 0 && me.glitches === 2);
   }
   {
     const { g, me } = mkGame({ maxPerRound: 2 });
     g.startNextRound(); g.activity(me, 0);
-    g.checkAttendance(s(75)); g.checkAttendance(s(150));
+    missAt(g, s(75)); missAt(g, s(150));
     expect("Two Attendance glitches = Stuck", me.isStuck() && me.boardStatus() === "Stuck");
   }
 
@@ -618,11 +620,36 @@ throws("Finish the round before points are placed", () => game.finishRound());
     g.typeSubmission(me, "x", s(178));
     expect("Typing a submission counts as input", me.lastActivity === s(178), before + " > " + me.lastActivity);
   }
+  // Bug fix: the first check of the game must show the popup before any glitch, even if the
+  // player was quiet much longer than 75 s (intro, intermission, or late checks in a background tab).
+  {
+    const { g, me } = mkGame();
+    g.startNextRound();
+    const first = g.checkAttendance(s(0));         // first check: starts the clock
+    expect("First check of the game starts the clock (no popup, no glitch)", first.length === 0 && me.glitches === 0);
+    const late = g.checkAttendance(s(300));        // next check is very late: 300 s quiet
+    expect("First time over the limit shows the popup with the full 15 s, not a glitch",
+           late.length === 1 && late[0].state === "popup" && late[0].msLeft === s(15) && me.glitches === 0,
+           late[0] && late[0].state + " " + late[0].msLeft + ", glitches " + me.glitches);
+    expect("Still the popup 14 s later, no glitch", g.checkAttendance(s(314))[0].state === "popup" && me.glitches === 0);
+    const m = g.checkAttendance(s(315));
+    expect("Glitch only after the 15 s countdown", m[0].state === "missed" && me.glitches === 1, "glitches " + me.glitches);
+  }
+  {
+    const { g, me } = mkGame();
+    g.startNextRound();
+    me.markActive(s(0));                           // last input long ago (for example, during the intro)
+    const r = g.checkAttendance(s(400));
+    expect("Old input before the first check: popup first, no glitch", r[0].state === "popup" && me.glitches === 0, r[0].state);
+    g.activity(me, s(405));
+    expect("Answering that popup prevents the glitch", g.checkAttendance(s(420)).length === 0 && me.glitches === 0);
+  }
+
   // A miss restarts the timer: the next popup comes 60 s after the miss, not at once.
   {
     const { g, me } = mkGame({ maxPerRound: 2 });
     g.startNextRound(); g.activity(me, 0);
-    g.checkAttendance(s(75));
+    missAt(g, s(75));
     expect("After a miss, no popup until 60 s later", g.checkAttendance(s(134)).length === 0 &&
            g.checkAttendance(s(135))[0].state === "popup");
   }

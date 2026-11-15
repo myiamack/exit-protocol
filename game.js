@@ -979,13 +979,14 @@ addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==
    Any key, click or touch counts as input. Once a second we ask the Game where your timer is. */
 const ATT=document.createElement("div");ATT.className="board-ov";ATT.hidden=true;document.body.appendChild(ATT);
 const attShow=h=>{ATT.innerHTML=`<div class="board-box" role="alertdialog" aria-modal="true" aria-labelledby="attT" style="max-width:520px">${h}<button class="btn red" id="attOk">I'm here</button></div>`;ATT.hidden=false;$("#attOk").onclick=()=>{ATT.hidden=true;ATT.innerHTML=""}};
-["keydown","pointerdown","touchstart"].forEach(ev=>addEventListener(ev,()=>{if(!G||!ME)return;G.activity(ME,Date.now());if(!ATT.hidden&&ATT.dataset.kind==="popup"){ATT.hidden=true;ATT.innerHTML=""}},{capture:true,passive:true}));
+/* Input only counts once a round exists. Before that (intro, intermission) the clock is off; the first check starts it. */
+["keydown","pointerdown","touchstart"].forEach(ev=>addEventListener(ev,()=>{if(!G||!ME||!G.round)return;G.activity(ME,Date.now());if(!ATT.hidden&&ATT.dataset.kind==="popup"){ATT.hidden=true;ATT.innerHTML=""}},{capture:true,passive:true}));
 setInterval(()=>{if(!G||!ME||!G.round||G.over)return;
   const r=G.checkAttendance(Date.now()).find(x=>x.player===ME);
   if(!r){if(ATT.dataset.kind==="popup"){ATT.hidden=true;ATT.innerHTML=""}return}
   if(r.state==="popup"){ATT.dataset.kind="popup";attShow(`<h2 id="attT">Still there?</h2><p>Press any key, click or tap within <b>${Math.ceil(r.msLeft/1000)}</b> seconds, or you take a glitch.</p>`);return}
   ATT.dataset.kind="missed";
-  attShow(`<h2 id="attT">Attendance check missed</h2><p>${r.glitched?`You took a glitch. Your attributes did not change. Glitches: ${ME.glitches}/2.${r.stuck?" You are Stuck: you watch the rest of the game.":""}`:"No extra glitch: you already took one for attendance this round."}</p>`);
+  attShow(`<h2 id="attT">Check-in missed</h2><p>${r.glitched?`You missed the check-in. +1 glitch (${ME.glitches}/2). Your attributes and hearts are unchanged.${r.stuck?" You are Stuck: you watch the rest of the game.":""}`:"You missed the check-in. No extra glitch: you already took one for attendance this round."}</p>`);
   render()},1000);
 render();
 })();
