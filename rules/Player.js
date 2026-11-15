@@ -71,6 +71,19 @@
 
     static get KEYS() { return KEYS; }
     static get SPEND() { return SPEND; }
+    static get START_EACH() { return START_EACH; }
+    static get BOOST() { return BOOST; }
+
+    /* Character creation draft, before the Player exists. spend = { focus: n, ... } points added (0 or more). */
+    static spendLeft(spend) { return SPEND - KEYS.reduce((s, k) => s + (spend[k] || 0), 0); }
+    /* Starting value with the type boost. */
+    static startValue(type, spend, k) {
+      return START_EACH + (spend[k] || 0) + (EP.CharacterType.get(type).isBonus(k) ? BOOST : 0);
+    }
+    static canRaise(type, spend, k) {
+      return Player.spendLeft(spend) > 0 && Player.startValue(type, spend, k) < EP.CharacterType.get(type).max(k);
+    }
+    static canLower(spend, k) { return (spend[k] || 0) > 0; }
 
     isBonus(k) { return this.type.isBonus(k); }
     max(k) { return this.type.max(k); }
@@ -153,6 +166,7 @@
       this.attendancePending = false;          // missed check-in, not yet locked: Glitching until a gift saves it or it locks in
       this.attendanceGlitchThisRound = false;  // this round's locked glitch came only from a missed check-in
       this.earned = 0;
+      this.cashedOutThisRound = false;
     }
 
     /* Lose points from one attribute, from any cause. Hearts cover any shortfall below 0. */
@@ -263,6 +277,7 @@
       if (!this.canCashOut()) return false;
       this.hearts.spend(CASHOUT_COST);
       this.cashOutUsed += 1;
+      this.cashedOutThisRound = true;
       this.earned += 1;
       return true;
     }
@@ -286,6 +301,12 @@
       for (const k of KEYS) this.attrs[k] += alloc[k] || 0;
       this.earned = 0;
     }
+    /* Stats Update draft: place = { focus: n, ... } points picked on screen but not yet placed. */
+    placeLeft(place) { return this.earned - KEYS.reduce((s, k) => s + (place[k] || 0), 0); }
+    canPlace(place, k) { return this.placeLeft(place) > 0 && this.attrs[k] + (place[k] || 0) < this.max(k); }
+    canUnplace(place, k) { return (place[k] || 0) > 0; }
+    /* True if this attribute can pay the cost without hearts. */
+    coversFromPoints(k, cost) { return this.attrs[k] >= cost; }
     /* True if there is room left to place points at all. */
     roomLeft() { return KEYS.reduce((s, k) => s + (this.max(k) - this.attrs[k]), 0); }
 
@@ -298,6 +319,12 @@
       return true;
     }
 
+    /* The three graduation checks, for the Stats Update screen. */
+    gradChecks() {
+      const total = this.total(), lowest = this.lowest();
+      return { total, totalOk: total >= GRAD_TOTAL, lowest, lowestOk: lowest >= GRAD_MIN,
+               glitches: this.glitches, glitchesOk: !this.isStuck() };
+    }
     graduates() {
       return !this.isStuck() && this.total() >= GRAD_TOTAL && this.lowest() >= GRAD_MIN;
     }

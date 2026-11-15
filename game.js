@@ -164,12 +164,12 @@ const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not
 /* ---------- state ---------- */
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
-  type:null,base:{focus:1,initiative:1,collab:1,composure:1,grit:1},
-  inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
-  of:{left:90,applied:false,msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
-  sop:{pile:[],built:[],checked:false,score:0,points:0,rank:[],decoyOut:false,inTime:true,left:60},
-  win:null,pay:null,paid:false,acc:{target:"",done:false,result:null,left:EP.Game.AUTO_ADVANCE_SECONDS.glitchReport},su:{left:EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate},gw:{left:20,started:false,closed:false,received:[],sent:[]},
-  earnLines:[],cashed:false,got:0,place:{},done:false,timer:null});
+  type:null,spend:{focus:0,initiative:0,collab:0,composure:0,grit:0},
+  inter:{left:EP.Game.STEP_SECONDS.intermission},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
+  of:{left:EP.Game.STEP_SECONDS.openFloor,msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
+  sop:{pile:[],built:[],score:0,points:0,rank:[],decoyOut:false,inTime:true,left:EP.Game.STEP_SECONDS.sopTrial},
+  pay:null,acc:{target:"",result:null,left:EP.Game.AUTO_ADVANCE_SECONDS.glitchReport},su:{left:EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate},gw:{left:EP.Game.STEP_SECONDS.giftWindow,started:false,received:[],sent:[]},
+  earnLines:[],got:0,place:{},timer:null});
 let S=fresh();
 
 /* ---------- rules engine session ----------
@@ -179,16 +179,15 @@ let G=null,ME=null,MYTEAM=null;
 const RNG=Math.random;
 const MATE=n=>G&&G.players.find(p=>p.name===n);
 function newSession(){
-  ME=new EP.Player({id:0,name:S.name,type:S.type,spend:Object.fromEntries(A.map(a=>[a.k,S.base[a.k]-1]))});
-  // 16 players: 8 Cooperative, 5 Independent, 3 Contrarian. You take one slot of your type.
-  const pool=[...Array(8).fill("coop"),...Array(5).fill("indep"),...Array(3).fill("contra")];
-  pool.splice(pool.indexOf(S.type),1);
-  const types=shuffle(pool);let id=1;
-  const mk=n=>EP.Bots.makePlayer(id++,n,types.pop());
-  MYTEAM=new EP.Team({id:0,name:"Team Kestrel",members:[ME,...TEAM.map(p=>mk(p.n))]});
-  const others=OTHERS.map((o,i)=>new EP.Team({id:i+1,name:o.t,members:o.p.map(mk)}));
-  G=new EP.Game({teams:[MYTEAM,...others],rng:RNG});
+  ({game:G,me:ME,team:MYTEAM}=EP.Bots.soloGame({me:{name:S.name,type:S.type,spend:S.spend},
+    myTeam:{name:"Team Kestrel",mates:TEAM.map(p=>p.n)},others:OTHERS.map(o=>({name:o.t,players:o.p})),rng:RNG}));
 }
+/* Round progress comes from Game, not from screen flags. */
+const floorOpen=()=>!!G&&G.step==="openFloor";
+const sopDone=()=>!!G&&G.didRun("runTrial");
+const accDone=()=>!!G&&G.didRun("endGlitchReport");
+const gwClosed=()=>!!G&&G.didRun("lockIn");
+const roundDone=()=>!!G&&G.didRun("finishRound");
 function endSession(){G=null;ME=null;MYTEAM=null}
 /* Sign out keeps only the display name, saved under the email. Look, tool and progress reset.
    The name comes back on the next sign-in with the same email. */
@@ -209,8 +208,7 @@ const shownName=()=>S.name||"Guest";   // one name source for the top bar and My
 const T=()=>TYPES[S.type];
 const isBonus=k=>!!S.type&&T().ct.isBonus(k);
 const maxOf=k=>S.type?T().ct.max(k):EP.CharacterType.MAX;
-const baseMax=k=>maxOf(k)-(isBonus(k)?2:0);
-const spent=()=>Object.values(S.base).reduce((a,b)=>a+b,0)-5;
+const spendLeft=()=>EP.Player.spendLeft(S.spend);
 const total=()=>ME.total();
 const fmt=x=>Math.floor(Math.max(0,x)/60)+":"+String(Math.max(0,x)%60).padStart(2,"0");
 function shade(h,f){const n=parseInt(h.slice(1),16);const r=Math.min(255,Math.round(((n>>16)&255)*f)),g=Math.min(255,Math.round(((n>>8)&255)*f)),b=Math.min(255,Math.round((n&255)*f));return "#"+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}
@@ -352,13 +350,13 @@ function fwd(){
     case 0:return{label:"Clock in ▶",ok:true,cls:"red"};
     case 1:return{label:"Play ▶",ok:true,cls:"red"};
     case 2:return{label:"Save look ▶",ok:S.draft.trim().length>=2,cls:"green"};
-    case 3:return{label:"Confirm stats ▶",ok:!!S.type&&spent()===15,cls:"red"};
+    case 3:return{label:"Confirm stats ▶",ok:!!S.type&&spendLeft()===0,cls:"red"};
     case 4:return S.arrived?{label:"Start Level 1 ▶",ok:true,cls:"red"}:{label:S.arr==="elev"?"Skip intro ▶":"Continue ▶",ok:S.arr!=="spawn",cls:"blue"};
     case 5:return{label:"Open the floor ▶",ok:true,cls:"red"};
     case 6:return{label:"Ready for trial ▶",ok:true,cls:"red"};
-    case 7:return{label:"All-hands ▶",ok:S.sop.checked,cls:"red"};
-    case 8:return{label:"Stats Update ▶",ok:S.gw.closed,cls:"red"};
-    case 9:return{label:S.done?"Level 2 locked":"Lock in points",ok:!S.done&&placeLeft()===0,cls:S.done?"soft":"green"};
+    case 7:return{label:"All-hands ▶",ok:sopDone(),cls:"red"};
+    case 8:return{label:"Stats Update ▶",ok:gwClosed(),cls:"red"};
+    case 9:return{label:roundDone()?"Level 2 locked":"Lock in points",ok:!roundDone()&&placeLeft()===0,cls:roundDone()?"soft":"green"};
   }
 }
 function goForward(){
@@ -398,9 +396,9 @@ function chrome(){
   $("#steps").hidden=S.step<=1||(S.step===4&&!S.arrived);
   $("#steps").innerHTML=STEPS.map((t,i)=>`<li class="${i===S.step?"on":i<S.step?"done":""}">${t}</li>`).join("");
   $("#fac").innerHTML=`<span class="label">Host script · ${STEPS[S.step]}</span><ul>${FAC[S.step].map(l=>`<li>${esc(l)}</li>`).join("")}</ul>`;
-  const bl=S.step===8?(!S.acc.done?"Glitch Report":!S.gw.closed?"Gift Window":null):S.step===9?(S.done?null:"Stats Update"):BANNER[S.step];
+  const bl=S.step===8?(!accDone()?"Glitch Report":!gwClosed()?"Gift Window":null):S.step===9?(roundDone()?null:"Stats Update"):BANNER[S.step];
   const cin=S.step===4&&!S.arrived;
-  const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&S.sop.checked)&&!(S.step===6&&S.of.applied);
+  const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&sopDone())&&!(S.step===6&&!floorOpen());
   $("#banner").hidden=!showB;if(showB)$("#bannerT").textContent=bl;
   const h=$("#hud");
   if(!ME||S.step<4||cin){h.hidden=true}else{h.hidden=false;
@@ -492,15 +490,15 @@ V[2]=()=>{const t=S.tab,a=S.av;let left="",nm="",tag="Equipped";
     </div>
   </div></div>`};
 
-V[3]=()=>{const left=15-spent();return `<div><span class="chip p">Secret</span><h2 style="margin-top:8px">Pick your work style</h2><p class="hint" style="margin-top:6px">Only you and the host see this. Other players only see your character, name, team and status.</p></div>
+V[3]=()=>{const left=spendLeft(),P=EP.Player,CT=EP.CharacterType;return `<div><span class="chip p">Secret</span><h2 style="margin-top:8px">Pick your work style</h2><p class="hint" style="margin-top:6px">Only you and the host see this. Other players only see your character, name, team and status.</p></div>
 <div class="types">${Object.entries(TYPES).map(([k,t])=>`<button class="type" data-type="${k}" aria-pressed="${S.type===k}" ${S.maxStep>=5?"disabled":""}><h3>${t.n}</h3><span style="opacity:.9">${t.blurb}</span>
-  <span class="row" style="gap:6px">${t.bonus.map(b=>`<span class="tag b">+2 ${AN[b]}</span>`).join("")}<span class="tag p">${AN[t.pen]} max 4</span></span>
+  <span class="row" style="gap:6px">${t.bonus.map(b=>`<span class="tag b">+${P.BOOST} ${AN[b]}</span>`).join("")}<span class="tag p">${AN[t.pen]} max ${CT.PEN_MAX}</span></span>
   <span style="opacity:.9;font-size:.92rem"><b>Secret path · ${t.path}:</b> ${t.pathDesc}</span></button>`).join("")}</div>
-${S.type?`<div class="row" style="justify-content:space-between"><h3>Spend your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} of 15 left</span></div>
-<p class="hint">Every attribute starts at 1. Bonus attributes get +2 after you confirm. Max is 10 (your weak attribute caps at 4).</p>
-<div class="buy">${A.map(a=>{const v=S.base[a.k];return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">+2 bonus</span>':""}${T().pen===a.k?'<span class="tag p">max 4</span>':""}</span>
-  <span class="step"><button class="minus" data-dec="${a.k}" aria-label="Lower ${a.n}" ${v<=1?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-inc="${a.k}" aria-label="Raise ${a.n}" ${(v>=baseMax(a.k)||!left)?"disabled":""}>+</button></span>
-  <span class="fin">final ${v+(isBonus(a.k)?2:0)}</span></div>`}).join("")}</div>`:""}`};
+${S.type?`<div class="row" style="justify-content:space-between"><h3>Spend your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} of ${P.SPEND} left</span></div>
+<p class="hint">Every attribute starts at ${P.START_EACH}. Bonus attributes get +${P.BOOST} after you confirm. Max is ${CT.MAX} (your weak attribute caps at ${CT.PEN_MAX}).</p>
+<div class="buy">${A.map(a=>{const v=P.START_EACH+S.spend[a.k];return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?`<span class="tag b">+${P.BOOST} bonus</span>`:""}${T().pen===a.k?`<span class="tag p">max ${CT.PEN_MAX}</span>`:""}</span>
+  <span class="step"><button class="minus" data-dec="${a.k}" aria-label="Lower ${a.n}" ${!P.canLower(S.spend,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-inc="${a.k}" aria-label="Raise ${a.n}" ${!P.canRaise(S.type,S.spend,a.k)?"disabled":""}>+</button></span>
+  <span class="fin">final ${P.startValue(S.type,S.spend,a.k)}</span></div>`}).join("")}</div>`:""}`};
 
 function personRow(p,me){return `<div class="person"><span class="who">${avatarSVG(p.av,{head:true,label:p.n})}${esc(p.n)}${me?' <span class="tag m">you</span>':""}</span>${flag(p.st||"OK")}</div>`}
 V[4]=()=>{const t=T();if(!S.arrived)return elevatorScene();return `<div class="row" style="justify-content:space-between"><div><span class="chip b">Lobby · Code ${esc(S.code)}</span><h2 style="margin-top:8px">Floor 60 · Find your team</h2></div><span class="hint">Your team is waiting in All Skate. Explore while the intermission runs.</span></div>
@@ -512,15 +510,15 @@ ${worldHTML("lobby")}
 </div>`};
 /* Trial scores on screen: whole numbers, 0 to 7. The rules keep the exact value for ranking. */
 const shownScore=x=>Math.min(EP.Trial.MAX_BASE,Math.max(0,Math.round(x)));
-function gradChecks(){const tot=total(),low=ME.lowest(),GT=EP.Player.GRAD_TOTAL,GM=EP.Player.GRAD_MIN;
-  return `<div class="check"><span class="${tot>=GT?"y":"x"}">${tot>=GT?"✓":"✗"}</span><span>Total points ${tot} (need ${GT}+)</span></div><div class="check"><span class="${low>=GM?"y":"x"}">${low>=GM?"✓":"✗"}</span><span>Lowest attribute ${low} (need ${GM}+)</span></div><div class="check"><span class="${ME.glitches<2?"y":"x"}">${ME.glitches<2?"✓":"✗"}</span><span>Glitches ${ME.glitches} (stuck at 2)</span></div>`}
+function gradChecks(){const c=ME.gradChecks(),GT=EP.Player.GRAD_TOTAL,GM=EP.Player.GRAD_MIN;
+  return `<div class="check"><span class="${c.totalOk?"y":"x"}">${c.totalOk?"✓":"✗"}</span><span>Total points ${c.total} (need ${GT}+)</span></div><div class="check"><span class="${c.lowestOk?"y":"x"}">${c.lowestOk?"✓":"✗"}</span><span>Lowest attribute ${c.lowest} (need ${GM}+)</span></div><div class="check"><span class="${c.glitchesOk?"y":"x"}">${c.glitchesOk?"✓":"✗"}</span><span>Glitches ${c.glitches} (stuck at ${EP.Player.STUCK_AT})</span></div>`}
 
 V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="margin-top:8px">Boot Up: Team Week</h2></div>
 <div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, Team Kestrel</p><p>Your first client, a national medical supply company, has sent a Request for Proposal. Before Sprint 1 starts on Sep 8, your team must show it has the grit to see a task through: write a Standard Operating Procedure everyone can follow.</p></div>
-<div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>${AN[R().attr]}</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>${R().cost} points</h3></div><div class="panel"><span class="label">Your ${AN[R().attr]}</span><h3>${ME.attrs[R().attr]}${isBonus(R().attr)?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${ME.attrs[R().attr]>=R().cost?"You can cover this.":"You'll need hearts to cover this."}</span></div></div>
+<div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>${AN[R().attr]}</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>${R().cost} points</h3></div><div class="panel"><span class="label">Your ${AN[R().attr]}</span><h3>${ME.attrs[R().attr]}${isBonus(R().attr)?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${ME.coversFromPoints(R().attr,R().cost)?"You can cover this.":"You'll need hearts to cover this."}</span></div></div>
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge</span></div><div class="panel"><span class="label">Workshops</span><span>LW2A Know Your Lens · LW2B Team Agreement</span></div></div>`;
 
-function roomPanel(){const t=T();const lockd=S.of.applied||S.step!==6;const r=S.room;
+function roomPanel(){const t=T();const lockd=!floorOpen()||S.step!==6;const r=S.room;
   if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gift any teammate here during Open Floor, or in the gift window after the trial.</p><p class="hint">Your cost as ${aOrAn(t.n)}: ${giftCostText(t.ct)}.${t.ct.canAcceptGifts()?"":" You cannot accept gifts."}</p>${lockd?`<p class="hint">${GIFT_RULE}</p>`:incomingGifts()+giftRoster()}${!lockd&&S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}</div>`;
   if(r==="breakout"){if(!T().ct.canSabotage()||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. The room feels like someone just left.</p></div>`;
     const cost=EP.Sabotage.cost(ME);
@@ -531,33 +529,33 @@ function roomPanel(){const t=T();const lockd=S.of.applied||S.step!==6;const r=S.
   if(r==="reception")return `<div class="panel"><span class="label">Reception · Check in</span><p>The front desk prints your badge again. <b>ATTEMPT 02</b>. You only remember one.</p><span class="okmsg">Anomaly logged: WATCHER.</span></div>`;
   return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. ${T().ct.canSabotage()?"Slip into the Breakout Room to sabotage a teammate. ":""}Gift a teammate in the Kitchen now, or in the gift window after the trial. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>`;
 }
-V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${S.of.applied?"Open Floor is over. Press Ready for trial to continue.":"Kitchen = gift a teammate · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
+V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${!floorOpen()?"Open Floor is over. Press Ready for trial to continue.":"Kitchen = gift a teammate · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
 ${worldHTML("floor")}`;
 
-V[7]=()=>{const s=S.sop;const hit=G.round.sabotages.filter(x=>x.target===ME).reduce((n,x)=>n+x.drain,0);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
+V[7]=()=>{const s=S.sop;const hit=G.round.drainOn(ME);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
 ${hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[R().attr]} −${hit}. Remember this at the all-hands.</div>`:""}
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Score: 1 point per step in the right place, +1 for leaving out the step that doesn't belong (0 to 7). The top half of teams win.</p>
-<div class="sop"><div><span class="label">Available steps</span><div class="pile">${s.pile.map((t,i)=>`<button class="scard" data-pile="${i}" ${s.checked?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
-<div><span class="label">Team SOP</span><div class="built">${s.built.map((t,i)=>`<button class="scard ${s.checked?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${s.checked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${s.checked?`<div class="result"><b style="color:${S.win?"var(--ok)":"var(--bad)"}">Team ${S.win?"WIN":"LOSS"}. Score ${shownScore(s.rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${s.score} of 6 steps in place${!s.built.length?", no steps placed":s.decoyOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${s.rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(s.rank.length)} of ${s.rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
+<div class="sop"><div><span class="label">Available steps</span><div class="pile">${s.pile.map((t,i)=>`<button class="scard" data-pile="${i}" ${sopDone()?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
+<div><span class="label">Team SOP</span><div class="built">${s.built.map((t,i)=>`<button class="scard ${sopDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${sopDone()?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
+${sopDone()?`<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}. Score ${shownScore(s.rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${s.score} of 6 steps in place${!s.built.length?", no steps placed":s.decoyOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${s.rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(s.rank.length)} of ${s.rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
 :`<div class="row"><button class="btn green" id="check" ${s.built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
 
 V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
 <div class="report shake"><span class="h">&gt; GLITCH REPORT: irregularities detected in your environment</span>
-<span>&gt; trial: Team Kestrel ${S.win?"WIN":"LOSS"} · cost paid: ${AN[k]} −${R().cost}</span>
+<span>&gt; trial: Team Kestrel ${MYTEAM.won?"WIN":"LOSS"} · cost paid: ${AN[k]} −${R().cost}</span>
 <span>&gt; your ${AN[k]}: ${p.before} → ${p.after}${p.heartsUsed?` (hearts used: ${p.heartsUsed})`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>
 ${CLUES.map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
 <span>&gt; please continue working normally.</span></div>
-${a.done?caughtNotices():""}
-${a.done&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. This round does not count toward Exploit. You cannot sabotage on any team next round, or ever again while on this team.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
+${accDone()?caughtNotices():""}
+${accDone()&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. This round does not count toward Exploit. You cannot sabotage on any team next round, or ever again while on this team.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
 <div class="panel"><span class="label">Accusation · one per player · teammates only</span>
-${a.done?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.correctAccusation)?` ${T().path} complete.`:""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. ${a.safe?`Your Focus kept it from costing you anything.`:`You lost 1 point from your highest attribute.`}`:"You skipped your accusation."}</p>`
+${accDone()?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.correctAccusation)?` ${T().path} complete.`:""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. ${a.safe?`Your Focus kept it from costing you anything.`:`You lost 1 point from your highest attribute.`}`:"You skipped your accusation."}</p>`
 :`<p><b>Suspect a teammate? Accuse or Skip.</b></p><div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Correct: +1 point. Wrong: you lose 1 point from your highest attribute.</span><span class="hint">The Glitch Report ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.glitchReport} seconds. No answer counts as Skip.</span>`}</div>
-${a.done?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${g.closed?flag(status()):`<span class="hearts">${Array.from({length:EP.Hearts.CAP},(_,i)=>HEART(i<ME.hearts.count)).join("")}</span>`}</div>
+${accDone()?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${gwClosed()?flag(status()):`<span class="hearts">${Array.from({length:EP.Hearts.CAP},(_,i)=>HEART(i<ME.hearts.count)).join("")}</span>`}</div>
   ${incomingGifts()}
-  ${!g.closed?giftRoster():""}
+  ${!gwClosed()?giftRoster():""}
   ${g.sent.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
-  ${g.closed?`<p>${gwClosedText()}</p>`:`${gwOpenText()}<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0, or a missed check-in nobody saved, becomes a glitch when it closes.</span>`}
+  ${gwClosed()?`<p>${gwClosedText()}</p>`:`${gwOpenText()}<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0, or a missed check-in nobody saved, becomes a glitch when it closes.</span>`}
 </div>`:""}`};
 
 /* Gift window state for you. Never says "No glitch" while a glitch is pending or locked this round. */
@@ -589,22 +587,21 @@ function incomingGifts(){return G.round.gifts.map((x,i)=>{if(x.receiver!==ME||x.
   return `<span class="hint">${who}'s gift expired with no answer. It went back to them.</span>`}).join("")}
 function bindIncoming(){$$("[data-ans]").forEach(b=>b.onclick=()=>{const gft=G.round.gifts[+b.dataset.ans];if(!G.answerGift(gft,b.dataset.yes==="1").ok)return;keepTimer()})}
 /* All-hands: as soon as accusations resolve, announce any teammate caught sabotaging. (If you were caught, your own notice shows instead.) */
-function caughtNotices(){const caught=[...new Set(G.round.accusations.filter(x=>x.correct&&MYTEAM.has(x.target)&&x.target!==ME).map(x=>x.target))];
-  return caught.map(q=>`<div class="toast"><b>&gt; CAUGHT:</b> ${esc(q.name)} was caught sabotaging. They cannot sabotage this team again.</div>`).join("")}
-function placeLeft(){return (ME?ME.earned:0)-Object.values(S.place).reduce((a,b)=>a+b,0)}
-V[9]=()=>{const left=placeLeft();const t=T();const got=S.done?S.got:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
+function caughtNotices(){return G.round.caughtOn(MYTEAM,ME).map(q=>`<div class="toast"><b>&gt; CAUGHT:</b> ${esc(q.name)} was caught sabotaging. They cannot sabotage this team again.</div>`).join("")}
+function placeLeft(){return ME?ME.placeLeft(S.place):0}
+V[9]=()=>{const left=placeLeft();const t=T();const got=roundDone()?S.got:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
 return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
-<div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${[...S.earnLines,...(S.cashed?["Cash Out: +1"]:[])].map(esc).join(" · ")}</span></div>
-${!S.done&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 hearts for +1 point. Only works with full hearts.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
-${S.done?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
+<div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${[...S.earnLines,...(ME.cashedOutThisRound?["Cash Out: +1"]:[])].map(esc).join(" · ")}</span></div>
+${!roundDone()&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 hearts for +1 point. Only works with full hearts.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
+${roundDone()?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
 <p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?` Level ${nx.n} costs ${nx.cost}.`:""}</p>
 <p class="hint">Stats Update ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate} seconds. Points you have not placed go in automatically, the same way bots place theirs.</p>
-<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(S.place[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!(S.place[a.k])?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${(!left||v>=maxOf(a.k))?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
+<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(S.place[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(S.place,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(S.place,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
 <div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means one of your attributes, even with the hearts that could cover it, could not pay a cost of ${EP.Player.AT_RISK_COST}. This ${EP.Player.AT_RISK_COST} is a fixed safety check for every level. It is not the next trial's cost.</span></div>
 <div class="panel"><span class="label">Your abilities · only you see these</span>${ME.abilityLines().map(l=>`<span class="hint">${esc(l.text)}</span>`).join("")}</div>
 ${R().n===7?`<div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>`:""}
 <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div></div>
-${S.done?`<div class="locked"><div><span class="label">Next · Level ${nx?nx.n:""}</span><h3>${nx?nx.name:""}</h3><span class="hint">Sep 8–25 · Trial cost ${nx?nx.cost:""} · Attribute revealed at the briefing</span></div><span class="tag m">LOCKED</span></div><div class="row"><button class="btn blue" id="replay">Replay Level 1</button><button class="btn soft" id="restart">Back to sign-in</button></div>`:""}`};
+${roundDone()?`<div class="locked"><div><span class="label">Next · Level ${nx?nx.n:""}</span><h3>${nx?nx.name:""}</h3><span class="hint">Sep 8–25 · Trial cost ${nx?nx.cost:""} · Attribute revealed at the briefing</span></div><span class="tag m">LOCKED</span></div><div class="row"><button class="btn blue" id="replay">Replay Level 1</button><button class="btn soft" id="restart">Back to sign-in</button></div>`:""}`};
 
 /* ================= ARRIVAL (elevator → ADMIN_0 → role lead → spawn) ================= */
 function adminFig(){return `<g transform="translate(440 210)">
@@ -828,7 +825,7 @@ function initWorld(){
   };
   W.raf=requestAnimationFrame(frame);
 }
-function useAction(){const mode=S.step===6&&!S.of.applied?"floor":"lobby";
+function useAction(){const mode=S.step===6&&floorOpen()?"floor":"lobby";
   if(W.near>=0)return{label:"Listen",ok:true,cls:"ghost",act:"ghost"};
   if(Math.hypot(S.pos.x-ROOK.x,S.pos.y-ROOK.y)<90)return{label:"Talk",ok:true,act:"npc"};
   const r=S.wroom;
@@ -888,39 +885,39 @@ function bind(){
   }
   if(S.step===3){
     $$("[data-type]").forEach(b=>b.onclick=()=>{const t=b.dataset.type;if(t===S.type)return;
-      if(S.type&&spent()>0&&!confirm("Switching resets your points. Continue?"))return;   /* confirm before wiping placed points */
-      S.type=t;S.base={focus:1,initiative:1,collab:1,composure:1,grit:1};render()});
-    $$("[data-inc]").forEach(b=>b.onclick=()=>{const k=b.dataset.inc;if(spent()<15&&S.base[k]<baseMax(k)){S.base[k]++;render()}});
-    $$("[data-dec]").forEach(b=>b.onclick=()=>{const k=b.dataset.dec;if(S.base[k]>1){S.base[k]--;render()}});
+      if(S.type&&spendLeft()<EP.Player.SPEND&&!confirm("Switching resets your points. Continue?"))return;   /* confirm before wiping placed points */
+      S.type=t;S.spend=Object.fromEntries(A.map(a=>[a.k,0]));render()});
+    $$("[data-inc]").forEach(b=>b.onclick=()=>{const k=b.dataset.inc;if(EP.Player.canRaise(S.type,S.spend,k)){S.spend[k]++;render()}});
+    $$("[data-dec]").forEach(b=>b.onclick=()=>{const k=b.dataset.dec;if(EP.Player.canLower(S.spend,k)){S.spend[k]--;render()}});
   }
   if(S.step===4&&S.arrived&&S.maxStep<5)tick("left",S.inter,startLevel);
   if(S.step===4)on("#skipIntro",skipArrival);
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){
-    if(!S.of.applied)$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;keepTimer()});
+    if(floorOpen())$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;keepTimer()});
     bindGifts(m=>{S.of.msg=m});bindIncoming();
     $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;keepTimer()});
-    if(!S.of.applied)tick("left",S.of,()=>{applyOpenFloorEnd();go(7)});
+    if(floorOpen())tick("left",S.of,()=>{applyOpenFloorEnd();go(7)});
   }
   if(S.step===7){
     const s=S.sop;
     $$("[data-pile]").forEach(b=>sopPress(b,()=>{s.built.push(s.pile.splice(+b.dataset.pile,1)[0]);keepTimer()}));
     $$("[data-built]").forEach(b=>sopPress(b,()=>{s.pile.push(s.built.splice(+b.dataset.built,1)[0]);keepTimer()}));
     on("#check",checkSop);on("#reset",()=>{s.pile=shuffle([...SOP,DECOY]);s.built=[];keepTimer()});
-    if(!s.checked)tick("left",s,()=>{s.inTime=false;checkSop()});
+    if(!sopDone())tick("left",s,()=>{s.inTime=false;checkSop()});
   }
   if(S.step===8){
     on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;const r=G.accuse(ME,MATE(v));if(!r.ok)return;S.acc.target=v;S.acc.result=r.correct;S.acc.safe=!!r.safe;endAccusations()});
     on("#skipAcc",()=>{S.acc.target="";S.acc.result=null;endAccusations()});
-    if(!S.acc.done)tick("left",S.acc,()=>{S.acc.target="";S.acc.result=null;endAccusations()});   /* time up: Skip */
+    if(!accDone())tick("left",S.acc,()=>{S.acc.target="";S.acc.result=null;endAccusations()});   /* time up: Skip */
     bindGifts(m=>S.gw.sent.push(m));bindIncoming();
-    if(S.acc.done&&!S.gw.closed)tick("left",S.gw,closeGW);
+    if(accDone()&&!gwClosed())tick("left",S.gw,closeGW);
   }
   if(S.step===9){
     $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;S.place[k]=(S.place[k]||0)+1;render()});
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
-    on("#cashOut",()=>{if(G.cashOut(ME).ok){S.cashed=true;render()}});
-    if(!S.done)tick("left",S.su,autoLockPoints);   /* time up: unplaced points go in by the bot rule */
+    on("#cashOut",()=>{if(G.cashOut(ME).ok)render()});
+    if(!roundDone())tick("left",S.su,autoLockPoints);   /* time up: unplaced points go in by the bot rule */
     on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
     on("#restart",signOut);
   }
@@ -933,41 +930,36 @@ function sopPress(b,fn){
   b.onclick=e=>{if(e.detail>0&&performance.now()-sopDownAt<1000)return;fn()}}
 function keepTimer(){const t=S.timer;S.timer=null;clearInterval(t);render()}
 /* auto: Stats Update ran out of time. Game keeps your picks and places the rest by the bot rule. */
-function lockPoints(auto){S.prog.done=Math.max(S.prog.done,R().n);S.got=ME.earned;if(auto===true)G.autoPlacePoints(ME,S.place);else ME.placePoints(S.place);S.place={};G.finishRound();S.done=true;render()}
-function autoLockPoints(){if(!S.done)lockPoints(true)}
+function lockPoints(auto){S.prog.done=Math.max(S.prog.done,R().n);S.got=ME.earned;if(auto===true)G.autoPlacePoints(ME,S.place);else ME.placePoints(S.place);S.place={};G.finishRound();render()}
+function autoLockPoints(){if(!roundDone())lockPoints(true)}
 function applyOpenFloorEnd(){
-  if(S.of.applied)return;S.of.applied=true;
+  if(!floorOpen())return;
   EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now
   G.advance();                // Open Floor > Trial
 }
-/* Level 1: score the SOP, then the trial ranks every team (bot teams get a random score). Top half win. */
-function checkSop(){stopTimer();const s=S.sop;s.checked=true;
-  const r=EP.Trial.SopTrial.score(s.built,SOP,DECOY);s.score=r.right;s.decoyOut=r.endlessOut;s.points=r.score;   /* nothing placed: no LOOP */
-  if(s.decoyOut)S.found.loop=1;
-  G.setSopScore(MYTEAM,r.score);s.rank=G.runTrial();S.win=MYTEAM.won;render()}
+/* Level 1: Game scores the SOP board, then the trial ranks every team (bot teams get a random score). Top half win. */
+function checkSop(){stopTimer();if(sopDone())return;const s=S.sop;
+  const r=G.scoreSop(MYTEAM,s.built,SOP,DECOY);s.score=r.right;s.decoyOut=r.endlessOut;s.points=r.score;s.rank=r.rank;
+  if(s.decoyOut)S.found.loop=1;   /* nothing placed: no LOOP */
+  render()}
 function payCost(){
-  if(S.paid)return;S.paid=true;
-  S.pay=G.payTrialCosts().get(ME);   // the trial already ranked the teams in checkSop
-  G.advance();                // Trial > Glitch Report
+  if(G.didRun("payTrialCosts"))return;
+  S.pay=G.endTrial().get(ME);   // pay the cost, then Trial > Glitch Report
 }
 function endAccusations(){
-  S.acc.done=true;
+  if(accDone())return;
   EP.Bots.accusations(G,RNG);   // bots accuse
-  G.endGlitchReport();          // Exploit credit
-  G.advance();                  // Glitch Report > Gift window
+  G.closeGlitchReport();        // Exploit credit, then Glitch Report > Gift window
   startGW();
 }
 function startGW(){
-  S.gw.started=true;S.gw.left=20;
+  S.gw.started=true;S.gw.left=EP.Game.STEP_SECONDS.giftWindow;
   EP.Bots.gifts(G,RNG);
   render();
 }
 function closeGW(){
-  S.gw.closed=true;
-  G.advance();                // Gift window > Lock-in
-  G.lockIn();
-  G.advance();                // Lock-in > Stats Update
-  S.earnLines=G.computeEarnings().get(ME)||[];
+  if(gwClosed())return;
+  S.earnLines=G.closeGiftWindow().get(ME)||[];   // Gift window > Lock-in > Stats Update, earnings
   EP.Bots.statsUpdate(G);   // bots cash out and place points
   render();
 }

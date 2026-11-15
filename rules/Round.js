@@ -35,6 +35,12 @@
     get step() { return this.steps[this.stepIndex]; }
     nextStep() { if (this.stepIndex < this.steps.length - 1) this.stepIndex += 1; return this.step; }
     saboteurs() { return [...new Set(this.sabotages.map(s => s.actor))]; }
+    /* Total drained from this player by sabotage this round. */
+    drainOn(p) { return this.sabotages.filter(s => s.target === p).reduce((n, s) => n + s.drain, 0); }
+    /* Teammates caught sabotaging this round by a correct accusation (each once), leaving out one player. */
+    caughtOn(team, except = null) {
+      return [...new Set(this.accusations.filter(a => a.correct && team.has(a.target) && a.target !== except).map(a => a.target))];
+    }
   }
 
   EP.Round = Round;

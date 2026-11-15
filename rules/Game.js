@@ -42,6 +42,10 @@
   // Level 7 placement timer. Points not placed when it ends are placed by the bot placement rule (Round 7 way).
   const GRADUATION_PLACE_SECONDS = 60;
 
+  // Other step timers the engine runs when there is no host. The screen shows the countdown.
+  // Gift window: 20 seconds in this demo (the live game uses about 30).
+  const STEP_SECONDS = { intermission: 90, openFloor: 90, sopTrial: 60, giftWindow: 20 };
+
   // What must happen before advance() may leave each step.
   const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };
 
@@ -236,6 +240,13 @@
       if (!(this.round.trial instanceof EP.Trial.SopTrial)) throw new Error("This level has no SOP.");
       this.round.trial.setScore(team, score);
     }
+    /* Level 1 in one call: score the team's SOP board, then rank every team.
+       built = the steps in board order. Returns { right, endlessOut, score, rank }. */
+    scoreSop(team, built, steps, endless) {
+      const r = EP.Trial.SopTrial.score(built, steps, endless);
+      this.setSopScore(team, r.score);
+      return { ...r, rank: this.runTrial() };
+    }
     judged() {
       this.mustBe("trial");
       if (!(this.round.trial instanceof EP.Trial.JudgedTrial)) throw new Error("This level is not judged.");
@@ -303,6 +314,12 @@
       }
       return out;
     }
+    /* Trial over: pay the cost (the trial must have run), then move to the Glitch Report. Returns the payments. */
+    endTrial() {
+      const out = this.payTrialCosts();
+      this.advance();
+      return out;
+    }
 
     /* 3. Glitch Report */
     accuse(accuser, target) {
@@ -315,6 +332,11 @@
       this.once("endGlitchReport");
       // Exploit: +1 for each Contrarian who sabotaged this round and was not caught.
       for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.creditPath(EP.CharacterType.PATH_EVENTS.uncaughtSabotage);
+    }
+    /* Glitch Report over (accusations done or 30 s up): credit Exploit, then open the gift window. */
+    closeGlitchReport() {
+      this.endGlitchReport();
+      this.advance();
     }
 
     /* Gifts: Open Floor or the gift window. */
@@ -347,6 +369,14 @@
         }
       }
       return locked;
+    }
+    /* Gift window over: lock in glitches, move to Stats Update and work out earnings. Returns the earnings lines. */
+    closeGiftWindow() {
+      this.mustBe("giftWindow");
+      this.advance();
+      this.lockIn();
+      this.advance();
+      return this.computeEarnings();
     }
 
     /* 6. Stats Update */
@@ -447,6 +477,7 @@
   Game.PAUSED_STEPS = PAUSED_STEPS;
   Game.AUTO_ADVANCE_SECONDS = AUTO_ADVANCE_SECONDS;
   Game.GRADUATION_PLACE_SECONDS = GRADUATION_PLACE_SECONDS;
+  Game.STEP_SECONDS = STEP_SECONDS;
   EP.Game = Game;
   if (typeof module !== "undefined" && module.exports) module.exports = Game;
 })(typeof globalThis !== "undefined" ? globalThis : this);

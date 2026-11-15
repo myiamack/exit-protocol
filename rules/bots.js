@@ -22,6 +22,23 @@
       return new EP.Player({ id, name, type, spend: Bots.typicalSpend(type), isBot: true });
     },
 
+    /* Solo prototype lobby: 16 players, 8 Cooperative, 5 Independent, 3 Contrarian. You take one slot of your type.
+       me = { name, type, spend }. myTeam = { name, mates: [bot names] }. others = [{ name, players: [bot names] }].
+       Returns { game, me, team }. */
+    SOLO_MIX: { coop: 8, indep: 5, contra: 3 },
+    soloGame({ me, myTeam, others, rng = Math.random }) {
+      const you = new EP.Player({ id: 0, name: me.name, type: me.type, spend: me.spend });
+      const pool = [];
+      for (const [k, n] of Object.entries(Bots.SOLO_MIX)) for (let i = 0; i < n; i++) pool.push(k);
+      pool.splice(pool.indexOf(you.type.key), 1);
+      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+      let id = 1;
+      const mk = n => Bots.makePlayer(id++, n, pool.pop());
+      const team = new EP.Team({ id: 0, name: myTeam.name, members: [you, ...myTeam.mates.map(mk)] });
+      const rest = others.map((o, i) => new EP.Team({ id: i + 1, name: o.name, members: o.players.map(mk) }));
+      return { game: new EP.Game({ teams: [team, ...rest], rng }), me: you, team };
+    },
+
     /* Open Floor: Contrarian bots sabotage 50% of rounds, once, At risk teammates first. */
     openFloor(game, rng) {
       for (const team of game.teams) {
