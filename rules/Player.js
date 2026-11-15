@@ -49,6 +49,7 @@
       this.glitches = 0;
       this.idle = false;          // set by the Attendance check (Part 8); idle until the next input
       this.lastActivity = null;   // time of the last key, click or touch (read by the Attendance check, Part 7)
+      this.attendanceMissAt = null;   // time of the last missed Attendance check (restarts the timer)
 
       // second path
       this.pathProgress = 0;
@@ -137,6 +138,7 @@
       this.accusedThisRound = false;
       this.correctAccusation = false;
       this.glitchedThisRound = false;
+      this.attendanceGlitchesThisRound = 0;
       this.earned = 0;
     }
 
@@ -200,6 +202,15 @@
       this.glitches += 1;
       this.glitchedThisRound = true;
       this.reboot();
+      return true;
+    }
+
+    /* Missed Attendance check: +1 glitch count, attributes unchanged. Only maxPerRound per round.
+       Two glitches of any kind = Stuck. Returns true if the glitch counted. */
+    attendanceGlitch(maxPerRound) {
+      if (this.isStuck() || this.attendanceGlitchesThisRound >= maxPerRound) return false;
+      this.attendanceGlitchesThisRound += 1;
+      this.glitches += 1;
       return true;
     }
 

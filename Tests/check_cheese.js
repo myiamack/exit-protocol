@@ -12,7 +12,7 @@
      4. Small teams: as many 3-person teams as possible. Run with and without a preview of the
         Part 6 small-team heart (not in the rules yet; applied by this script only). */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 

@@ -24,7 +24,8 @@
   const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };
 
   class Game {
-    constructor({ teams, rng = Math.random, host = false }) {
+    /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }. */
+    constructor({ teams, rng = Math.random, host = false, attendance = {} }) {
       this.teams = teams;
       this.players = teams.flatMap(t => t.members);
       this.rng = rng;
@@ -34,6 +35,23 @@
       this.log = [];
       this.prompts = [];         // game record: the prompt used at each judged level { level, index, text, custom }
       this.submissions = [];     // game record: Level 5-6 submissions once writing closes { level, name, text }
+      this.attendance = new EP.Attendance(attendance);
+    }
+
+    /* ----- Attendance (any time) ----- */
+    /* Any key, click or touch by this player. */
+    activity(p, now) { this.attendance.activity(p, now); }
+    /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
+       Returns [{ player, state, msLeft, glitched, stuck }] for players with the popup open or a miss. */
+    checkAttendance(now) {
+      const out = [];
+      for (const p of this.players) {
+        if (p.isBot) continue;
+        const r = this.attendance.check(p, now);
+        if (r.state === "popup" || r.state === "missed") out.push({ player: p, ...r });
+        if (r.state === "missed") this.log.push({ level: this.level, event: "attendanceMiss", player: p.id, glitched: r.glitched, stuck: r.stuck });
+      }
+      return out;
     }
 
     teamOf(p) { return this.teams.find(t => t.has(p)); }
@@ -139,14 +157,14 @@
     }
     /* Called on every keystroke in the writing box. Typing counts as activity (Attendance check). */
     typeSubmission(p, text, now) {
-      p.markActive(now);
+      this.activity(p, now);
       const n = String(text || "").trim().length, max = EP.Trial.JudgedTrial.MAX_CHARS;
       return { length: n, left: max - n, tooLong: n > max };
     }
     /* Writing closes early when every active player has submitted. */
     submit(p, text, now) {
       const jt = this.judged();
-      p.markActive(now);
+      this.activity(p, now);
       const r = jt.submit(p, text);
       if (r.ok && jt.allSubmitted(this.players)) { this.closeWriting(); r.closed = true; }
       return r;

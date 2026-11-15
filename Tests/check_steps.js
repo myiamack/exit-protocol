@@ -1,7 +1,7 @@
 /* Spot test: Game refuses calls made in the wrong step.
    Run from the repo folder:  node Tests/check_steps.js */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 const NO = () => 0.999;   // rng that never fires an ability (below 10)
@@ -522,6 +522,110 @@ throws("Finish the round before points are placed", () => game.finishRound());
          subs.findIndex(x => x.level === 6) > subs.map(x => x.level).lastIndexOf(5),
          subs.filter(x => x.level === 6).length + " at Level 6");
   expect("No submissions on the board before Level 5", b0.submissions.length === 0);
+}
+
+// Attendance (Part 7). Time is passed in, so these tests fake the clock in seconds.
+{
+  const s = n => n * 1000;
+  const mkGame = (attendance) => {
+    const ps = ["coop", "coop", "indep", "contra", "coop", "coop", "indep", "coop"].map((t, i) => EP.Bots.makePlayer(200 + i, "A" + i, t));
+    ps[0].isBot = false;   // the one human; bots are not checked
+    const ts = [0, 1].map(i => new EP.Team({ id: i, name: "T" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+    return { g: new EP.Game({ teams: ts, rng: NO, attendance }), me: ps[0], bot: ps[1] };
+  };
+
+  const d = new EP.Attendance().settings;
+  expect("Default settings: 60 s idle, 15 s popup, 1 per round",
+         d.idleMs === 60000 && d.popupMs === 15000 && d.maxPerRound === 1, JSON.stringify(d));
+  const custom = mkGame({ idleMs: s(30), popupMs: s(5), maxPerRound: 2 }).g.attendance.settings;
+  expect("Settings can be changed (idle, popup, per-round max)",
+         custom.idleMs === 30000 && custom.popupMs === 5000 && custom.maxPerRound === 2, JSON.stringify(custom));
+  throws("A bad setting is refused", () => new EP.Attendance({ idleMs: -5 }));
+
+  // A miss adds 1 glitch, attributes unchanged.
+  {
+    const { g, me } = mkGame();
+    g.startNextRound();
+    g.activity(me, 0);
+    const attrs = { ...me.attrs }, hearts = me.hearts.count;
+    expect("No popup before 60 s", g.checkAttendance(s(59)).length === 0);
+    const pop = g.checkAttendance(s(60));
+    expect("Popup opens at 60 s with a 15 s countdown", pop.length === 1 && pop[0].state === "popup" && pop[0].msLeft === s(15),
+           pop[0] && pop[0].state + " " + pop[0].msLeft);
+    expect("Popup still open at 74 s", g.checkAttendance(s(74))[0].state === "popup");
+    const miss = g.checkAttendance(s(75));
+    expect("No input by 75 s: missed, +1 glitch count", miss[0].state === "missed" && miss[0].glitched && me.glitches === 1, "glitches " + me.glitches);
+    expect("Missed check leaves attributes and hearts unchanged",
+           JSON.stringify(me.attrs) === JSON.stringify(attrs) && me.hearts.count === hearts);
+    expect("Missed check is not a locked glitch (no glitchedThisRound)", me.glitchedThisRound === false);
+    expect("Bots are never checked", g.players.filter(p => p.isBot).every(p => p.glitches === 0));
+  }
+
+  // Only 1 Attendance glitch per player per round.
+  {
+    const { g, me } = mkGame();
+    g.startNextRound();
+    g.activity(me, 0);
+    g.checkAttendance(s(75));                     // first miss
+    const again = g.checkAttendance(s(150));      // second miss, same round
+    expect("Second miss in the same round adds no glitch",
+           again[0].state === "missed" && !again[0].glitched && me.glitches === 1, "glitches " + me.glitches);
+    expect("Player is not Stuck from one round of misses", !me.isStuck());
+    // Finish the round and start the next; the per-round max resets.
+    g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+    g.computeEarnings(); me.isBot = true; EP.Bots.statsUpdate(g); me.isBot = false;   // place my points the bot way
+    g.finishRound(); g.startNextRound();
+    const had = me.glitches;
+    const next = g.checkAttendance(s(225));
+    expect("Next round: a miss counts again", had === 1 && next[0].glitched && me.glitches === 2, had + " > " + me.glitches);
+  }
+  {
+    const { g, me } = mkGame({ maxPerRound: 2 });
+    g.startNextRound(); g.activity(me, 0);
+    g.checkAttendance(s(75)); g.checkAttendance(s(150));
+    expect("Per-round max is a setting (max 2: two misses count)", me.glitches === 2, "glitches " + me.glitches);
+  }
+
+  // Two glitches of any kind make the player Stuck.
+  {
+    const { g, me } = mkGame();
+    g.startNextRound(); g.activity(me, 0);
+    me.attrs.focus = -1; me.lockIn();             // one locked (attribute) glitch
+    expect("One locked glitch: not Stuck", me.glitches === 1 && !me.isStuck());
+    const r = g.checkAttendance(s(75));
+    expect("Locked glitch + Attendance glitch = Stuck", r[0].glitched && r[0].stuck && me.isStuck(), "glitches " + me.glitches);
+    expect("Stuck players are no longer checked", g.checkAttendance(s(500)).length === 0 && me.glitches === 2);
+  }
+  {
+    const { g, me } = mkGame({ maxPerRound: 2 });
+    g.startNextRound(); g.activity(me, 0);
+    g.checkAttendance(s(75)); g.checkAttendance(s(150));
+    expect("Two Attendance glitches = Stuck", me.isStuck() && me.boardStatus() === "Stuck");
+  }
+
+  // Any input resets the timer.
+  {
+    const { g, me } = mkGame();
+    g.startNextRound(); g.activity(me, 0);
+    g.activity(me, s(50));
+    expect("Input at 50 s: no popup at 75 s", g.checkAttendance(s(75)).length === 0);
+    expect("Popup opens 60 s after the last input (110 s)", g.checkAttendance(s(110))[0].state === "popup");
+    g.activity(me, s(120));                       // answer the popup
+    expect("Input during the popup closes it", g.checkAttendance(s(121)).length === 0);
+    expect("Input during the popup prevents the glitch", g.checkAttendance(s(179)).length === 0 && me.glitches === 0);
+    // Typing a Level 5-6 submission counts as input (uses the same activity call).
+    const before = me.lastActivity;
+    g.typeSubmission(me, "x", s(178));
+    expect("Typing a submission counts as input", me.lastActivity === s(178), before + " > " + me.lastActivity);
+  }
+  // A miss restarts the timer: the next popup comes 60 s after the miss, not at once.
+  {
+    const { g, me } = mkGame({ maxPerRound: 2 });
+    g.startNextRound(); g.activity(me, 0);
+    g.checkAttendance(s(75));
+    expect("After a miss, no popup until 60 s later", g.checkAttendance(s(134)).length === 0 &&
+           g.checkAttendance(s(135))[0].state === "popup");
+  }
 }
 
 // Hearts: only its own methods change the count.

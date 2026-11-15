@@ -5,7 +5,7 @@
    Target check: type gap (win % by type, highest minus lowest) of 1 to 3 points. PASS or FAIL.
    Games are also grouped by Contrarian count, so extreme mixes do not hide in the average. */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 

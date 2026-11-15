@@ -4,7 +4,7 @@
    gap between types about 2.1 points (seed 1), with a 50% coin flip per team.
    Part 3 (trials rank teams, top half win): 51.6% overall, gap 2.8 (seed 1). */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Game", "bots"]
+["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
   .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
 const EP = globalThis.EP;
 
