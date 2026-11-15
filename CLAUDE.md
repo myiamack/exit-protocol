@@ -20,7 +20,7 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 - Repo: `C:\Users\shcop\projects\exit-protocol`
 - Branch: **ben-ooad**. Never merge to main. Never push to main.
 - Word documents stay off GitHub.
-- Balance simulation already in the repo: `Tests\v2_balance\` (Python). It is the reference for checking our rules code.
+- Balance simulation already in the repo: `Tests\v2_balance\sim_v2.py` (Python). It is the reference for checking our rules code.
 
 ## Already done (do not redo)
 
