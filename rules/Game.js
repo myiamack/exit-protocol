@@ -48,10 +48,20 @@
       this.syncAttendance();   // starts in intermission: paused
     }
 
-    /* Called on every step change. Pause in a briefing or intermission; resume in any step that needs input. */
-    syncAttendance() {
-      const paused = PAUSED_STEPS.includes(this.step), now = this.clock();
+    /* True if this player's Attendance timer should be paused right now:
+       - a briefing or intermission (no input), or
+       - Graduation, once the player has no Round 7 points left to place (placed them all, or had 0 to place), or
+       - the game is over (results() ran). */
+    attendancePausedFor(p) {
+      if (PAUSED_STEPS.includes(this.step)) return true;
+      if (this.step === "graduation") return this.over || p.earned === 0;
+      return false;
+    }
+    /* Called on every step change, and for each player before every Attendance check
+       (that is how Graduation notices points were placed). Resume gives a fresh 60 s clock. */
+    syncAttendance(now = this.clock()) {
       for (const p of this.players) {
+        const paused = this.attendancePausedFor(p);
         if (paused && !p.attendancePaused) this.attendance.pause(p, now);
         else if (!paused && p.attendancePaused) this.attendance.resume(p, now);
       }
@@ -64,6 +74,7 @@
        Returns [{ player, state, msLeft, glitched, stuck }] for players with the popup open or a miss. */
     checkAttendance(now) {
       const out = [];
+      this.syncAttendance(now);
       for (const p of this.players) {
         if (p.isBot) continue;
         const r = this.attendance.check(p, now);
@@ -331,10 +342,15 @@
       };
     }
 
-    /* Level 7 */
+    /* Level 7. The first call locks every player's ending; no later change can alter it.
+       Later calls return the same locked endings. Attendance is paused for everyone after this. */
     results() {
       this.mustBe("graduation");
-      this.round.done = true;
+      if (!this.round.done) {
+        for (const p of this.players) p.lockEnding();
+        this.round.done = true;
+        this.syncAttendance();
+      }
       return this.players.map(p => ({ player: p, ending: p.ending(), wins: p.wins() }));
     }
   }

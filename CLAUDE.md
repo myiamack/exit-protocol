@@ -180,6 +180,7 @@ Each level opens with a **Briefing** (no player actions). After Stats Update the
 - Stats Update hides the graduation check until Level 7.
 - Graduate: total of all 5 attributes 24 or more (was 22, changed after playtest round 2), every attribute 2 or more, not Stuck.
 - A second path completed at any point also counts as a win.
+- Each player's ending is locked when results() runs. No later change can alter it.
 
 ## Bot behavior for the prototype
 
@@ -254,6 +255,7 @@ One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_
 7. Attendance class. Any key, click or touch resets a 60-second timer. At 60 seconds, a popup with a 15-second countdown. No input before it ends: +1 glitch count, attributes unchanged. Max 1 Attendance glitch per player per round. Two glitches of any kind = Stuck. Idle time, popup time and the per-round max are settings (host dials).
    Done. The "Still there?" countdown always shows in full before any glitch. The timer runs only on screens that need player input: it is paused on the intro, every briefing and every intermission. While paused, nothing opens a popup or adds a glitch, however long. Pausing closes any open popup with no glitch. Resuming starts a fresh 60-second clock from the resume time.
    The pause decision lives in rules/Game.js, not in screen code. Game keeps the list of paused steps (Briefing, Intermission) and pauses or resumes every player on each step change, for every level. The intro happens while the game is still in its starting Intermission, so it is paused too; game.js has no pause calls.
+   Graduation: the timer runs for a player only until they have placed all their Round 7 points. Once placed, that player is paused for the rest of the game. A player with 0 points to place (already at their maxes) is paused from the start of Graduation. Everyone is paused after results(). Also in Game.js.
 8. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
    Note for Base44: the server must run the Attendance check() for every player, because a closed browser tab never calls check().
 9. Move all rule math out of game.js (checkSop, payCost, lockPoints and any other). game.js only draws screens and calls the rules classes. Remove global rule state that duplicates Game.

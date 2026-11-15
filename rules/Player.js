@@ -57,6 +57,7 @@
       // second path
       this.pathProgress = 0;
       this.pathDone = false;
+      this.locked = null;   // { ending, wins }, set once by Game.results()
 
       // Contrarian
       this.caughtBy = [];   // ids of teams that caught this player sabotaging
@@ -285,8 +286,18 @@
     graduates() {
       return !this.isStuck() && this.total() >= GRAD_TOTAL && this.lowest() >= GRAD_MIN;
     }
-    wins() { return this.graduates() || this.pathDone; }
+    /* After Game.results() the ending is locked: wins() and ending() return the locked values. */
+    lockEnding() {
+      if (this.locked) return;
+      const ending = this.ending(), wins = this.wins();
+      this.locked = Object.freeze({ ending, wins });
+    }
+    wins() {
+      if (this.locked) return this.locked.wins;
+      return this.graduates() || this.pathDone;
+    }
     ending() {
+      if (this.locked) return this.locked.ending;
       if (this.graduates()) return "Graduated";
       if (this.pathDone) return this.type.pathName + " complete";
       return "Contract renewed";

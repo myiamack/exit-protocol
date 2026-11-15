@@ -646,41 +646,43 @@ throws("Finish the round before points are placed", () => game.finishRound());
     expect("Answering that popup prevents the glitch", g.checkAttendance(s(420)).length === 0 && me.glitches === 0);
   }
 
-  // Pause and resume: the timer runs only on screens that need input.
+  // Pause and resume (Attendance class itself). These call Attendance.check directly, because
+  // Game.checkAttendance re-applies Game's own pause rule first (tested further down).
+  const chk = (g, p, t) => { const r = g.attendance.check(p, t); return r.state === "popup" || r.state === "missed" ? [r] : []; };
   {
     const { g, me } = mkGame();
     g.startNextRound(); g.advance(); g.activity(me, 0);
     g.attendance.pause(me, s(10));
-    const quiet = [s(60), s(75), s(1000), s(100000)].map(t => g.checkAttendance(t));
+    const quiet = [s(60), s(75), s(1000), s(100000)].map(t => chk(g, me, t));
     expect("Paused: no popup or glitch, however long", quiet.every(r => r.length === 0) && me.glitches === 0, "glitches " + me.glitches);
     expect("Paused: check() says paused", g.attendance.check(me, s(200000)).state === "paused");
     g.attendance.resume(me, s(200000));
-    expect("Resume: no popup at 59 s after resume", g.checkAttendance(s(200059)).length === 0);
-    const r = g.checkAttendance(s(200060));
+    expect("Resume: no popup at 59 s after resume", chk(g, me, s(200059)).length === 0);
+    const r = chk(g, me, s(200060));
     expect("Resume gives a full 60 s before the popup", r.length === 1 && r[0].state === "popup" && r[0].msLeft === s(15), r[0] && r[0].state);
-    expect("Then a full 15 s countdown before a glitch", g.checkAttendance(s(200074))[0].state === "popup" &&
-           g.checkAttendance(s(200075))[0].state === "missed" && me.glitches === 1, "glitches " + me.glitches);
+    expect("Then a full 15 s countdown before a glitch", chk(g, me, s(200074))[0].state === "popup" &&
+           chk(g, me, s(200075))[0].state === "missed" && me.glitches === 1, "glitches " + me.glitches);
   }
   {
     const { g, me } = mkGame();
     g.startNextRound(); g.advance(); g.activity(me, 0);
-    expect("Popup open at 65 s", g.checkAttendance(s(65))[0].state === "popup");
+    expect("Popup open at 65 s", chk(g, me, s(65))[0].state === "popup");
     g.attendance.pause(me, s(70));
     expect("Pausing during an open popup closes it with no glitch",
-           me.attendancePopupAt === null && g.checkAttendance(s(90)).length === 0 && me.glitches === 0, "glitches " + me.glitches);
+           me.attendancePopupAt === null && chk(g, me, s(90)).length === 0 && me.glitches === 0, "glitches " + me.glitches);
     g.attendance.resume(me, s(500));
     expect("After resume, the old popup does not come back (no popup until 60 s later)",
-           g.checkAttendance(s(501)).length === 0 && g.checkAttendance(s(559)).length === 0 && me.glitches === 0);
-    expect("After resume, popup at 60 s", g.checkAttendance(s(560))[0].state === "popup");
+           chk(g, me, s(501)).length === 0 && chk(g, me, s(559)).length === 0 && me.glitches === 0);
+    expect("After resume, popup at 60 s", chk(g, me, s(560))[0].state === "popup");
   }
   {
     const { g, me } = mkGame();
     g.startNextRound(); g.advance();
     g.attendance.pause(me, 0);                     // paused before any input or check (intro)
-    expect("Paused from the start: nothing happens", g.checkAttendance(s(5000)).length === 0 && me.glitches === 0);
+    expect("Paused from the start: nothing happens", chk(g, me, s(5000)).length === 0 && me.glitches === 0);
     g.attendance.resume(me, s(5000));
     expect("First resume starts the clock: popup at resume + 60 s",
-           g.checkAttendance(s(5059)).length === 0 && g.checkAttendance(s(5060))[0].state === "popup");
+           chk(g, me, s(5059)).length === 0 && chk(g, me, s(5060))[0].state === "popup");
   }
 
   // A miss restarts the timer: the next popup comes 60 s after the miss, not at once.
@@ -737,11 +739,67 @@ throws("Finish the round before points are placed", () => game.finishRound());
     g.finishRound();                    at("intermission", true);
   }
   g.startNextRound();                   at("Level 7 briefing", true);
-  g.advance();                          at("Graduation", false);
+  g.advance();
+  // Graduation: running only for players with Round 7 points to place (Stuck players have 0: paused).
+  const gradOk = () => g.players.every(p => p.attendancePaused === (p.earned === 0));
+  expect("Graduation: running for players with points to place, paused for players with 0",
+         gradOk() && g.players.some(p => !p.attendancePaused), g.players.map(p => p.earned + (p.attendancePaused ? "P" : "R")).join(" "));
+  seen.graduation = true;
+  EP.Bots.graduation(g); g.checkAttendance(clock.now);
+  expect("Graduation: everyone paused once all points are placed", allPaused());
   expect("Every step was visited, Levels 1 to 7",
          ["briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate", "intermission", "graduation"]
            .every(k => seen[k]), Object.keys(seen).join(","));
   expect("Paused in every briefing and intermission, running in every input step", bad.length === 0, bad.join("; "));
+}
+
+// Graduation: Attendance runs only until a player has placed all Round 7 points. Endings lock at results().
+{
+  const s = n => n * 1000;
+  const ps = ["coop", "indep", "contra", "coop", "coop", "indep", "contra", "coop"].map((t, i) => EP.Bots.makePlayer(400 + i, "R" + i, t));
+  const [placing, placer, maxed] = ps;
+  [placing, placer, maxed].forEach(p => { p.isBot = false; });
+  const ts = [0, 1].map(i => new EP.Team({ id: i, name: "RT" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+  const clock = { now: 0 };
+  const g = new EP.Game({ teams: ts, rng: NO, clock: () => clock.now });
+  g.startNextRound(); g.level = 6; g.round = null;                // jump straight to Level 7
+  for (const k of EP.Player.KEYS) maxed.attrs[k] = maxed.max(k);  // no room: 0 points to place
+  g.startNextRound();
+  expect("Level 7 opens with a briefing, everyone paused", g.step === "briefing" && g.players.every(p => p.attendancePaused));
+  clock.now = s(1000);
+  g.advance();
+  expect("Graduation step", g.step === "graduation", g.step);
+  expect("0 points to place: paused from the start of Graduation", maxed.earned === 0 && maxed.attendancePaused);
+  expect("Players with points to place: running", placing.earned === 3 && !placing.attendancePaused && placer.earned === 3 && !placer.attendancePaused);
+
+  placer.placePoints(EP.Bots.allocate(placer, placer.earned, false));   // places all points
+  const pop = g.checkAttendance(s(1060));
+  expect("Still placing: popup at 60 s", pop.some(r => r.player === placing && r.state === "popup"));
+  expect("Placed all points: paused at the next check", placer.attendancePaused && !pop.some(r => r.player === placer));
+  const miss = g.checkAttendance(s(1075));
+  expect("Still placing: can take a glitch at Graduation", miss.some(r => r.player === placing && r.glitched) && placing.glitches === 1,
+         "glitches " + placing.glitches);
+  const late = [s(5000), s(100000), s(10 ** 7)].map(t => g.checkAttendance(t));
+  expect("Placed all points: no popup or glitch however long", late.every(l => !l.some(r => r.player === placer)) && placer.glitches === 0,
+         "glitches " + placer.glitches);
+  expect("0 points to place: no popup or glitch however long", late.every(l => !l.some(r => r.player === maxed)) && maxed.glitches === 0);
+
+  placing.placePoints(EP.Bots.allocate(placing, placing.earned, false));
+  EP.Bots.statsUpdate(g);                                                 // bots place theirs
+  ps[3].attrs.focus = 0;                                                  // one player misses the lowest-attribute rule
+  const res = g.results();
+  const before = res.map(r => r.player.name + ":" + r.ending + ":" + r.wins).join(" ");
+  expect("After results(): everyone paused", g.players.every(p => p.attendancePaused));
+  // Try to change every ending: graduates become Stuck, everyone else gets maxed attributes and no glitches.
+  for (const r of res) {
+    if (r.ending === "Graduated") r.player.glitches = 2;
+    else { for (const k of EP.Player.KEYS) r.player.attrs[k] = r.player.max(k); r.player.glitches = 0; r.player.pathDone = true; }
+  }
+  const after = g.results().map(r => r.player.name + ":" + r.ending + ":" + r.wins).join(" ");
+  const live = g.players.map(p => p.name + ":" + p.ending() + ":" + p.wins()).join(" ");
+  expect("Endings locked at results(): no later change alters them", before === after && before === live);
+  expect("Both kinds of ending were tested (some Graduated, some not)",
+         res.some(r => r.ending === "Graduated") && res.some(r => r.ending !== "Graduated"), before);
 }
 
 // Hearts: only its own methods change the count.
