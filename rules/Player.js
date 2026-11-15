@@ -51,6 +51,8 @@
       this.lastActivity = null;   // time of the last key, click or touch (read by the Attendance check, Part 7)
       this.attendanceMissAt = null;   // time of the last missed Attendance check (restarts the timer)
       this.attendancePopupAt = null;  // time the "Still there?" popup opened; null when closed
+      this.attendancePaused = false;  // true on screens with no input (intro, briefings, intermissions)
+      this.attendanceResumeAt = null; // time the timer last resumed (starts a fresh clock)
 
       // second path
       this.pathProgress = 0;

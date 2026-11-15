@@ -838,6 +838,7 @@ addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;
 function render(){
   if(S.step===7&&!S.sop.pile.length&&!S.sop.built.length)S.sop.pile=shuffle([...SOP,DECOY]);
   stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();BOARD.refresh();
+  attSync();
   document.body.classList.toggle("mapscreen",!!$("#world"));
   /* Map screens: the name bar and stat bar get their own rows above the scroll area, so nothing scrolls under them. */
   {const top=$("#topbar"),hud=$("#hud"),wrap=$(".wrap");if($("#world")){if(hud.parentNode!==document.body){document.body.insertBefore(top,wrap);document.body.insertBefore(hud,wrap)}}
@@ -979,6 +980,12 @@ addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==
    Any key, click or touch counts as input. Once a second we ask the Game where your timer is. */
 const ATT=document.createElement("div");ATT.className="board-ov";ATT.hidden=true;document.body.appendChild(ATT);
 const attShow=h=>{ATT.innerHTML=`<div class="board-box" role="alertdialog" aria-modal="true" aria-labelledby="attT" style="max-width:520px">${h}<button class="btn red" id="attOk">I'm here</button></div>`;ATT.hidden=false;$("#attOk").onclick=()=>{ATT.hidden=true;ATT.innerHTML=""}};
+/* The timer runs only on screens that need input. Step 4 (intro, role briefing, intermission) and
+   step 5 (level briefing) pause it; Open Floor, Trial, Glitch Report and Stats Update resume it. */
+const NO_INPUT_STEPS=[4,5];
+function attSync(){if(!G||!ME)return;const now=Date.now();
+  if(NO_INPUT_STEPS.includes(S.step)){if(!ME.attendancePaused){G.pauseAttendance(ME,now);ATT.hidden=true;ATT.innerHTML="";ATT.dataset.kind=""}}
+  else if(ME.attendancePaused)G.resumeAttendance(ME,now)}
 /* Input only counts once a round exists. Before that (intro, intermission) the clock is off; the first check starts it. */
 ["keydown","pointerdown","touchstart"].forEach(ev=>addEventListener(ev,()=>{if(!G||!ME||!G.round)return;G.activity(ME,Date.now());if(!ATT.hidden&&ATT.dataset.kind==="popup"){ATT.hidden=true;ATT.innerHTML=""}},{capture:true,passive:true}));
 setInterval(()=>{if(!G||!ME||!G.round||G.over)return;

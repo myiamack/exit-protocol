@@ -645,6 +645,43 @@ throws("Finish the round before points are placed", () => game.finishRound());
     expect("Answering that popup prevents the glitch", g.checkAttendance(s(420)).length === 0 && me.glitches === 0);
   }
 
+  // Pause and resume: the timer runs only on screens that need input.
+  {
+    const { g, me } = mkGame();
+    g.startNextRound(); g.activity(me, 0);
+    g.pauseAttendance(me, s(10));
+    const quiet = [s(60), s(75), s(1000), s(100000)].map(t => g.checkAttendance(t));
+    expect("Paused: no popup or glitch, however long", quiet.every(r => r.length === 0) && me.glitches === 0, "glitches " + me.glitches);
+    expect("Paused: check() says paused", g.attendance.check(me, s(200000)).state === "paused");
+    g.resumeAttendance(me, s(200000));
+    expect("Resume: no popup at 59 s after resume", g.checkAttendance(s(200059)).length === 0);
+    const r = g.checkAttendance(s(200060));
+    expect("Resume gives a full 60 s before the popup", r.length === 1 && r[0].state === "popup" && r[0].msLeft === s(15), r[0] && r[0].state);
+    expect("Then a full 15 s countdown before a glitch", g.checkAttendance(s(200074))[0].state === "popup" &&
+           g.checkAttendance(s(200075))[0].state === "missed" && me.glitches === 1, "glitches " + me.glitches);
+  }
+  {
+    const { g, me } = mkGame();
+    g.startNextRound(); g.activity(me, 0);
+    expect("Popup open at 65 s", g.checkAttendance(s(65))[0].state === "popup");
+    g.pauseAttendance(me, s(70));
+    expect("Pausing during an open popup closes it with no glitch",
+           me.attendancePopupAt === null && g.checkAttendance(s(90)).length === 0 && me.glitches === 0, "glitches " + me.glitches);
+    g.resumeAttendance(me, s(500));
+    expect("After resume, the old popup does not come back (no popup until 60 s later)",
+           g.checkAttendance(s(501)).length === 0 && g.checkAttendance(s(559)).length === 0 && me.glitches === 0);
+    expect("After resume, popup at 60 s", g.checkAttendance(s(560))[0].state === "popup");
+  }
+  {
+    const { g, me } = mkGame();
+    g.startNextRound();
+    g.pauseAttendance(me, 0);                     // paused before any input or check (intro)
+    expect("Paused from the start: nothing happens", g.checkAttendance(s(5000)).length === 0 && me.glitches === 0);
+    g.resumeAttendance(me, s(5000));
+    expect("First resume starts the clock: popup at resume + 60 s",
+           g.checkAttendance(s(5059)).length === 0 && g.checkAttendance(s(5060))[0].state === "popup");
+  }
+
   // A miss restarts the timer: the next popup comes 60 s after the miss, not at once.
   {
     const { g, me } = mkGame({ maxPerRound: 2 });

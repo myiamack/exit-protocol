@@ -4,7 +4,9 @@
    At most maxPerRound Attendance glitches per player per round. Two glitches of any kind = Stuck
    (Player.isStuck already counts every glitch).
    Rule code only. No screen code, no clock: the caller passes the time (ms) in, so tests can fake it.
-   The screen calls activity() on every input and check() about once a second. */
+   The screen calls activity() on every input and check() about once a second.
+   The timer runs only on screens that need input: the screen calls pause() when the intro, a briefing or
+   an intermission opens, and resume() when it closes. */
 (function (root) {
   const EP = root.EP || (root.EP = {});
 
@@ -31,11 +33,28 @@
     /* Any input. Resets the timer and closes the popup. */
     activity(p, now) { p.markActive(now); }
 
-    /* The time this player's current timer started: the last input, or the last miss, whichever is later. */
-    since(p) { return Math.max(p.lastActivity, p.attendanceMissAt == null ? -Infinity : p.attendanceMissAt); }
+    /* Pause on screens with no player input (intro, briefings, intermissions).
+       Closes any open popup with no glitch. While paused, check() never opens a popup or adds a glitch. */
+    pause(p, now) {
+      p.attendancePaused = true;
+      p.attendancePopupAt = null;
+    }
+    /* Back on a screen that needs input. A fresh clock starts at now: full idleMs before the popup. */
+    resume(p, now) {
+      p.attendancePaused = false;
+      p.attendancePopupAt = null;
+      p.attendanceResumeAt = now;
+    }
+
+    /* The time this player's current timer started: the last input, miss or resume, whichever is latest. */
+    since(p) {
+      const t = v => (v == null ? -Infinity : v);
+      return Math.max(t(p.lastActivity), t(p.attendanceMissAt), t(p.attendanceResumeAt));
+    }
 
     /* Check one player at time now. Returns one of:
        { state: "off" }                        Stuck players are not checked
+       { state: "paused" }                     a no-input screen is showing; nothing happens
        { state: "ok", msLeft }                 time until the popup opens
        { state: "popup", msLeft }              popup open, time left to answer
        { state: "missed", glitched, stuck }    countdown ran out; timer restarts from now
@@ -43,7 +62,8 @@
        A miss adds 1 glitch only if this player is under the per-round max. */
     check(p, now) {
       if (p.isStuck()) return { state: "off" };
-      if (p.lastActivity == null) p.markActive(now);   // first check starts the clock
+      if (p.attendancePaused) return { state: "paused" };
+      if (p.lastActivity == null && p.attendanceResumeAt == null) p.markActive(now);   // first check starts the clock
       const { idleMs, popupMs, maxPerRound } = this.settings;
       // Input after the popup opened answers it.
       if (p.attendancePopupAt != null && p.lastActivity > p.attendancePopupAt) p.attendancePopupAt = null;

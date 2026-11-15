@@ -41,6 +41,9 @@
     /* ----- Attendance (any time) ----- */
     /* Any key, click or touch by this player. */
     activity(p, now) { this.attendance.activity(p, now); }
+    /* A no-input screen (intro, briefing, intermission) opens or closes for this player. */
+    pauseAttendance(p, now) { this.attendance.pause(p, now); }
+    resumeAttendance(p, now) { this.attendance.resume(p, now); }
     /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
        Returns [{ player, state, msLeft, glitched, stuck }] for players with the popup open or a miss. */
     checkAttendance(now) {
