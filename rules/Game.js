@@ -7,10 +7,10 @@
      openFloor:    sabotage*, gift*, answerGift*, switchTeam*           > advance (unanswered gifts expire)
      trial:        setSopScore (Level 1) / Levels 5-6: setPrompt (host only), startWriting, typeSubmission*, submit*,
                    closeWriting (or early close), startVote + cast; then runTrial, payTrialCosts  > advance
-     glitchReport: accuse*, endGlitchReport                   > advance
+     glitchReport: accuse*, endGlitchReport (auto after 30 s)  > advance
      giftWindow:   gift*, answerGift*                         > advance (unanswered gifts expire)
      lockIn:       lockIn                                     > advance
-     statsUpdate:  computeEarnings, cashOut*, place points, finishRound
+     statsUpdate:  computeEarnings, cashOut*, place points (autoPlacePoints after 30 s), finishRound
    finishRound puts the game in intermission (no round running, Attendance paused) until startNextRound.
    The game also starts in intermission, before Level 1.
    Level 7: startNextRound (briefing) > advance > graduation: place points > results. */
@@ -23,9 +23,14 @@
                       giftWindow: "Gift window", lockIn: "Lock-in", statsUpdate: "Stats Update",
                       graduation: "Graduation", briefing: "Briefing", intermission: "Intermission" };
 
-  // Steps with no player input. Game pauses the Attendance timer for every player while in one,
+  // Steps where Attendance does not fire. Game pauses the Attendance timer for every player while in one,
   // and resumes it (fresh 60 s clock) on entering any other step. Applies to every level.
-  const PAUSED_STEPS = ["briefing", "intermission"];
+  // Briefing and intermission have no player input. Glitch Report and Stats Update end on their own (AUTO_ADVANCE).
+  const PAUSED_STEPS = ["briefing", "intermission", "glitchReport", "statsUpdate"];
+
+  // Steps that end on their own after this many seconds. The screen shows the countdown.
+  // Glitch Report: anyone who has not accused skips. Stats Update: unplaced points are placed by the bot rule.
+  const AUTO_ADVANCE_SECONDS = { glitchReport: 30, statsUpdate: 30 };
 
   // What must happen before advance() may leave each step.
   const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };
@@ -346,6 +351,22 @@
       p.cashOut();
       return { ok: true };
     }
+    /* Stats Update ran out of time: keep the points this player already placed (partial), and place the rest
+       by the bot placement rule. Returns the full placement used. */
+    autoPlacePoints(p, partial = {}) {
+      this.mustBe("statsUpdate");
+      if (!this.didRun("computeEarnings")) throw new Error("Compute earnings first.");
+      const KEYS = EP.Player.KEYS;
+      p.earned = Math.min(p.earned, p.roomLeft());
+      const mine = KEYS.reduce((n, k) => n + (partial[k] || 0), 0);
+      for (const k of KEYS) p.attrs[k] += partial[k] || 0;        // place the rest on top of what was picked
+      const rest = EP.Bots.allocate(p, Math.max(0, p.earned - mine), false);
+      for (const k of KEYS) p.attrs[k] -= partial[k] || 0;
+      const alloc = {};
+      for (const k of KEYS) if ((partial[k] || 0) + (rest[k] || 0)) alloc[k] = (partial[k] || 0) + (rest[k] || 0);
+      p.placePoints(alloc);
+      return alloc;
+    }
     finishRound() {
       this.mustBe("statsUpdate");
       if (!this.didRun("computeEarnings")) throw new Error("Compute earnings first.");
@@ -390,6 +411,7 @@
   Game.POINTS = POINTS;
   Game.STEP_NAME = STEP_NAME;
   Game.PAUSED_STEPS = PAUSED_STEPS;
+  Game.AUTO_ADVANCE_SECONDS = AUTO_ADVANCE_SECONDS;
   EP.Game = Game;
   if (typeof module !== "undefined" && module.exports) module.exports = Game;
 })(typeof globalThis !== "undefined" ? globalThis : this);

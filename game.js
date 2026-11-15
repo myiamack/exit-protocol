@@ -168,7 +168,7 @@ const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   inter:{left:90},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
   of:{left:90,applied:false,msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
   sop:{pile:[],built:[],checked:false,score:0,points:0,rank:[],decoyOut:false,inTime:true,left:60},
-  win:null,pay:null,paid:false,acc:{target:"",done:false,result:null},gw:{left:20,started:false,closed:false,received:[],sent:[]},
+  win:null,pay:null,paid:false,acc:{target:"",done:false,result:null,left:EP.Game.AUTO_ADVANCE_SECONDS.glitchReport},su:{left:EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate},gw:{left:20,started:false,closed:false,received:[],sent:[]},
   earnLines:[],cashed:false,got:0,place:{},done:false,timer:null});
 let S=fresh();
 
@@ -398,7 +398,7 @@ function chrome(){
   $("#steps").hidden=S.step<=1||(S.step===4&&!S.arrived);
   $("#steps").innerHTML=STEPS.map((t,i)=>`<li class="${i===S.step?"on":i<S.step?"done":""}">${t}</li>`).join("");
   $("#fac").innerHTML=`<span class="label">Host script · ${STEPS[S.step]}</span><ul>${FAC[S.step].map(l=>`<li>${esc(l)}</li>`).join("")}</ul>`;
-  const bl=S.step===8&&S.acc.done&&!S.gw.closed?"Gift Window":BANNER[S.step];
+  const bl=S.step===8?(!S.acc.done?"Glitch Report":!S.gw.closed?"Gift Window":null):S.step===9?(S.done?null:"Stats Update"):BANNER[S.step];
   const cin=S.step===4&&!S.arrived;
   const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&S.sop.checked)&&!(S.step===6&&S.of.applied);
   $("#banner").hidden=!showB;if(showB)$("#bannerT").textContent=bl;
@@ -552,7 +552,7 @@ ${a.done?caughtNotices():""}
 ${a.done&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. This round does not count toward Exploit. You cannot sabotage on any team next round, or ever again while on this team.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
 <div class="panel"><span class="label">Accusation · one per player · teammates only</span>
 ${a.done?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.correctAccusation)?` ${T().path} complete.`:""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. ${a.safe?`Your Focus kept it from costing you anything.`:`You lost 1 point from your highest attribute.`}`:"You skipped your accusation."}</p>`
-:`<p><b>Suspect a teammate? Accuse or Skip.</b></p><div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Correct: +1 point. Wrong: you lose 1 point from your highest attribute.</span>`}</div>
+:`<p><b>Suspect a teammate? Accuse or Skip.</b></p><div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Correct: +1 point. Wrong: you lose 1 point from your highest attribute.</span><span class="hint">The Glitch Report ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.glitchReport} seconds. No answer counts as Skip.</span>`}</div>
 ${a.done?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${g.closed?flag(status()):`<span class="hearts">${Array.from({length:EP.Hearts.CAP},(_,i)=>HEART(i<ME.hearts.count)).join("")}</span>`}</div>
   ${incomingGifts()}
   ${!g.closed?giftRoster():""}
@@ -587,6 +587,7 @@ return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">
 ${!S.done&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 hearts for +1 point. Only works with full hearts.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
 ${S.done?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
 <p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?` Level ${nx.n} costs ${nx.cost}.`:""}</p>
+<p class="hint">Stats Update ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate} seconds. Points you have not placed go in automatically, the same way bots place theirs.</p>
 <div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(S.place[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!(S.place[a.k])?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${(!left||v>=maxOf(a.k))?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
 <div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means one of your attributes, even with the hearts that could cover it, could not pay a cost of ${EP.Player.AT_RISK_COST}. This ${EP.Player.AT_RISK_COST} is a fixed safety check for every level. It is not the next trial's cost.</span></div>
 <div class="panel"><span class="label">Your abilities · only you see these</span>${ME.abilityLines().map(l=>`<span class="hint">${esc(l.text)}</span>`).join("")}</div>
@@ -900,6 +901,7 @@ function bind(){
   if(S.step===8){
     on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;const r=G.accuse(ME,MATE(v));if(!r.ok)return;S.acc.target=v;S.acc.result=r.correct;S.acc.safe=!!r.safe;endAccusations()});
     on("#skipAcc",()=>{S.acc.target="";S.acc.result=null;endAccusations()});
+    if(!S.acc.done)tick("left",S.acc,()=>{S.acc.target="";S.acc.result=null;endAccusations()});   /* time up: Skip */
     bindGifts(m=>S.gw.sent.push(m));bindIncoming();
     if(S.acc.done&&!S.gw.closed)tick("left",S.gw,closeGW);
   }
@@ -907,6 +909,7 @@ function bind(){
     $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;S.place[k]=(S.place[k]||0)+1;render()});
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
     on("#cashOut",()=>{if(G.cashOut(ME).ok){S.cashed=true;render()}});
+    if(!S.done)tick("left",S.su,autoLockPoints);   /* time up: unplaced points go in by the bot rule */
     on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
     on("#restart",signOut);
   }
@@ -918,7 +921,9 @@ function sopPress(b,fn){
   b.onpointerdown=e=>{if(e.pointerType==="touch"||e.button!==0||b.disabled)return;e.preventDefault();sopDownAt=performance.now();fn()};
   b.onclick=e=>{if(e.detail>0&&performance.now()-sopDownAt<1000)return;fn()}}
 function keepTimer(){const t=S.timer;S.timer=null;clearInterval(t);render()}
-function lockPoints(){S.prog.done=Math.max(S.prog.done,R().n);S.got=ME.earned;ME.placePoints(S.place);S.place={};G.finishRound();S.done=true;render()}
+/* auto: Stats Update ran out of time. Game keeps your picks and places the rest by the bot rule. */
+function lockPoints(auto){S.prog.done=Math.max(S.prog.done,R().n);S.got=ME.earned;if(auto===true)G.autoPlacePoints(ME,S.place);else ME.placePoints(S.place);S.place={};G.finishRound();S.done=true;render()}
+function autoLockPoints(){if(!S.done)lockPoints(true)}
 function applyOpenFloorEnd(){
   if(S.of.applied)return;S.of.applied=true;
   EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now

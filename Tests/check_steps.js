@@ -805,6 +805,26 @@ throws("Finish the round before points are placed", () => game.finishRound());
   }
 }
 
+// Stats Update auto-advance: unplaced points are placed by the bot rule, keeping what the player picked.
+{
+  const ps = ["coop", "indep", "contra", "coop", "coop", "indep", "contra", "coop"].map((t, i) => EP.Bots.makePlayer(600 + i, "U" + i, t));
+  const me = ps[0]; me.isBot = false;
+  const ts = [0, 1].map(i => new EP.Team({ id: i, name: "UT" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+  const g = new EP.Game({ teams: ts, rng: NO });
+  g.startNextRound(); g.advance(); g.advance(); g.runTrial(); g.payTrialCosts(); g.advance();
+  expect("Glitch Report: no Attendance popup or miss, however long", g.checkAttendance(10 ** 9).length === 0 && me.attendancePaused);
+  g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance(); g.computeEarnings();
+  EP.Bots.statsUpdate(g);
+  const total = me.total(), n = me.earned;
+  throws("Auto-place refused before Stats Update work is ready", () => new EP.Game({ teams: ts, rng: NO }).autoPlacePoints(me));
+  const alloc = g.autoPlacePoints(me, { composure: 1 });
+  expect("Auto-place keeps the player's own pick and places the rest", n >= 2 && alloc.composure >= 1 && me.earned === 0 && me.total() === total + n,
+         JSON.stringify(alloc) + " earned " + n);
+  expect("Stats Update: no Attendance popup or miss", g.checkAttendance(2 * 10 ** 9).length === 0);
+  g.finishRound();
+  expect("Round can finish after auto-place", g.step === "intermission");
+}
+
 // Game decides Attendance pausing from its own steps (no screen). Briefing and intermission: paused.
 // Every other step: running. Checked at every step of Levels 1 to 7.
 {
@@ -816,8 +836,10 @@ throws("Finish the round before points are placed", () => game.finishRound());
   const clock = { now: 0 };
   const g = new EP.Game({ teams: ts, rng, clock: () => clock.now });
   const me = ps[0];
-  expect("Paused steps are kept in Game: briefing and intermission",
-         JSON.stringify(EP.Game.PAUSED_STEPS) === JSON.stringify(["briefing", "intermission"]));
+  expect("Paused steps are kept in Game: briefing, intermission, Glitch Report, Stats Update",
+         JSON.stringify(EP.Game.PAUSED_STEPS) === JSON.stringify(["briefing", "intermission", "glitchReport", "statsUpdate"]));
+  expect("Glitch Report and Stats Update end on their own after 30 s",
+         EP.Game.AUTO_ADVANCE_SECONDS.glitchReport === 30 && EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate === 30);
   const allPaused = () => g.players.every(p => p.attendancePaused);
   const nonePaused = () => g.players.every(p => !p.attendancePaused);
   const seen = {}, bad = [];
@@ -840,10 +862,10 @@ throws("Finish the round before points are placed", () => game.finishRound());
     if (lv === 1) expect("Leaving the briefing starts a fresh clock (resume time = Game's clock)",
                          me.attendanceResumeAt === resumeAt, me.attendanceResumeAt + " vs " + resumeAt);
     EP.Bots.openFloor(g, rng); g.advance(); at("Trial", false);
-    EP.Bots.trial(g, rng); g.payTrialCosts(); g.advance(); at("Glitch Report", false);
+    EP.Bots.trial(g, rng); g.payTrialCosts(); g.advance(); at("Glitch Report", true);
     EP.Bots.accusations(g, rng); g.endGlitchReport(); g.advance(); at("Gift window", false);
     EP.Bots.gifts(g, rng); g.advance(); at("Lock-in", false);
-    g.lockIn(); g.advance();            at("Stats Update", false);
+    g.lockIn(); g.advance();            at("Stats Update", true);
     g.computeEarnings(); EP.Bots.statsUpdate(g);
     clock.now += 1000;
     g.finishRound();                    at("intermission", true);
@@ -860,7 +882,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("Every step was visited, Levels 1 to 7",
          ["briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate", "intermission", "graduation"]
            .every(k => seen[k]), Object.keys(seen).join(","));
-  expect("Paused in every briefing and intermission, running in every input step", bad.length === 0, bad.join("; "));
+  expect("Paused in every briefing, intermission, Glitch Report and Stats Update; running in every other step", bad.length === 0, bad.join("; "));
 }
 
 // Graduation: Attendance runs only until a player has placed all Round 7 points. Endings lock at results().
