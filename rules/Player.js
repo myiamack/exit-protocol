@@ -100,12 +100,13 @@
       if (this.isAtRisk()) return "At risk";
       return "OK";
     }
-    /* Progress board status: Stuck, Idle, Glitching, At risk or Active. Same At risk rule as flag(). */
+    /* Progress board status. First that applies: Stuck, Glitching, Idle, At risk, Active. Same At risk rule as flag(). */
     boardStatus() {
       if (this.isStuck()) return "Stuck";
+      if (this.isGlitchingAny()) return "Glitching";
       if (this.idle) return "Idle";
-      const f = this.flag();
-      return f === "OK" ? "Active" : f;
+      if (this.isAtRisk()) return "At risk";
+      return "Active";
     }
 
     /* Stat abilities (Part 4b). The stat's value right now: negative counts as 0, max 10. */

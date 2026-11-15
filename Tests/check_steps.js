@@ -563,10 +563,20 @@ throws("Finish the round before points are placed", () => game.finishRound());
     expect("Pending miss leaves attributes and hearts unchanged",
            JSON.stringify(me.attrs) === JSON.stringify(attrs) && me.hearts.count === hearts);
     expect("Pending miss is not a locked glitch yet (no glitchedThisRound)", me.glitchedThisRound === false);
-    // Part 8: the miss also makes the player idle. Board order is Stuck, Idle, Glitching, so it shows Idle.
-    expect("Board shows Idle while idle (Idle comes before Glitching)", g.board().players.find(x => x.name === me.name).status === "Idle");
+    // Part 8: the miss also makes the player idle. Board order is Stuck, Glitching, Idle, so it shows Glitching.
+    const boardOf = p => g.board().players.find(x => x.name === p.name).status;
+    expect("Teammates see Glitching on the Board while idle (Glitching comes before Idle)", me.idle && boardOf(me) === "Glitching", boardOf(me));
     g.activity(me, s(76));
-    expect("After the next input: teammates see Glitching on the Board", g.board().players.find(x => x.name === me.name).status === "Glitching");
+    expect("After the next input: still Glitching on the Board", !me.idle && boardOf(me) === "Glitching", boardOf(me));
+    // Idle and not Glitching: Idle, even when At risk too (Idle comes before At risk).
+    me.attendancePending = false; me.idle = true;
+    expect("Board: idle, not Glitching shows Idle", boardOf(me) === "Idle", boardOf(me));
+    const grit = me.attrs.grit, h = me.hearts.count;
+    me.attrs.grit = 0; me.hearts.empty();
+    expect("Board: idle and At risk shows Idle", me.isAtRisk() && boardOf(me) === "Idle", boardOf(me));
+    me.idle = false;
+    expect("Board: At risk, not idle shows At risk", boardOf(me) === "At risk", boardOf(me));
+    me.attrs.grit = grit; me.hearts.refund(h); me.attendancePending = true;   // back as it was for the tests below
     expect("Bots are never checked", g.players.filter(p => p.isBot).every(p => p.glitches === 0));
   }
 
