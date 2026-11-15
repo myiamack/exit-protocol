@@ -11,6 +11,7 @@
   const SPEND = 15;          // points the player spends at creation
   const BOOST = 2;           // type boost per bonus attribute
   const AT_RISK_COST = 3;
+  const STUCK_AT = 2;        // locked glitches of any kind that make a player Stuck
   const GRAD_TOTAL = 24, GRAD_MIN = 2;
   const SKIM_MAX = 2, CASHOUT_USES = 1, CASHOUT_COST = 2;
 
@@ -80,7 +81,7 @@
     highestKey() { return KEYS.reduce((m, k) => (this.attrs[k] > this.attrs[m] ? k : m), KEYS[0]); }
     lowestKey() { return KEYS.reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m), KEYS[0]); }
 
-    isStuck() { return this.glitches >= 2; }
+    isStuck() { return this.glitches >= STUCK_AT; }
     /* Any input (including typing a submission) counts as activity and resets the Attendance check. */
     markActive(now = Date.now()) { this.lastActivity = now; }
     isGlitching() { return KEYS.some(k => this.attrs[k] < 0); }   // an attribute below 0; exactly 0 is safe
@@ -318,6 +319,7 @@
   Player.ABILITY = ABILITY;
   Player.TIE_ORDER = TIE_ORDER;
   Player.AT_RISK_COST = AT_RISK_COST;
+  Player.STUCK_AT = STUCK_AT;
   Player.GRAD_TOTAL = GRAD_TOTAL;
   Player.GRAD_MIN = GRAD_MIN;
   Player.SKIM_MAX = SKIM_MAX;
