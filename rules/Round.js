@@ -9,7 +9,7 @@
     { n: 3, name: "The Mirror", trial: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false, trialKind: "auto" },
     { n: 4, name: "Geek Week",  trial: "Testing challenge",            attr: "initiative", cost: 4, judged: false, trialKind: "auto" },
     { n: 5, name: "Sprint 2",   trial: "Fix the broken team",          attr: "composure",  cost: 4, judged: true,  trialKind: "judged" },
-    { n: 6, name: "Sprint 3",   trial: "Final build and dream speech", attr: "composure",  cost: 6, judged: true,  trialKind: "judged" },
+    { n: 6, name: "Sprint 3",   trial: "Final build and dream speech", attr: "composure",  cost: 5, judged: true,  trialKind: "judged" },
     { n: 7, name: "Graduation", trial: "Crack the simulation",         attr: null,         cost: 0, judged: false, trialKind: null }
   ];
 

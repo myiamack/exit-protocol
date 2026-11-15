@@ -93,7 +93,7 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 | 3 The Mirror | Q&A gauntlet | Focus | 3 | AutoTrial (random for now; later set answers) |
 | 4 Geek Week | Testing challenge | Initiative | 4 | AutoTrial (random for now) |
 | 5 Sprint 2 | Fix the broken team | Composure | 4 | JudgedTrial: player vote |
-| 6 Sprint 3 | Final build and dream speech | Composure (was Grit, changed after balance testing) | 6 | JudgedTrial: player vote |
+| 6 Sprint 3 | Final build and dream speech | Composure (was Grit, changed after balance testing) | 5 (was 6, changed after balance testing) | JudgedTrial: player vote |
 | 7 Graduation | Crack the simulation | All five | none | Graduation check |
 
 If game.js scores any trial differently, show me and ask before changing it.
