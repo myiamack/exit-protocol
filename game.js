@@ -976,19 +976,8 @@ $("#facBtn").onclick=e=>{const v=e.currentTarget.getAttribute("aria-pressed")!==
 /* Host Script: only the host sees the button. Solo testing: Ctrl+Shift+H turns host view on or off. */
 addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==="h")))return;e.preventDefault();
   const b=$("#facBtn");b.hidden=!b.hidden;if(b.hidden){b.setAttribute("aria-pressed","false");$("#fac").hidden=true}});
-/* Attendance check. Screen code only: the rules live in rules/Attendance.js.
-   Any key, click or touch counts as input. Once a second we ask the Game where your timer is. */
-const ATT=document.createElement("div");ATT.className="board-ov";ATT.hidden=true;document.body.appendChild(ATT);
-const attShow=h=>{ATT.innerHTML=`<div class="board-box" role="alertdialog" aria-modal="true" aria-labelledby="attT" style="max-width:520px">${h}<button class="btn red" id="attOk">I'm here</button></div>`;ATT.hidden=false;$("#attOk").onclick=()=>{ATT.hidden=true;ATT.innerHTML=""}};
-/* Input only counts once a round exists. Pausing is decided in rules/Game.js: the game starts in intermission
-   (this covers the intro and the lobby intermission) and each level opens with a briefing, both paused. */
-["keydown","pointerdown","touchstart"].forEach(ev=>addEventListener(ev,()=>{if(!G||!ME||!G.round)return;G.activity(ME,Date.now());if(!ATT.hidden&&ATT.dataset.kind==="popup"){ATT.hidden=true;ATT.innerHTML=""}},{capture:true,passive:true}));
-setInterval(()=>{if(!G||!ME||!G.round||G.over)return;
-  const r=G.checkAttendance(Date.now()).find(x=>x.player===ME);
-  if(!r){if(ATT.dataset.kind==="popup"){ATT.hidden=true;ATT.innerHTML=""}return}
-  if(r.state==="popup"){ATT.dataset.kind="popup";attShow(`<h2 id="attT">Still there?</h2><p>Press any key, click or tap within <b>${Math.ceil(r.msLeft/1000)}</b> seconds, or you take a glitch.</p>`);return}
-  ATT.dataset.kind="missed";
-  attShow(`<h2 id="attT">Check-in missed</h2><p>${r.glitched?`You missed the check-in. +1 glitch (${ME.glitches}/2). Your attributes and hearts are unchanged.${r.stuck?" You are Stuck: you watch the rest of the game.":""}`:"You missed the check-in. No extra glitch: you already took one for attendance this round."}</p>`);
-  render()},1000);
+/* Attendance popup: screen code in attendance-view.js. The rules live in rules/Attendance.js and rules/Game.js.
+   Input only counts once a round exists. Pausing is decided in rules/Game.js. */
+const ATT=AttendanceView.mount({game:()=>G,me:()=>ME,onChange:()=>render()});
 render();
 })();
