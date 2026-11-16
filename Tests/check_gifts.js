@@ -6,9 +6,7 @@
    - Independents refuse automatically. Bots accept 80% (seeded, so results repeat).
    Run from the repo folder:  node Tests/check_gifts.js */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
-  .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
-const EP = globalThis.EP;
+const EP = require("../rules/index.js");   // ES modules (Part 12)
 const NO = () => 0.999;   // rng that never fires an ability (below 10)
 
 let pass = 0, fail = 0;

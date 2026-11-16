@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "description": "Tells Node that the files in rules/ are ES modules."
+}

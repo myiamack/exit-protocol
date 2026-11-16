@@ -227,7 +227,7 @@ After each step: tell me what changed, then give me the exact git commands to co
 
 One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, check_screens.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
 
-Next up: Part 12 (ES modules). Parts 6, 8, 9, 10 and 11 are done.
+Next up: Part 13 (save and load). Parts 6, 8, 9, 10, 11 and 12 are done.
 
 1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
 2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
@@ -260,7 +260,7 @@ Next up: Part 12 (ES modules). Parts 6, 8, 9, 10 and 11 are done.
    Fix (a), switcher, try 1 (undone): caught = lose 1 point from highest. Switcher edge +9.1 / +6.3 / +1.4 (16 / 20 / 24); all Contrarians weaker (type gap 17.7 typical).
    Fix (a), try 2 (current): after any catch, no sabotage on any team next round (see Accusations). Wrong accusation ties now use the usual order. Switcher edge +7.5 / +6.5 / +0.5. Still a cheese at 16 and 20 (Exploit 21% vs 15%). check_balance.js unchanged from Part 4c (type gap 10.5 typical, 15.8 aware), because bots that do not switch were already blocked on their own team.
    Fix (c), vote favors big teams: team vote total divided by active players (see Judged trials). Levels 5-6 now favor small teams instead: 3-person vs 4-person 60% / 54% (24 players), 62% / 50% (16); 3-person vs 5-person 54% / 30% (20). Cause: a player cannot be ranked by their own team, so a bigger team has fewer possible voters per member. Switcher edge now +3.9 / +3.6 / +2.5. Type gap 10.1 typical, 15.8 aware.
-   Fix (c), try 2 (current): also divide by active players not on that team. Levels 5-6 by size: 3 vs 4-person 57% / 57% (24 players), 60% / 60% (16); 3 vs 5-person 51% / 45 to 47% (20). Cheese (c) closed; a small 5-person gap remains. Switcher edge +3.9 / +5.3 / +2.3 (16 / 20 / 24): cheese (a) still open at 16 and 20. Type gap 10.2 typical, 15.8 aware.
+   Fix (c), try 2 (current): also divide by active players not on that team. Levels 5-6 by size: 3 vs 4-person 57% / 57% (24 players), 60% / 60% (16); 3 vs 5-person 51% / 45 to 47% (20). Cheese (c) closed; a small 5-person gap remains. Switcher edge +3.9 / +5.3 / +2.3 (16 / 20 / 24): cheese (a) still open at 16 and 20. Type gap (rerun 2026-11-15, after Parts 9 to 11): check_balance typical 3.9 / 1.0 / 3.5 (16 / 20 / 24 players; all 2.2), aware 11.6 / 8.3 / 7.3 (all 8.8). check_teams typical 4.7 / 2.3 / 4.6.
    Tests/check_balance.js stays as a general check (type gap 1 to 3 under random mixes, typical and aware). Known issues it shows:
    1. Aware spending finishes lower than typical, because free heart refills make paying trial costs with hearts cheaper than with points. Careful play must not lose to careless play.
    2. Independents lead because Auditor gets easier as Contrarians increase. The gap grows from 1.6 at 2 Contrarians to 13.3 at 6 (16 players, typical spending).
@@ -271,6 +271,7 @@ Next up: Part 12 (ES modules). Parts 6, 8, 9, 10 and 11 are done.
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
    - Standing check: Tests/check_screens.js plays Level 1 in a fake browser, replays it, and checks the gift window closes on time with no console errors. Run it after every part (about 75 seconds).
    - Standing check: Tests/check_teams.js (Part 11). Run it after every part (about 1 second).
+   - Standing check: Tests/check_bundle.js (Part 12). Fails if rules/rules.bundle.js does not match the modules in rules/. After changing any rule file, run "npm run build". Run it after every part (under 1 second).
    - check_screens.js needs "npm install" once first (installs jsdom from package.json).
    - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
 6. Done. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
@@ -307,6 +308,7 @@ Next up: Part 12 (ES modules). Parts 6, 8, 9, 10 and 11 are done.
    First results: 16 players: graduation 60.9%, type gap 4.7 FAIL. 20: 72.9%, gap 2.3 PASS. 24: 69.7%, gap 4.6 FAIL.
    Team size at 24: 4-person win 78.9%, 3-person 77.0% (spread 1.8). Full run about 1 second.
 12. Convert every file in rules/ to ES modules (export class / import). Browser prototype keeps working (script type="module"); all Node tests keep passing.
+   Done (Option A, decided): browsers block ES modules on file://, so double-click needs a build step. rules/*.js are ES modules (import / export). rules/index.js lists them all; Node tests and Base44 import from it. rules/package.json marks the folder as modules. tools/build-rules.js ("npm run build") joins them into rules/rules.bundle.js, one plain script that sets the global EP; index.html and pages/vote-test.html load only that file. Never edit the bundle by hand.
 13. Save and load. Game.toJSON() returns the whole state as plain data (players, teams, hearts, glitches, round, step, gifts, sabotages, accusations, votes, attendance, idle flags, rng state), with players and teams referenced by id. Game.fromJSON(data) rebuilds an identical game. Tests/check_save.js plays random bot games, saves and reloads after every step, and confirms final results match games that never reload. Reason: Base44 Actors sleep after about 10 seconds of quiet and lose anything not saved.
 
 ## Levels 5-6 submissions and vote

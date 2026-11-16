@@ -7,9 +7,7 @@
    Target check: type gap 1 to 3 points. Anything outside is flagged FAIL.
    Report only. No rule or bot changes. */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
-  .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
-const EP = globalThis.EP;
+const EP = require("../rules/index.js");   // ES modules (Part 12)
 
 const GAMES = 1000;
 const SEED = 11;

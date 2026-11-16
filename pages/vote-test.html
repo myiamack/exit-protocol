@@ -30,20 +30,8 @@
   <header class="topbar"><span class="who"><span class="dotlive"></span><span>Levels 5-6 test</span></span><span class="row"><span class="where" id="where"></span><button class="btn soft sm" id="fsBtn" aria-pressed="false">⛶ Full screen</button><button class="btn soft sm" id="boardBtn" hidden>Board</button></span></header>
   <main class="stage boxed vt" id="stage" aria-live="polite"></main>
 </div>
-<!-- Rule classes (no screen code). -->
-<script src="../rules/Hearts.js"></script>
-<script src="../rules/CharacterType.js"></script>
-<script src="../rules/Player.js"></script>
-<script src="../rules/Team.js"></script>
-<script src="../rules/Round.js"></script>
-<script src="../rules/Sabotage.js"></script>
-<script src="../rules/Accusation.js"></script>
-<script src="../rules/Gift.js"></script>
-<script src="../rules/Vote.js"></script>
-<script src="../rules/Trial.js"></script>
-<script src="../rules/Attendance.js"></script>
-<script src="../rules/Game.js"></script>
-<script src="../rules/bots.js"></script>
+<!-- Rule classes (no screen code). One plain script built from the ES modules in rules/ by "npm run build". -->
+<script src="../rules/rules.bundle.js"></script>
 <script src="../board.js"></script>
 <script src="../attendance-view.js"></script>
 <script src="../fullscreen-view.js"></script>

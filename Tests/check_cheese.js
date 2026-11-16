@@ -12,9 +12,7 @@
      4. Small teams: as many 3-person teams as possible. The Part 6 quiet heart buff is in the rules
         (Game.startNextRound), so every game here includes it. */
 const path = require("path");
-["Hearts", "CharacterType", "Player", "Team", "Round", "Sabotage", "Accusation", "Gift", "Vote", "Trial", "Attendance", "Game", "bots"]
-  .forEach(f => require(path.join(__dirname, "..", "rules", f + ".js")));
-const EP = globalThis.EP;
+const EP = require("../rules/index.js");   // ES modules (Part 12)
 
 const GAMES = 2000;
 const SEED = 1;
