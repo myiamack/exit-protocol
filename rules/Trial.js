@@ -76,6 +76,34 @@ class Trial {
     if (round.trialKind === "judged") return new JudgedTrial(rng, round.n);
     return new AutoTrial(rng);
   }
+
+  /* Save (Part 13): plain data, teams and players by id. */
+  get kind() { return "auto"; }
+  toJSON() {
+    return { kind: this.kind, ranking: this.ranking ? this.ranking.map(r => ({ ...r, team: r.team.id })) : null };
+  }
+  /* Load. teams: the game's teams (the same array the game uses). byId: player id -> Player. */
+  static fromJSON(data, { rng, teams, byId }) {
+    const teamById = new Map(teams.map(t => [t.id, t]));
+    let t;
+    if (data.kind === "sop") {
+      t = new SopTrial(rng);
+      t.scores = new Map(data.scores.map(([id, s]) => [teamById.get(id), s]));
+    } else if (data.kind === "judged") {
+      t = new JudgedTrial(rng, data.level);
+      t.prompt = data.prompt;
+      t.writing = data.writing;
+      t.submissions = new Map(data.submissions.map(([id, text]) => [byId.get(id), text]));
+      if (data.vote) {
+        const v = t.startVote(teams);
+        v.ballots = new Map(data.vote.ballots.map(([id, ranking]) => [byId.get(id), ranking.map(r => byId.get(r))]));
+      }
+    } else {
+      t = new AutoTrial(rng);
+    }
+    t.ranking = data.ranking ? data.ranking.map(r => ({ ...r, team: teamById.get(r.team) })) : null;
+    return t;
+  }
 }
 
 /* Level 1: the coffee SOP. */
@@ -101,7 +129,16 @@ class SopTrial extends Trial {
     for (const t of teams) if (!this.scores.has(t)) this.scores.set(t, this.randomBase());
     return this.rankWithInfluence(round, teams, t => this.scores.get(t));
   }
+
+  get kind() { return "sop"; }
+  toJSON() { return { ...super.toJSON(), scores: [...this.scores].map(([team, s]) => [team.id, s]) }; }
 }
+
+/* The coffee SOP: the steps in the right order, and the endless step that should be left out. */
+SopTrial.STEPS = ["Fill the reservoir with cold water", "Place a paper filter in the basket",
+  "Add 2 tablespoons of ground coffee per cup", "Close the lid and press Start",
+  "Wait until brewing finishes", "Pour into a mug and serve"];
+SopTrial.ENDLESS = "Repeat step 1 until performance is satisfactory";
 
 /* Levels 2-4 for now: random whole number 0 to 7 plus light influence. */
 class AutoTrial extends Trial {
@@ -209,6 +246,13 @@ class JudgedTrial extends Trial {
   rank(round, teams) {
     const vote = this.startVote(teams);
     return vote.tally().map(r => ({ team: r.team, total: r.total, active: r.active, voters: r.voters, score: r.score, firsts: r.firsts }));
+  }
+
+  get kind() { return "judged"; }
+  toJSON() {
+    return { ...super.toJSON(), level: this.level, prompt: this.prompt, writing: this.writing,
+      submissions: [...this.submissions].map(([p, text]) => [p.id, text]),
+      vote: this.vote ? { ballots: [...this.vote.ballots].map(([v, ranking]) => [v.id, ranking.map(p => p.id)]) } : null };
   }
 }
 

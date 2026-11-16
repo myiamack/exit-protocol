@@ -227,7 +227,7 @@ After each step: tell me what changed, then give me the exact git commands to co
 
 One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, check_screens.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
 
-Next up: Part 13 (save and load). Parts 6, 8, 9, 10, 11 and 12 are done.
+Next up: nothing queued. Parts 1 to 13 are done.
 
 1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
 2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
@@ -272,6 +272,7 @@ Next up: Part 13 (save and load). Parts 6, 8, 9, 10, 11 and 12 are done.
    - Standing check: Tests/check_screens.js plays Level 1 in a fake browser, replays it, and checks the gift window closes on time with no console errors. Run it after every part (about 75 seconds).
    - Standing check: Tests/check_teams.js (Part 11). Run it after every part (about 1 second).
    - Standing check: Tests/check_bundle.js (Part 12). Fails if rules/rules.bundle.js does not match the modules in rules/. After changing any rule file, run "npm run build". Run it after every part (under 1 second).
+   - Standing check: Tests/check_save.js (Part 13). Saves and reloads bot games after every action, loads after passed deadlines, checks the JSON is plain data. Run it after every part (about 5 seconds).
    - check_screens.js needs "npm install" once first (installs jsdom from package.json).
    - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
 6. Done. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
@@ -310,6 +311,9 @@ Next up: Part 13 (save and load). Parts 6, 8, 9, 10, 11 and 12 are done.
 12. Convert every file in rules/ to ES modules (export class / import). Browser prototype keeps working (script type="module"); all Node tests keep passing.
    Done (Option A, decided): browsers block ES modules on file://, so double-click needs a build step. rules/*.js are ES modules (import / export). rules/index.js lists them all; Node tests and Base44 import from it. rules/package.json marks the folder as modules. tools/build-rules.js ("npm run build") joins them into rules/rules.bundle.js, one plain script that sets the global EP; index.html and pages/vote-test.html load only that file. Never edit the bundle by hand.
 13. Save and load. Game.toJSON() returns the whole state as plain data (players, teams, hearts, glitches, round, step, gifts, sabotages, accusations, votes, attendance, idle flags, rng state), with players and teams referenced by id. Game.fromJSON(data) rebuilds an identical game. Tests/check_save.js plays random bot games, saves and reloads after every step, and confirms final results match games that never reload. Reason: Base44 Actors sleep after about 10 seconds of quiet and lose anything not saved.
+   Done. Decisions: steps with no timer in the rules (Briefing, Trial in Levels 2-4, the Level 5-6 vote, Intermission after Level 1) stay untimed; the SOP board and unlocked point picks moved into Game; bots act through Game hooks (Bots.hooks: onStart, beforeClose); a timer that ends starts the next one from its own deadline.
+   How: rules/Rng.js is the seeded, saveable rng. Game owns the step timers as deadlines (start, tick, closeTimer, secondsLeft) on an injected clock. Timed: first Intermission 90 s, Open Floor 90 s, SOP 60 s, writing 180 s, Glitch Report 30 s, gift window 30 s, Stats Update 30 s, Graduation 60 s. Game.fromJSON closes any passed timer at once. Screens read countdowns from Game.
+   Screen change to notice: the Stats Update timer now starts when the gift window closes (when Game enters Stats Update), not when you open the Stats Update screen.
 
 ## Levels 5-6 submissions and vote
 - Each active player writes one named submission to a prompt, max 300 characters.

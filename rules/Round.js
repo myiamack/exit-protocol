@@ -39,6 +39,37 @@ class Round {
   caughtOn(team, except = null) {
     return [...new Set(this.accusations.filter(a => a.correct && team.has(a.target) && a.target !== except).map(a => a.target))];
   }
+
+  /* Save (Part 13): plain data, players by id. The level's fixed data (name, attr, cost...) comes back from LEVELS. */
+  toJSON() {
+    const id = p => p.id;
+    const out = {
+      n: this.n, stepIndex: this.stepIndex, completed: [...this.completed],
+      sabotages: this.sabotages.map(s => ({ ...s, actor: s.actor.id, target: s.target.id })),
+      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id })),
+      gifts: this.gifts.map(g => ({ ...g, giver: g.giver.id, receiver: g.receiver.id })),
+    };
+    if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
+    if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
+    if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
+    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
+    return out;
+  }
+  /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
+  static fromJSON(data, { byId, trialFromJSON }) {
+    const r = new Round(data.n);
+    const P = id => byId.get(id);
+    r.stepIndex = data.stepIndex;
+    r.completed = new Set(data.completed);
+    r.sabotages = data.sabotages.map(s => ({ ...s, actor: P(s.actor), target: P(s.target) }));
+    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target) }));
+    r.gifts = data.gifts.map(g => ({ ...g, giver: P(g.giver), receiver: P(g.receiver) }));
+    if (data.trialState) r.trial = trialFromJSON(data.trialState);
+    if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
+    if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
+    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
+    return r;
+  }
 }
 
 export { Round };

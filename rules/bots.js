@@ -32,7 +32,7 @@ const Bots = {
      me = { name, type, spend }. myTeam = { name, mates: [bot names] }. others = [{ name, players: [bot names] }].
      Returns { game, me, team }. */
   SOLO_MIX: { coop: 8, indep: 5, contra: 3 },
-  soloGame({ me, myTeam, others, rng = Math.random }) {
+  soloGame({ me, myTeam, others, rng = Math.random, hooks = {} }) {
     const you = new Player({ id: 0, name: me.name, type: me.type, spend: me.spend });
     const pool = [];
     for (const [k, n] of Object.entries(Bots.SOLO_MIX)) for (let i = 0; i < n; i++) pool.push(k);
@@ -42,7 +42,7 @@ const Bots = {
     const mk = n => Bots.makePlayer(id++, n, pool.pop());
     const team = new Team({ id: 0, name: myTeam.name, members: [you, ...myTeam.mates.map(mk)] });
     const rest = others.map((o, i) => new Team({ id: i + 1, name: o.name, members: o.players.map(mk) }));
-    return { game: new Game({ teams: [team, ...rest], rng }), me: you, team };
+    return { game: new Game({ teams: [team, ...rest], rng, hooks }), me: you, team };
   },
 
   /* Open Floor: Contrarian bots sabotage 50% of rounds, once, At risk teammates first. */
@@ -164,6 +164,22 @@ const Bots = {
       i += 1;
     }
     return alloc;
+  },
+
+  /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
+     beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends.
+     onStart: bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
+  hooks: {
+    beforeClose(game, name) {
+      if (name === "openFloor") Bots.openFloor(game, game.rng);
+      else if (name === "glitchReport") Bots.accusations(game, game.rng);
+    },
+    onStart(game, name) {
+      if (name === "giftWindow") Bots.gifts(game, game.rng);
+      else if (name === "statsUpdate") Bots.statsUpdate(game);
+      else if (name === "graduation") Bots.graduation(game);
+    },
   },
 
   /* Bot votes: rank 3 players from other teams at random. */

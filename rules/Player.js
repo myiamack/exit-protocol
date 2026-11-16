@@ -168,6 +168,28 @@ class Player {
     this.attendanceGlitchThisRound = false;  // this round's locked glitch came only from a missed check-in
     this.earned = 0;
     this.cashedOutThisRound = false;
+    this.draft = {};            // Stats Update / Graduation: points picked but not locked yet { focus: n, ... }
+    this.placedThisRound = 0;   // points placed this round (for the screen after the round ends)
+  }
+
+  /* Save (Part 13): plain data only. type is saved as its key, hearts as the count. */
+  toJSON() {
+    const out = {};
+    for (const [k, v] of Object.entries(this)) {
+      if (k === "type") out.type = v.key;
+      else if (k === "hearts") out.hearts = v.count;
+      else out[k] = v === undefined ? null : JSON.parse(JSON.stringify(v));
+    }
+    return out;
+  }
+  /* Load: rebuild a Player from toJSON() data, without re-running character creation. */
+  static fromJSON(data) {
+    const p = Object.create(Player.prototype);
+    for (const [k, v] of Object.entries(data)) p[k] = v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+    p.type = CharacterType.get(data.type);
+    p.hearts = new Hearts(data.hearts);
+    if (p.locked) p.locked = Object.freeze(p.locked);
+    return p;
   }
 
   /* Lose points from one attribute, from any cause. Hearts cover any shortfall below 0. */
@@ -301,6 +323,8 @@ class Player {
     }
     for (const k of KEYS) this.attrs[k] += alloc[k] || 0;
     this.earned = 0;
+    this.draft = {};
+    this.placedThisRound = n;
   }
   /* Stats Update draft: place = { focus: n, ... } points picked on screen but not yet placed. */
   placeLeft(place) { return this.earned - KEYS.reduce((s, k) => s + (place[k] || 0), 0); }

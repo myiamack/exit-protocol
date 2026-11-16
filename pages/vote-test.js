@@ -7,7 +7,7 @@
   const $$ = s => [...document.querySelectorAll(s)];
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmt = x => Math.floor(Math.max(0, x) / 60) + ":" + String(Math.max(0, x) % 60).padStart(2, "0");
-  const RNG = Math.random;
+  let RNG = EP.Rng.seeded(EP.Rng.randomSeed());   // seeded, so the game could be saved (Part 13)
   const TYPE_NAMES = { coop: "Cooperative", indep: "Independent", contra: "Contrarian" };
   const TEAM_NAMES = ["Team Kestrel", "Team Wren", "Team Heron", "Team Finch"];
 
@@ -18,10 +18,11 @@
   /* Attendance check on the submission and Vote screens. Rules in rules/Attendance.js and rules/Game.js;
      the popup is shared screen code (attendance-view.js). Game pauses it in briefings and intermissions. */
   AttendanceView.mount({ game: () => G, me: () => ME, onChange: () => render() });
-  const S = { screen: "setup", name: "You", type: "coop", host: false, left: 0, draft: "", msg: "", result: null };
+  const S = { screen: "setup", name: "You", type: "coop", host: false, draft: "", msg: "", result: null };
 
   /* ----- game setup: 16 players, 4 teams of 4 (8 Cooperative, 5 Independent, 3 Contrarian) ----- */
   function newGame() {
+    RNG = EP.Rng.seeded(EP.Rng.randomSeed());
     ME = new EP.Player({ id: 0, name: S.name.trim() || "You", type: S.type, spend: EP.Bots.typicalSpend(S.type) });
     const pool = [...Array(8).fill("coop"), ...Array(5).fill("indep"), ...Array(3).fill("contra")];
     pool.splice(pool.indexOf(S.type), 1);
@@ -66,15 +67,16 @@
   }
   function startWritingScreen() {
     S.screen = "write";
-    S.left = JT.WRITING_SECONDS;
     EP.Bots.submit(G);   // bots submit "Bot answer" right away
     render();
     if (G.round.trial.writing !== "open") { toVote(); return; }   // e.g. you are Stuck: everyone active already submitted
     stopTimer();
+    /* The writing timer is a deadline in Game. Game.tick closes writing when it runs out. */
     timer = setInterval(() => {
-      S.left -= 1;
-      const t = $("#tmr"); if (t) { t.textContent = fmt(S.left); t.classList.toggle("low", S.left <= 10); }
-      if (S.left <= 0) { G.closeWriting(); toVote(); }
+      G.tick();
+      const left = G.secondsLeft() || 0, t = $("#tmr");
+      if (t) { t.textContent = fmt(left); t.classList.toggle("low", left <= 10); }
+      if (G.round.trial.writing !== "open") toVote();
     }, 1000);
   }
   function stopTimer() { clearInterval(timer); timer = null; }
@@ -112,7 +114,7 @@
     const jt = G.round.trial, mine = jt.submissions.get(ME), n = S.draft.trim().length, max = JT.MAX_CHARS;
     const active = G.players.filter(p => !p.isStuck()), done = active.filter(p => jt.submissions.has(p)).length;
     return `<div class="row" style="justify-content:space-between"><div><span class="chip r">The Trial · Level ${G.level} · ${esc(G.round.name)}</span><h2 style="margin-top:8px">Write your answer</h2></div>
-      <span class="tmr ${S.left <= 10 ? "low" : ""}" id="tmr">${fmt(S.left)}</span></div>
+      <span class="tmr ${(G.secondsLeft() || 0) <= 10 ? "low" : ""}" id="tmr">${fmt(G.secondsLeft() || 0)}</span></div>
       <div class="panel"><span class="label">Prompt${jt.prompt.custom ? " · custom" : ""}</span><p class="prompt">${esc(jt.prompt.text)}</p></div>
       ${ME.isStuck() ? `<div class="panel"><p>You are Stuck. You watch this round.</p></div>` :
         mine ? `<div class="panel"><span class="label">Submitted</span><p class="txt">${esc(mine)}</p><span class="hint">Waiting for the others. Writing closes early when every active player has submitted.</span></div>` :
@@ -166,7 +168,7 @@
     if (S.screen === "setup") {
       on("#go", () => {
         S.name = $("#nm").value; S.type = $("#ty").value; S.host = $("#host").checked;
-        newGame(); playLevelsOneToFour(); startJudgedLevel();
+        newGame(); playLevelsOneToFour(); G.start(); startJudgedLevel();   // timers run from Level 5 (the writing timer)
       });
     }
     if (S.screen === "prompt") {

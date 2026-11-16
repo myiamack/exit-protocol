@@ -139,8 +139,8 @@ const GHOSTS=[
  {n:"NULL",a:{body:0,skin:1,hair:8,hairC:6,top:7,topS:2,bot:0,botS:0,hat:3,extra:0,acc:7},line:"Someone on Team Wren keeps slipping into the Breakout Room."}];
 const GSPOTS=[[110,170],[190,120],[300,150],[500,140],[400,215],[650,160],[720,210],[130,440],[200,380],[330,430],[470,440],[630,450],[710,380]];
 const OTHERS=[{t:"Team Wren",p:["Rook","Ivy","Sol","Kai"]},{t:"Team Finch",p:["Tess","Omar","Bea","Lin"]},{t:"Team Heron",p:["Nia","Theo","Ruth","Ash"]}];
-const SOP=["Fill the reservoir with cold water","Place a paper filter in the basket","Add 2 tablespoons of ground coffee per cup","Close the lid and press Start","Wait until brewing finishes","Pour into a mug and serve"];
-const DECOY="Repeat step 1 until performance is satisfactory";
+const SOP=EP.Trial.SopTrial.STEPS;   // the coffee SOP lives in the rules (Trial.SopTrial)
+const DECOY=EP.Trial.SopTrial.ENDLESS;
 const CLUES=[
   {id:"L",kind:"ERROR",where:"Sign-in screen",found:"The title ends in a capital L. Systems don't make typos by accident.",hint:"Something on the very first screen was spelled wrong."},
   {id:"id",kind:"WATCHER",where:"Your badge",found:"Your intern ID says ATTEMPT 02. You have been here before.",hint:"Your badge flickered. Did you read it closely?"},
@@ -165,22 +165,22 @@ const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
   type:null,spend:{focus:0,initiative:0,collab:0,composure:0,grit:0},
-  inter:{left:EP.Game.STEP_SECONDS.intermission},room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
-  of:{left:EP.Game.STEP_SECONDS.openFloor,msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
-  sop:{pile:[],built:[],score:0,points:0,rank:[],decoyOut:false,inTime:true,left:EP.Game.STEP_SECONDS.sopTrial},
-  pay:null,acc:{target:"",result:null,left:EP.Game.AUTO_ADVANCE_SECONDS.glitchReport},su:{left:EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate},gw:{left:EP.Game.STEP_SECONDS.giftWindow,started:false,received:[],sent:[]},
-  earnLines:[],got:0,place:{},timer:null});
+  room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
+  of:{msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
+  sop:{pile:[],inTime:true},/* pile: display order only. The board itself is in Game (G.sopBoard). */
+  pay:null,acc:{target:"",result:null},gw:{received:[],sent:[]},   /* countdowns: Game deadlines */
+  });
 let S=fresh();
 
 /* ---------- rules engine session ----------
    G is the Game object from rules/Game.js. It owns every rule number.
    ME is your Player. S above only holds screen state. */
 let G=null,ME=null,MYTEAM=null;
-const RNG=Math.random;
 const MATE=n=>G&&G.players.find(p=>p.name===n);
 function newSession(){
   ({game:G,me:ME,team:MYTEAM}=EP.Bots.soloGame({me:{name:S.name,type:S.type,spend:S.spend},
-    myTeam:{name:"Team Kestrel",mates:TEAM.map(p=>p.n)},others:OTHERS.map(o=>({name:o.t,players:o.p})),rng:RNG}));
+    myTeam:{name:"Team Kestrel",mates:TEAM.map(p=>p.n)},others:OTHERS.map(o=>({name:o.t,players:o.p})),
+    rng:EP.Rng.seeded(EP.Rng.randomSeed()),hooks:EP.Bots.hooks}));   /* seeded so the game can be saved; bots act through Game hooks */
 }
 /* Round progress comes from Game, not from screen flags. */
 const floorOpen=()=>!!G&&G.step==="openFloor";
@@ -195,8 +195,8 @@ const NAMES={};
 const nameKey=em=>String(em||"").trim().toLowerCase();
 function savedName(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}}
 function saveName(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}}
-function signOut(){saveName(S.email,S.name);stopTimer();endSession();S=fresh();render()}
-function startLevel(){if(!G.round)G.startNextRound();S.prog.level=Math.max(S.prog.level,G.level);go(5)}
+function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
+function startLevel(){if(!G.round){if(G.timer)G.closeTimer();else G.startNextRound()}S.prog.level=Math.max(S.prog.level,G.level);go(5)}
 const R=()=>G&&G.round?G.round:new EP.Round(1);
 
 /* ---------- helpers ---------- */
@@ -216,10 +216,19 @@ function cleanName(v){return v.replace(/[^A-Za-z0-9 ]/g,"").replace(/\s{2,}/g," 
 const status=()=>ME?ME.flag():"OK";
 const flag=s=>`<span class="flag ${s==="At risk"?"risk":s}">${s}</span>`;
 const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3.2 12A5.3 5.3 0 0 1 12 4.6 5.3 5.3 0 0 1 20.8 12Z" fill="${on?"#e0394d":"#3a1520"}" stroke="#0b0e13" stroke-width="2.4" stroke-linejoin="round"/>${on?'<path d="M7 8.5a2.5 2.5 0 0 1 3-1.5" stroke="#ffb3bd" stroke-width="1.8" fill="none" stroke-linecap="round"/>':""}</svg>`;
-function stopTimer(){clearInterval(S.timer);S.timer=null}
-function tick(key,obj,done){stopTimer();const draw=()=>{const e=$("#tmr");if(e){e.textContent=fmt(obj[key]);e.classList.toggle("low",obj[key]<=10)}};draw();
-  /* Each timer keeps its own id and clears only itself, so a finished timer never stops another one. */
-  const id=setInterval(()=>{obj[key]--;draw();if(obj[key]<=0){clearInterval(id);if(S.timer===id)S.timer=null;done()}},1000);S.timer=id}
+/* Timers live in Game (Part 13): each timed step has a deadline. The countdown reads it.
+   One page clock asks Game to close any timer that ran out (G.tick), then follows on screen. */
+function drawTimer(){const e=$("#tmr");if(!e)return;const s=G?G.secondsLeft():null;e.textContent=fmt(s==null?0:s);e.classList.toggle("low",s!=null&&s<=10)}
+function afterClose(closed){
+  for(const n of closed){
+    if(n==="intermission"){S.prog.level=Math.max(S.prog.level,G.level);if(S.step===4){go(5);continue}}
+    else if(n==="openFloor"){if(S.step===6){go(7);continue}}
+    else if(n==="sop"){S.sop.inTime=false;sopScored()}
+    else if(n==="glitchReport"){S.acc.target="";S.acc.result=null}   /* time up: Skip */
+    else if(n==="statsUpdate")S.prog.done=Math.max(S.prog.done,G.level);
+  }
+  render()}
+setInterval(()=>{if(!G)return;const closed=G.tick();if(closed.length)afterClose(closed);else drawTimer()},250);
 
 /* ---------- character = Pixel Intern (sprite engine above) ---------- */
 function avatarSVG(a,o={}){return sprite(a,{head:o.head,legs:o.legs,label:o.label,holo:o.holo,ghost:o.ghost,holoC:o.holoC,cell:10,attrs:(o.extra||"")+(o.style?` style="${o.style}"`:"")})}
@@ -409,7 +418,7 @@ function chrome(){
   updateNav();
 }
 /* The Wardrobe name box edits S.draft. S.name changes only on Save. */
-function go(n){stopTimer();S.panel=false;if(n!==2)S.wardFrom=null;if(n===2&&S.step!==2)S.draft=S.name;S.step=n;S.maxStep=Math.max(S.maxStep,n);$(".wrap").scrollTo({top:0});render()}
+function go(n){S.panel=false;if(n!==2)S.wardFrom=null;if(n===2&&S.step!==2)S.draft=S.name;S.step=n;S.maxStep=Math.max(S.maxStep,n);$(".wrap").scrollTo({top:0});render()}
 /* Fit the map inside the scroll area above the bottom bar, and scroll it fully into view once per screen. */
 /* On map screens the attribute bar sticks to the top (class "mapscreen"), so the map gets the space below it. */
 function fitWorld(){const wrap=$(".wrap"),w=$("#world"),hud=$("#hud");if(!wrap||!w)return;
@@ -534,13 +543,13 @@ function roomPanel(){const t=T();const lockd=!floorOpen()||S.step!==6;const r=S.
 V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${!floorOpen()?"Open Floor is over. Press Ready for trial to continue.":"Kitchen = gift a teammate · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
 ${worldHTML("floor")}`;
 
-V[7]=()=>{const s=S.sop;const hit=G.round.drainOn(ME);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
+V[7]=()=>{const s=S.sop,built=G.sopBoard(MYTEAM),res=(G.round.sopResults||{})[MYTEAM.id]||{right:0,endlessOut:false},rank=G.round.trial.ranking||[];const hit=G.round.drainOn(ME);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
 ${hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[R().attr]} −${hit}. Remember this at the all-hands.</div>`:""}
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Score: 1 point per step in the right place, +1 for leaving out the step that doesn't belong (0 to 7). The top half of teams win.</p>
-<div class="sop"><div><span class="label">Available steps</span><div class="pile">${s.pile.map((t,i)=>`<button class="scard" data-pile="${i}" ${sopDone()?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
-<div><span class="label">Team SOP</span><div class="built">${s.built.map((t,i)=>`<button class="scard ${sopDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${sopDone()?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${sopDone()?`<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}. Score ${shownScore(s.rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${s.score} of 6 steps in place${!s.built.length?", no steps placed":s.decoyOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${s.rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(s.rank.length)} of ${s.rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
-:`<div class="row"><button class="btn green" id="check" ${s.built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
+<div class="sop"><div><span class="label">Available steps</span><div class="pile">${sopPile().map((t,i)=>`<button class="scard" data-pile="${i}" ${sopDone()?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
+<div><span class="label">Team SOP</span><div class="built">${built.map((t,i)=>`<button class="scard ${sopDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${sopDone()?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
+${sopDone()?`<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}. Score ${shownScore(rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
+:`<div class="row"><button class="btn green" id="check" ${built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
 
 V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
 <div class="report shake"><span class="h">&gt; GLITCH REPORT: irregularities detected in your environment</span>
@@ -580,25 +589,25 @@ function giftMsg(q,pts,g){
   if(g.status==="refused"||g.status==="declined")return `${q.name} declined your gift. Your hearts came back.`;
   if(g.status==="pending")return `Waiting for ${q.name} to answer. If they don't answer before this step ends, your hearts come back.`;
   return `${q.name} accepted your ${plural(pts,"point")} (−${plural(g.cost,"heart")}${g.discount?", 1 less thanks to your Collaboration":""}).${g.cancelled?` ${q.name} is safe.`:""}${g.cancelled&&T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.rescue)?` ${T().path} complete.`:""}${g.overflow?` ${plural(g.overflow,"point")} had nowhere to go. Your hearts for them came back.`:""}`}
-function bindGifts(onMsg){$$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;EP.Bots.answer(G,r.gift,RNG);onMsg(giftMsg(q,pts,r.gift));keepTimer()})}
+function bindGifts(onMsg){$$("[data-gift]").forEach(b=>b.onclick=()=>{const q=MATE(b.dataset.gift),pts=+b.dataset.pts,r=G.gift(ME,q,pts);if(!r.ok)return;EP.Bots.answer(G,r.gift,G.rng);onMsg(giftMsg(q,pts,r.gift));render()})}
 /* Gifts sent to you: "Gift from [name]: Accept or Decline." */
 function incomingGifts(){return G.round.gifts.map((x,i)=>{if(x.receiver!==ME||x.status==="refused")return "";const who=esc(x.giver.name),n=plural(x.pts,"point");
   if(x.status==="pending")return `<div class="person"><span><b>Gift from ${who}</b>: ${n}. Accept or Decline.</span><span class="row" style="gap:6px"><button class="btn green sm" data-ans="${i}" data-yes="1">Accept</button><button class="btn soft sm" data-ans="${i}" data-yes="0">Decline</button></span></div>`;
   if(x.status==="accepted")return `<span class="okmsg">You accepted ${n} from ${who}.${x.target?` It went to your ${AN[x.target]}.`:""}</span>`;
   if(x.status==="declined")return `<span class="hint">You declined ${who}'s gift. It went back to them.</span>`;
   return `<span class="hint">${who}'s gift expired with no answer. It went back to them.</span>`}).join("")}
-function bindIncoming(){$$("[data-ans]").forEach(b=>b.onclick=()=>{const gft=G.round.gifts[+b.dataset.ans];if(!G.answerGift(gft,b.dataset.yes==="1").ok)return;keepTimer()})}
+function bindIncoming(){$$("[data-ans]").forEach(b=>b.onclick=()=>{const gft=G.round.gifts[+b.dataset.ans];if(!G.answerGift(gft,b.dataset.yes==="1").ok)return;render()})}
 /* All-hands: as soon as accusations resolve, announce any teammate caught sabotaging. (If you were caught, your own notice shows instead.) */
 function caughtNotices(){return G.round.caughtOn(MYTEAM,ME).map(q=>`<div class="toast"><b>&gt; CAUGHT:</b> ${esc(q.name)} was caught sabotaging. They cannot sabotage this team again.</div>`).join("")}
-function placeLeft(){return ME?ME.placeLeft(S.place):0}
-V[9]=()=>{const left=placeLeft();const t=T();const got=roundDone()?S.got:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
+function placeLeft(){return ME?ME.placeLeft(ME.draft):0}
+V[9]=()=>{const left=placeLeft();const t=T();const got=roundDone()?ME.placedThisRound:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
 return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
-<div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${[...S.earnLines,...(ME.cashedOutThisRound?["Cash Out: +1"]:[])].map(esc).join(" · ")}</span></div>
+<div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${[...((G.round.earnings||{})[ME.id]||[]),...(ME.cashedOutThisRound?["Cash Out: +1"]:[])].map(esc).join(" · ")}</span></div>
 ${!roundDone()&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 hearts for +1 point. Only works with full hearts.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
 ${roundDone()?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
 <p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?` Level ${nx.n} costs ${nx.cost}.`:""}</p>
 <p class="hint">Stats Update ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate} seconds. Points you have not placed go in automatically, the same way bots place theirs.</p>
-<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(S.place[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(S.place,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(S.place,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
+<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
 <div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means one of your attributes, even with the hearts that could cover it, could not pay a cost of ${EP.Player.AT_RISK_COST}. This ${EP.Player.AT_RISK_COST} is a fixed safety check for every level. It is not the next trial's cost.</span></div>
 <div class="panel"><span class="label">Your abilities · only you see these</span>${ME.abilityLines().map(l=>`<span class="hint">${esc(l.text)}</span>`).join("")}</div>
 ${R().n===7?`<div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>`:""}
@@ -848,7 +857,7 @@ addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;
 
 /* ---------- render + bind ---------- */
 function render(){
-  if(S.step===7&&!S.sop.pile.length&&!S.sop.built.length)S.sop.pile=shuffle([...SOP,DECOY]);
+  if(S.step===7&&!S.sop.pile.length)S.sop.pile=shuffle([...SOP,DECOY]);
   stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();BOARD.refresh();
   document.body.classList.toggle("mapscreen",!!$("#world"));
   /* Map screens: the name bar and stat bar get their own rows above the scroll area, so nothing scrolls under them. */
@@ -892,35 +901,30 @@ function bind(){
     $$("[data-inc]").forEach(b=>b.onclick=()=>{const k=b.dataset.inc;if(EP.Player.canRaise(S.type,S.spend,k)){S.spend[k]++;render()}});
     $$("[data-dec]").forEach(b=>b.onclick=()=>{const k=b.dataset.dec;if(EP.Player.canLower(S.spend,k)){S.spend[k]--;render()}});
   }
-  if(S.step===4&&S.arrived&&S.maxStep<5)tick("left",S.inter,startLevel);
+  if(S.step===4&&S.arrived&&S.maxStep<5&&!G.running)G.start();   /* the first intermission's timer starts now */
   if(S.step===4)on("#skipIntro",skipArrival);
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){
-    if(floorOpen())$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;keepTimer()});
+    if(floorOpen())$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;render()});
     bindGifts(m=>{S.of.msg=m});bindIncoming();
-    $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;keepTimer()});
-    if(floorOpen())tick("left",S.of,()=>{applyOpenFloorEnd();go(7)});
+    $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;render()});
   }
   if(S.step===7){
-    const s=S.sop;
-    $$("[data-pile]").forEach(b=>sopPress(b,()=>{s.built.push(s.pile.splice(+b.dataset.pile,1)[0]);keepTimer()}));
-    $$("[data-built]").forEach(b=>sopPress(b,()=>{s.pile.push(s.built.splice(+b.dataset.built,1)[0]);keepTimer()}));
-    on("#check",checkSop);on("#reset",()=>{s.pile=shuffle([...SOP,DECOY]);s.built=[];keepTimer()});
-    if(!sopDone())tick("left",s,()=>{s.inTime=false;checkSop()});
+    const s=S.sop,built=()=>G.sopBoard(MYTEAM);   /* any teammate edits the shared board in Game */
+    $$("[data-pile]").forEach(b=>sopPress(b,()=>{const t=sopPile()[+b.dataset.pile];if(G.setSopBoard(ME,[...built(),t]).ok)render()}));
+    $$("[data-built]").forEach(b=>sopPress(b,()=>{const t=built()[+b.dataset.built];if(G.setSopBoard(ME,built().filter(x=>x!==t)).ok){s.pile=[...s.pile.filter(x=>x!==t),t];render()}}));
+    on("#check",checkSop);on("#reset",()=>{if(G.setSopBoard(ME,[]).ok){s.pile=shuffle([...SOP,DECOY]);render()}});
   }
   if(S.step===8){
     on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;const r=G.accuse(ME,MATE(v));if(!r.ok)return;S.acc.target=v;S.acc.result=r.correct;S.acc.safe=!!r.safe;endAccusations()});
     on("#skipAcc",()=>{S.acc.target="";S.acc.result=null;endAccusations()});
-    if(!accDone())tick("left",S.acc,()=>{S.acc.target="";S.acc.result=null;endAccusations()});   /* time up: Skip */
     bindGifts(m=>S.gw.sent.push(m));bindIncoming();
-    if(accDone()&&!gwClosed())tick("left",S.gw,closeGW);
   }
   if(S.step===9){
-    $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;if(roundDone()||!ME.canPlace(S.place,k))return;S.place[k]=(S.place[k]||0)+1;render()});
-    $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;if(roundDone()||!ME.canUnplace(S.place,k))return;S.place[k]--;render()});
+    $$("[data-pinc]").forEach(b=>b.onclick=()=>{if(G.draftPoint(ME,b.dataset.pinc,1).ok)render()});
+    $$("[data-pdec]").forEach(b=>b.onclick=()=>{if(G.draftPoint(ME,b.dataset.pdec,-1).ok)render()});
     on("#cashOut",()=>{if(G.cashOut(ME).ok)render()});
-    if(!roundDone())tick("left",S.su,autoLockPoints);   /* time up: unplaced points go in by the bot rule */
-    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */stopTimer();endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
+    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
     on("#restart",signOut);
   }
 }
@@ -930,39 +934,27 @@ let sopDownAt=-1e9;
 function sopPress(b,fn){
   b.onpointerdown=e=>{if(e.pointerType==="touch"||e.button!==0||b.disabled)return;e.preventDefault();sopDownAt=performance.now();fn()};
   b.onclick=e=>{if(e.detail>0&&performance.now()-sopDownAt<1000)return;fn()}}
-function keepTimer(){const t=S.timer;S.timer=null;clearInterval(t);render()}
-/* auto: Stats Update ran out of time. Game keeps your picks and places the rest by the bot rule. */
-function lockPoints(auto){S.prog.done=Math.max(S.prog.done,R().n);S.got=ME.earned;if(auto===true)G.autoPlacePoints(ME,S.place);else ME.placePoints(S.place);S.place={};G.finishRound();render()}
-function autoLockPoints(){if(!roundDone())lockPoints(true)}
+/* Lock in: Game places your draft, then Stats Update ends early (everyone else already placed).
+   If the timer runs out first, Game keeps your picks and places the rest by the bot rule. */
+function lockPoints(){if(!G.lockPoints(ME).ok)return;S.prog.done=Math.max(S.prog.done,R().n);G.closeTimer();render()}
 function applyOpenFloorEnd(){
   if(!floorOpen())return;
-  EP.Bots.openFloor(G,RNG);   // bot Contrarians sabotage now
-  G.advance();                // Open Floor > Trial
+  G.closeTimer();   // Open Floor ends early: bots sabotage (hook), then Open Floor > Trial
 }
 /* Level 1: Game scores the SOP board, then the trial ranks every team (bot teams get a random score). Top half win. */
-function checkSop(){stopTimer();if(sopDone())return;const s=S.sop;
-  const r=G.scoreSop(MYTEAM,s.built,SOP,DECOY);s.score=r.right;s.decoyOut=r.endlessOut;s.points=r.score;s.rank=r.rank;
-  if(s.decoyOut)S.found.loop=1;   /* nothing placed: no LOOP */
-  render()}
+function checkSop(){if(sopDone())return;G.closeTimer();sopScored();render()}   /* Submit: the SOP timer ends early */
+/* Available steps: the display order, minus the steps already on the board. */
+function sopPile(){const b=G.sopBoard(MYTEAM);return S.sop.pile.filter(t=>!b.includes(t))}
+function sopScored(){const r=(G.round.sopResults||{})[MYTEAM.id];if(r&&r.endlessOut)S.found.loop=1}   /* nothing placed: no LOOP */
 function payCost(){
   if(G.didRun("payTrialCosts"))return;
   S.pay=G.endTrial().get(ME);   // pay the cost, then Trial > Glitch Report
 }
+/* Glitch Report ends early: bots accuse (hook), Exploit credit, gift window opens and bots gift (hook).
+   The gift window closes on its own timer in Game: Lock-in, then Stats Update and earnings; bots place points (hook). */
 function endAccusations(){
   if(accDone())return;
-  EP.Bots.accusations(G,RNG);   // bots accuse
-  G.closeGlitchReport();        // Exploit credit, then Glitch Report > Gift window
-  startGW();
-}
-function startGW(){
-  S.gw.started=true;S.gw.left=EP.Game.STEP_SECONDS.giftWindow;
-  EP.Bots.gifts(G,RNG);
-  render();
-}
-function closeGW(){
-  if(gwClosed())return;
-  S.earnLines=G.closeGiftWindow().get(ME)||[];   // Gift window > Lock-in > Stats Update, earnings
-  EP.Bots.statsUpdate(G);   // bots cash out and place points
+  G.closeTimer();
   render();
 }
 

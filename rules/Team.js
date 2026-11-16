@@ -16,6 +16,16 @@ class Team {
   mates(p) { return this.members.filter(q => q !== p); }
   has(p) { return this.members.includes(p); }
   resetRound() { this.won = null; }
+
+  /* Save (Part 13): members by player id. */
+  toJSON() { return { id: this.id, name: this.name, members: this.members.map(p => p.id), won: this.won, trialWins: this.trialWins }; }
+  /* Load. byId: player id -> Player. Members keep their saved order. */
+  static fromJSON(data, byId) {
+    const t = new Team({ id: data.id, name: data.name, members: data.members.map(id => byId.get(id)) });
+    t.won = data.won;
+    t.trialWins = data.trialWins;
+    return t;
+  }
 }
 
 Team.MIN = 3;   // team switching keeps every team at 3 to 5 members

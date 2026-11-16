@@ -24,6 +24,7 @@ import { Bots } from "./bots.js";
 import { CharacterType } from "./CharacterType.js";
 import { Gift } from "./Gift.js";
 import { Player } from "./Player.js";
+import { Rng } from "./Rng.js";
 import { Round } from "./Round.js";
 import { Sabotage } from "./Sabotage.js";
 import { Team } from "./Team.js";
@@ -58,10 +59,31 @@ const STEP_SECONDS = { intermission: 90, openFloor: 90, sopTrial: 60, giftWindow
 // What must happen before advance() may leave each step.
 const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };
 
+/* Step timers (Part 13). Game stores each running timer's end time (a deadline), never seconds left.
+   Only these phases are timed; every other step waits for an explicit call (decided: untimed for now).
+     intermission  the first one only, before Level 1   ends: startNextRound
+     openFloor                                            ends: advance (unanswered gifts expire)
+     sop           Level 1 Trial, until the SOP is scored ends: closeSop (each board scored as it stands)
+     writing       Levels 5-6, while writing is open     ends: closeWriting
+     glitchReport  until accusations close                ends: closeGlitchReport
+     giftWindow                                           ends: closeGiftWindow (Lock-in, earnings)
+     statsUpdate   after earnings                         ends: unplaced points by the bot rule, finishRound
+     graduation    Level 7                                ends: unplaced points by the bot rule, results
+   A timer that ends opens the next one from its own deadline (decided), so a game that slept
+   catches up exactly as if it never stopped. */
+const TIMER_SECONDS = {
+  intermission: STEP_SECONDS.intermission, openFloor: STEP_SECONDS.openFloor, sop: STEP_SECONDS.sopTrial,
+  writing: Trial.JudgedTrial.WRITING_SECONDS, glitchReport: AUTO_ADVANCE_SECONDS.glitchReport,
+  giftWindow: STEP_SECONDS.giftWindow, statsUpdate: AUTO_ADVANCE_SECONDS.statsUpdate, graduation: GRADUATION_PLACE_SECONDS,
+};
+
 class Game {
   /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }.
-     clock: returns the time in ms. Used only to time Attendance pause and resume. Tests pass a fake one. */
-  constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now() }) {
+     clock: returns the time in ms. Times Attendance and the step timers. Tests pass a fake one.
+     rng: the game's random numbers. Use Rng.seeded(seed) if the game will be saved (toJSON).
+     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName) }.
+       The prototype passes Bots.hooks so bots act at the same moments as before. Base44 passes none. */
+  constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now(), hooks = {} }) {
     this.teams = teams;
     this.players = teams.flatMap(t => t.members);
     this.rng = rng;
@@ -73,7 +95,84 @@ class Game {
     this.submissions = [];     // game record: Level 5-6 submissions once writing closes { level, name, text }
     this.attendance = new Attendance(attendance);
     this.clock = clock;
+    this.hooks = hooks;
+    this.running = false;      // step timers run only after start()
+    this.timer = null;         // { name, key, deadline } for the timed phase now running
+    this.at = null;            // while a timer closes: its deadline, used as "now" (chained timers)
     this.syncAttendance();   // starts in intermission: paused
+  }
+
+  /* ----- step timers (Part 13) ----- */
+  /* The time rules use: the clock, except while a timer closes (then that timer's deadline). */
+  now() { return this.at != null ? this.at : this.clock(); }
+  /* Start the step timers (the first intermission starts counting now). */
+  start() { this.running = true; this.refreshTimer(); return this.timer; }
+  /* Which timed phase should be running right now, or null. */
+  timerName() {
+    const s = this.step;
+    if (s === "intermission") return this.level === 0 ? "intermission" : null;
+    if (s === "openFloor" || s === "giftWindow") return s;
+    if (s === "trial") {
+      const t = this.round.trial;
+      if (t instanceof Trial.SopTrial && !this.didRun("runTrial")) return "sop";
+      if (t instanceof Trial.JudgedTrial && t.writing === "open") return "writing";
+      return null;
+    }
+    if (s === "glitchReport") return this.didRun("endGlitchReport") ? null : "glitchReport";
+    if (s === "statsUpdate") return this.didRun("computeEarnings") ? "statsUpdate" : null;
+    if (s === "graduation") return this.over ? null : "graduation";
+    return null;
+  }
+  /* Called after every change that can start or end a timed phase. A new phase gets a deadline from now(). */
+  refreshTimer() {
+    if (!this.running) return;
+    const name = this.timerName();
+    const key = name ? this.level + ":" + name : null;
+    if (key === (this.timer ? this.timer.key : null)) return;
+    this.timer = name ? { name, key, deadline: this.now() + TIMER_SECONDS[name] * 1000 } : null;
+    if (name && this.hooks.onStart) this.hooks.onStart(this, name);
+  }
+  /* Seconds left on the running timer (for the screen countdown), or null if none. */
+  secondsLeft(now = this.clock()) { return this.timer ? Math.max(0, Math.ceil((this.timer.deadline - now) / 1000)) : null; }
+  /* Close every timer whose deadline has passed, in order. Returns the names closed. Call about once a second. */
+  tick(now = this.clock()) {
+    const closed = [];
+    while (this.timer && now >= this.timer.deadline) {
+      if (closed.length > 50) throw new Error("Timer loop.");
+      closed.push(this.timer.name);
+      this.closeTimerAt(this.timer.deadline);
+    }
+    return closed;
+  }
+  /* End the running timed phase early (a button, or everyone is done). Same end rules as the timer. */
+  closeTimer(now = this.clock()) {
+    if (!this.timer) return null;
+    const name = this.timer.name;
+    this.closeTimerAt(now);
+    return name;
+  }
+  closeTimerAt(at) {
+    const t = this.timer;
+    this.at = at;
+    try {
+      if (this.hooks.beforeClose) this.hooks.beforeClose(this, t.name);
+      switch (t.name) {
+        case "intermission": this.startNextRound(); break;
+        case "openFloor": this.advance(); break;
+        case "sop": this.closeSop(); break;
+        case "writing": this.closeWriting(); break;
+        case "glitchReport": this.closeGlitchReport(); break;
+        case "giftWindow": this.closeGiftWindow(); break;
+        case "statsUpdate": this.placeAllRemaining(); this.finishRound(); break;
+        case "graduation": this.placeAllRemaining(); this.results(); break;
+      }
+    } finally { this.at = null; }
+    if (this.timer === t) this.timer = null;
+  }
+  /* Timer ran out at Stats Update or Graduation: everyone's unplaced points go in by the bot rule.
+     Points a player already picked (their draft) stay. */
+  placeAllRemaining() {
+    for (const p of this.players) if (!p.isStuck() && p.earned > 0) this.autoPlacePoints(p);
   }
 
   /* True if this player's Attendance timer should be paused right now:
@@ -87,7 +186,7 @@ class Game {
   }
   /* Called on every step change, and for each player before every Attendance check
      (that is how Graduation notices points were placed). Resume gives a fresh 60 s clock. */
-  syncAttendance(now = this.clock()) {
+  syncAttendance(now = this.now()) {
     for (const p of this.players) {
       const paused = this.attendancePausedFor(p);
       if (paused && !p.attendancePaused) this.attendance.pause(p, now);
@@ -97,7 +196,7 @@ class Game {
 
   /* ----- Attendance (any time) ----- */
   /* Any input by this player: key press, click, touch, mouse movement (at most once per second) or scrolling. */
-  activity(p, now) { this.attendance.activity(p, now); }
+  activity(p, now = this.now()) { this.attendance.activity(p, now); }   // no time given: the game's clock
   /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
      Returns [{ player, state, msLeft }] for players with the popup open, and for a miss
      [{ player, state: "missed", counted, pending, locked, stuck }] (see attendanceMiss). */
@@ -178,6 +277,7 @@ class Game {
     if (this.step === "openFloor" || this.step === "giftWindow") Gift.expireAll(this.round);   // no answer = declined
     const step = this.round.nextStep();
     this.syncAttendance();
+    this.refreshTimer();
     return step;
   }
 
@@ -194,6 +294,7 @@ class Game {
     }
     this.quietHeartBuff();
     this.syncAttendance();   // briefing: paused
+    this.refreshTimer();
     return this.round;
   }
 
@@ -256,6 +357,35 @@ class Game {
     this.setSopScore(team, r.score);
     return { ...r, rank: this.runTrial() };
   }
+  /* The team's shared SOP board (Level 1): the steps in board order. Any active teammate can edit it. */
+  sopBoard(team) { return ((this.round && this.round.sopBoards) || {})[team.id] || []; }
+  setSopBoard(p, built) {
+    const all = [...Trial.SopTrial.STEPS, Trial.SopTrial.ENDLESS];
+    const why = this.wrongStep("trial") ||
+      (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null) ||
+      (this.didRun("runTrial") ? "The SOP is closed." : null) ||
+      (p.isStuck() ? "You are Stuck." : null) ||
+      (!Array.isArray(built) || built.some(s => !all.includes(s)) || new Set(built).size !== built.length ? "Not a valid board." : null);
+    if (why) return { ok: false, reason: why };
+    if (!this.round.sopBoards) this.round.sopBoards = {};
+    this.round.sopBoards[this.teamOf(p).id] = built.slice();
+    return { ok: true };
+  }
+  /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
+     stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
+     Results per team id: { right, endlessOut, score } in round.sopResults. */
+  closeSop() {
+    this.mustBe("trial");
+    if (!(this.round.trial instanceof Trial.SopTrial)) throw new Error("This level has no SOP.");
+    this.round.sopResults = {};
+    for (const t of this.teams) {
+      if (!t.members.some(p => !p.isBot)) continue;
+      const r = Trial.SopTrial.score(this.sopBoard(t), Trial.SopTrial.STEPS, Trial.SopTrial.ENDLESS);
+      this.round.trial.setScore(t, r.score);
+      this.round.sopResults[t.id] = r;
+    }
+    return this.runTrial();
+  }
   judged() {
     this.mustBe("trial");
     if (!(this.round.trial instanceof Trial.JudgedTrial)) throw new Error("This level is not judged.");
@@ -277,6 +407,7 @@ class Game {
     }
     jt.startWriting();
     this.prompts.push({ ...jt.prompt });
+    this.refreshTimer();
     return jt.prompt;
   }
   /* Called on every keystroke in the writing box. Typing counts as activity (Attendance check). */
@@ -299,6 +430,7 @@ class Game {
     if (jt.writing !== "open") return;
     jt.closeWriting();
     for (const [p, text] of jt.submissions) this.submissions.push({ level: this.level, name: p.name, text });
+    this.refreshTimer();
   }
   startVote() {
     const jt = this.judged();
@@ -310,7 +442,9 @@ class Game {
   runTrial() {
     this.mustBe("trial");
     this.once("runTrial");
-    return this.round.trial.run(this.round, this.teams);
+    const ranking = this.round.trial.run(this.round, this.teams);
+    this.refreshTimer();
+    return ranking;
   }
   payTrialCosts() {
     this.mustBe("trial");
@@ -341,6 +475,7 @@ class Game {
     this.once("endGlitchReport");
     // Exploit: +1 for each Contrarian who sabotaged this round and was not caught.
     for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.creditPath(CharacterType.PATH_EVENTS.uncaughtSabotage);
+    this.refreshTimer();
   }
   /* Glitch Report over (accusations done or 30 s up): credit Exploit, then open the gift window. */
   closeGlitchReport() {
@@ -408,7 +543,32 @@ class Game {
         out.set(p, lines);
       }
     }
+    this.round.earnings = Object.fromEntries([...out].map(([p, lines]) => [p.id, lines]));   // saved; the screen reads it
+    this.refreshTimer();
     return out;
+  }
+  /* Stats Update (after earnings) or Graduation: one point picked (+1) or taken back (-1) in the
+     player's draft. Picked points stay if the timer runs out. */
+  placingWhy() {
+    if (this.step === "graduation") return this.over ? "Results are locked." : null;
+    return this.wrongStep("statsUpdate") || (!this.didRun("computeEarnings") ? "Earnings come first." : null);
+  }
+  draftPoint(p, k, delta) {
+    const why = this.placingWhy() || (p.isStuck() ? "You are Stuck." : null) ||
+      (!Player.KEYS.includes(k) ? "No such attribute." : null) ||
+      (delta === 1 ? (!p.canPlace(p.draft, k) ? "No point or no room left there." : null) :
+       delta === -1 ? (!p.canUnplace(p.draft, k) ? "Nothing to take back there." : null) : "Pick +1 or -1.");
+    if (why) return { ok: false, reason: why };
+    p.draft[k] = (p.draft[k] || 0) + delta;
+    if (!p.draft[k]) delete p.draft[k];
+    return { ok: true, draft: { ...p.draft } };
+  }
+  /* Lock in the draft. It must use all the player's points. */
+  lockPoints(p) {
+    const why = this.placingWhy() || (p.placeLeft(p.draft) !== 0 ? "Place all your points first." : null);
+    if (why) return { ok: false, reason: why };
+    p.placePoints(p.draft);
+    return { ok: true };
   }
   /* Cash Out adds 1 to p.earned. Only after earnings, before the round ends. */
   cashOut(p) {
@@ -423,7 +583,7 @@ class Game {
   /* Stats Update (30 s) or Graduation (60 s) ran out of time: keep the points this player already placed
      (partial), and place the rest by the bot placement rule (at Graduation, the Round 7 way: attributes below
      2 first). Idle players are placed this way too. Returns the full placement used. */
-  autoPlacePoints(p, partial = {}) {
+  autoPlacePoints(p, partial = p.draft) {
     const final = this.step === "graduation";
     if (!final) this.mustBe("statsUpdate");
     if (final && this.over) throw new Error("Results are locked.");
@@ -454,7 +614,51 @@ class Game {
       if (p.rollAbility("grit", this.rng)) { p.hearts.refill(); gritBonus.push(p); }
     }
     this.round.gritBonus = gritBonus;
+    this.refreshTimer();
     return gritBonus;
+  }
+
+  /* ----- save and load (Part 13) ----- */
+  /* The whole rules state as plain JSON data: no functions, no object links (players and teams by id).
+     Hooks and the clock are not saved; fromJSON takes them again. */
+  toJSON() {
+    if (!Rng.canSave(this.rng)) throw new Error("This game's random numbers cannot be saved. Create it with rng: Rng.seeded(seed).");
+    const clone = x => JSON.parse(JSON.stringify(x));
+    return {
+      version: Game.SAVE_VERSION,
+      players: this.players.map(p => p.toJSON()),
+      teams: this.teams.map(t => t.toJSON()),
+      host: this.host,
+      level: this.level,
+      round: this.round ? this.round.toJSON() : null,
+      log: clone(this.log),
+      prompts: clone(this.prompts),
+      submissions: clone(this.submissions),
+      attendance: { ...this.attendance.settings },
+      rng: this.rng.getState(),
+      running: this.running,
+      timer: this.timer ? { ...this.timer } : null,
+    };
+  }
+  /* Rebuild a working Game from toJSON() data. Then any timer whose deadline has passed closes at once,
+     running its normal end rules (pass tick: false to skip that). */
+  static fromJSON(data, { clock = () => Date.now(), hooks = {}, tick = true } = {}) {
+    if (data.version !== Game.SAVE_VERSION) throw new Error("Unknown save version " + data.version + ".");
+    const players = data.players.map(d => Player.fromJSON(d));
+    const byId = new Map(players.map(p => [p.id, p]));
+    const teams = data.teams.map(d => Team.fromJSON(d, byId));
+    const rng = Rng.seeded(0);
+    rng.setState(data.rng);
+    const g = Object.create(Game.prototype);
+    Object.assign(g, {
+      teams, players, rng, host: data.host, level: data.level, round: null,
+      log: data.log.map(x => ({ ...x })), prompts: data.prompts.map(x => ({ ...x })), submissions: data.submissions.map(x => ({ ...x })),
+      attendance: new Attendance(data.attendance), clock, hooks,
+      running: data.running, timer: data.timer ? { ...data.timer } : null, at: null,
+    });
+    if (data.round) g.round = Round.fromJSON(data.round, { byId, trialFromJSON: d => Trial.fromJSON(d, { rng, teams, byId }) });
+    if (tick) g.tick();
+    return g;
   }
 
   /* Progress board: read-only, open to every player at any time. Returns new plain objects with only
@@ -475,6 +679,7 @@ class Game {
       for (const p of this.players) p.lockEnding();
       this.round.done = true;
       this.syncAttendance();
+      this.refreshTimer();
     }
     return this.players.map(p => ({ player: p, ending: p.ending(), wins: p.wins() }));
   }
@@ -487,5 +692,7 @@ Game.PAUSED_STEPS = PAUSED_STEPS;
 Game.AUTO_ADVANCE_SECONDS = AUTO_ADVANCE_SECONDS;
 Game.GRADUATION_PLACE_SECONDS = GRADUATION_PLACE_SECONDS;
 Game.STEP_SECONDS = STEP_SECONDS;
+Game.TIMER_SECONDS = TIMER_SECONDS;
+Game.SAVE_VERSION = 1;
 
 export { Game };
