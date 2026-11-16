@@ -392,6 +392,7 @@ function chrome(){
   $("#topbar").hidden=S.step===0;
   $("#whoName").textContent=shownName();
   $("#boardBtn").hidden=!(G&&S.step>=5);   /* Progress board: from the Level 1 briefing on */
+  $("#fsBtn").hidden=S.step<4;   /* Full screen: every game screen, from the lobby on */
   $("#where").textContent=inGame?"Level 1 · Boot Up":STEPS[S.step];
   $("#stage").classList.toggle("boxed",S.step>=3);
   $("#steps").hidden=S.step<=1||(S.step===4&&!S.arrived);
@@ -981,6 +982,8 @@ $("#navNext").onclick=goForward;
 /* Progress board: read-only, open at any time in the game. Data comes only from Game.board(). */
 const BOARD=BoardView.mount(()=>G?G.board():null);
 $("#boardBtn").onclick=()=>BOARD.open();
+/* Full screen button: screen code in fullscreen-view.js. Esc exits and the label updates on its own. */
+FullscreenView.mount($("#fsBtn"));
 $("#facBtn").onclick=e=>{const v=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",v);$("#fac").hidden=!v};
 /* Host Script: only the host sees the button. Solo testing: Ctrl+Shift+H turns host view on or off. */
 addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==="h")))return;e.preventDefault();
