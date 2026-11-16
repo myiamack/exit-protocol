@@ -225,7 +225,7 @@ After each step: tell me what changed, then give me the exact git commands to co
 
 ## Refactor queue (Parts 1 to 13, decided)
 
-One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
+One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, check_screens.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
 
 Next up: Part 9 (move rule math out of game.js). Parts 6 and 8 are done.
 
@@ -269,6 +269,8 @@ Next up: Part 9 (move rule math out of game.js). Parts 6 and 8 are done.
    - Accepted: (a) Contrarian switcher. Edge +3.9 at 16 players (+5.3 at 20, +2.3 at 24), kept on purpose as the reward for switching.
    - Parked, not fixed: (b) all-Cooperative lobby; odd team counts at 20 players; aware play not paying off; the small 5-person vote gap.
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
+   - Standing check: Tests/check_screens.js plays Level 1 in a fake browser, replays it, and checks the gift window closes on time with no console errors. Run it after every part (about 75 seconds).
+   - check_screens.js needs "npm install" once first (installs jsdom from package.json).
    - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
 6. Done. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
 7. Attendance class. Any input resets a 60-second timer: key press, click, touch, mouse movement and scrolling. Mouse movement counts at most once per second. At 60 seconds, a popup with a 15-second countdown. No input before it ends: a missed check-in. Idle time, popup time and the per-round max are settings (host dials).

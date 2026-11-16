@@ -1,0 +1,8 @@
+{
+  "name": "exit-protocol",
+  "private": true,
+  "description": "Exit_ProtocoL prototype. Rules in rules/, checks in Tests/.",
+  "devDependencies": {
+    "jsdom": "24.1.3"
+  }
+}
