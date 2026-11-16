@@ -270,7 +270,7 @@ Next up: nothing queued. Parts 1 to 13 are done.
    - Accepted: (a) Contrarian switcher. Edge +3.9 at 16 players (+5.3 at 20, +2.3 at 24), kept on purpose as the reward for switching.
    - Parked, not fixed: (b) all-Cooperative lobby; odd team counts at 20 players; aware play not paying off; the small 5-person vote gap.
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
-   - Standing check: Tests/check_screens.js plays Level 1 in a fake browser, replays it, and checks the gift window closes on time with no console errors. Run it after every part (about 75 seconds).
+   - Standing check: Tests/check_screens.js plays Level 1 in a fake browser, replays it, and checks the gift window closes on time with no console errors, then walks a Contrarian to the Breakout Room and checks the USE label. Run it after every part (about 105 seconds).
    - Standing check: Tests/check_teams.js (Part 11). Run it after every part (about 1 second).
    - Standing check: Tests/check_bundle.js (Part 12). Fails if rules/rules.bundle.js does not match the modules in rules/. After changing any rule file, run "npm run build". Run it after every part (under 1 second).
    - Standing check: Tests/check_save.js (Part 13). Saves and reloads bot games after every action, loads after passed deadlines, checks the JSON is plain data. Run it after every part (about 5 seconds).
