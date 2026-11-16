@@ -556,7 +556,7 @@ ${accDone()?`<div class="panel"><div class="row" style="justify-content:space-be
   ${incomingGifts()}
   ${!gwClosed()?giftRoster():""}
   ${g.sent.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
-  ${gwClosed()?`<p>${gwClosedText()}</p>`:`${gwOpenText()}<span class="hint">30 seconds in the live game (20 in this demo). Anything still below 0, or a missed check-in nobody saved, becomes a glitch when it closes.</span>`}
+  ${gwClosed()?`<p>${gwClosedText()}</p>`:`${gwOpenText()}<span class="hint">The gift window lasts ${EP.Game.STEP_SECONDS.giftWindow} seconds. Anything still below 0, or a missed check-in nobody saved, becomes a glitch when it closes.</span>`}
 </div>`:""}`};
 
 /* Gift window state for you. Never says "No glitch" while a glitch is pending or locked this round. */
@@ -915,8 +915,8 @@ function bind(){
     if(accDone()&&!gwClosed())tick("left",S.gw,closeGW);
   }
   if(S.step===9){
-    $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;S.place[k]=(S.place[k]||0)+1;render()});
-    $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
+    $$("[data-pinc]").forEach(b=>b.onclick=()=>{const k=b.dataset.pinc;if(roundDone()||!ME.canPlace(S.place,k))return;S.place[k]=(S.place[k]||0)+1;render()});
+    $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;if(roundDone()||!ME.canUnplace(S.place,k))return;S.place[k]--;render()});
     on("#cashOut",()=>{if(G.cashOut(ME).ok)render()});
     if(!roundDone())tick("left",S.su,autoLockPoints);   /* time up: unplaced points go in by the bot rule */
     on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */stopTimer();endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});

@@ -188,7 +188,9 @@ throws("Finish the round before points are placed", () => game.finishRound());
   EP.Gift.decline(r, g.gift);
   expect("Declined discounted gift refunds the 1 heart paid", a.hearts.count === 3, a.hearts.count);
   g = EP.Gift.apply(r, a, b, team, 1, at(0.29));
-  expect("Discount never goes below 1: 1-point gift still costs 1", g.discount && g.cost === 1 && a.hearts.count === 2, a.hearts.count);
+  expect("Discount never goes below 1: 1-point gift still costs 1", g.cost === 1 && a.hearts.count === 2, a.hearts.count);
+  // Message bug: the roll fired but the cost stayed at 1, so .discount must be false (no "1 less" text).
+  expect("Cooperative 1-point gift, roll fires: no discount shown (cost stayed 1)", !g.discount && !g.gift.discount, g.discount);
   EP.Gift.decline(r, g.gift);
   g = EP.Gift.apply(r, a, b, team, 2, at(0.31));
   expect("Collab 3, roll 0.31: gift costs 2 hearts", g.ok && !g.discount && a.hearts.count === 1, a.hearts.count);

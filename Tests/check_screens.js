@@ -59,7 +59,7 @@ async function level1(trialWait) {
   const start = Date.now();
   for (let i = 0; i < 40 && $("#navNext").disabled; i++) await sleep(1000);
   const secs = (Date.now() - start) / 1000;
-  check("gift window closed on time (about 20 s)", !$("#navNext").disabled && secs < 25, secs.toFixed(0) + " s");
+  check("gift window closed on time (about 30 s)", !$("#navNext").disabled && secs < 35, secs.toFixed(0) + " s");
   next(); await sleep(50);   // > stats update
   for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(5); }
   next(); await sleep(50);   // lock in

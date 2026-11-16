@@ -43,8 +43,8 @@
   const GRADUATION_PLACE_SECONDS = 60;
 
   // Other step timers the engine runs when there is no host. The screen shows the countdown.
-  // Gift window: 20 seconds in this demo (the live game uses about 30).
-  const STEP_SECONDS = { intermission: 90, openFloor: 90, sopTrial: 60, giftWindow: 20 };
+  // Gift window: 30 seconds.
+  const STEP_SECONDS = { intermission: 90, openFloor: 90, sopTrial: 60, giftWindow: 30 };
 
   // What must happen before advance() may leave each step.
   const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lockIn: "lockIn" };

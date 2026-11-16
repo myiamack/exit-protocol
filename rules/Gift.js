@@ -41,8 +41,9 @@
         // Not rolled for refused gifts.
         const discount = giver.rollAbility("collab", rng);
         const paid = discount ? Math.max(Gift.MIN_COST, cost - 1) : cost;
+        // .discount is true only when the cost really went down (a 1-heart gift stays 1).
         giver.hearts.spend(paid);
-        rec = { giver, receiver, pts, cost: paid, discount, status: "pending", refused: false, cancelled: false };
+        rec = { giver, receiver, pts, cost: paid, discount: paid < cost, status: "pending", refused: false, cancelled: false };
       }
       round.gifts.push(rec);
       return { ok: true, gift: rec, ...rec };
