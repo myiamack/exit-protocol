@@ -20,6 +20,7 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 - Repo: `C:\Users\shcop\projects\exit-protocol`
 - Branch: **ben-ooad**. Never merge to main. Never push to main.
 - Word documents stay off GitHub.
+- Class diagram: docs/class-diagram.md (Mermaid, drawn by GitHub). Update it whenever a class in rules/ changes, in the same commit, and update the commit it says it was made from.
 - Balance simulation already in the repo: `Tests\v2_balance\sim_v2.py` (Python). It is the reference for checking our rules code.
 
 ## Already done (do not redo)
