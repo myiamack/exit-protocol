@@ -554,7 +554,8 @@ ${sopDone()?`<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(-
 V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
 <div class="report shake"><span class="h">&gt; GLITCH REPORT: irregularities detected in your environment</span>
 <span>&gt; trial: Team Kestrel ${MYTEAM.won?"WIN":"LOSS"} · cost paid: ${AN[k]} −${R().cost}</span>
-<span>&gt; your ${AN[k]}: ${p.before} → ${p.after}${p.heartsUsed?` (hearts used: ${p.heartsUsed})`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>
+${G.round.drainOn(ME)?`<span>&gt; sabotage before the trial: ${AN[k]} −${G.round.drainOn(ME)}</span>`:""}
+<span>&gt; your ${AN[k]} at the trial: ${p.before} → ${p.after}${p.heartsUsed?` (hearts used: ${p.heartsUsed}, ${ME.rate(k)} per point)`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>
 ${CLUES.map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
 <span>&gt; please continue working normally.</span></div>
 ${accDone()?caughtNotices():""}
@@ -606,7 +607,7 @@ return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">
 ${!roundDone()&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 hearts for +1 point. Only works with full hearts.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
 ${roundDone()?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
 <p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?` Level ${nx.n} costs ${nx.cost}.`:""}</p>
-<p class="hint">Stats Update ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.statsUpdate} seconds. Points you have not placed go in automatically, the same way bots place theirs.</p>
+<p class="hint">Stats Update ends on its own when the timer at the top runs out. It started when the gift window closed. Points you have not placed go in automatically, the same way bots place theirs.</p>
 <div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
 <div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means one of your attributes, even with the hearts that could cover it, could not pay a cost of ${EP.Player.AT_RISK_COST}. This ${EP.Player.AT_RISK_COST} is a fixed safety check for every level. It is not the next trial's cost.</span></div>
 <div class="panel"><span class="label">Your abilities · only you see these</span>${ME.abilityLines().map(l=>`<span class="hint">${esc(l.text)}</span>`).join("")}</div>
