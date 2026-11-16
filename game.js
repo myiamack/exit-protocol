@@ -195,7 +195,7 @@ const NAMES={};
 const nameKey=em=>String(em||"").trim().toLowerCase();
 function savedName(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}}
 function saveName(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}}
-function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
+function signOut(){saveName(S.email,S.name);stopTimer();endSession();S=fresh();render()}
 function startLevel(){if(!G.round)G.startNextRound();S.prog.level=Math.max(S.prog.level,G.level);go(5)}
 const R=()=>G&&G.round?G.round:new EP.Round(1);
 
@@ -218,7 +218,8 @@ const flag=s=>`<span class="flag ${s==="At risk"?"risk":s}">${s}</span>`;
 const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3.2 12A5.3 5.3 0 0 1 12 4.6 5.3 5.3 0 0 1 20.8 12Z" fill="${on?"#e0394d":"#3a1520"}" stroke="#0b0e13" stroke-width="2.4" stroke-linejoin="round"/>${on?'<path d="M7 8.5a2.5 2.5 0 0 1 3-1.5" stroke="#ffb3bd" stroke-width="1.8" fill="none" stroke-linecap="round"/>':""}</svg>`;
 function stopTimer(){clearInterval(S.timer);S.timer=null}
 function tick(key,obj,done){stopTimer();const draw=()=>{const e=$("#tmr");if(e){e.textContent=fmt(obj[key]);e.classList.toggle("low",obj[key]<=10)}};draw();
-  S.timer=setInterval(()=>{obj[key]--;draw();if(obj[key]<=0){stopTimer();done()}},1000)}
+  /* Each timer keeps its own id and clears only itself, so a finished timer never stops another one. */
+  const id=setInterval(()=>{obj[key]--;draw();if(obj[key]<=0){clearInterval(id);if(S.timer===id)S.timer=null;done()}},1000);S.timer=id}
 
 /* ---------- character = Pixel Intern (sprite engine above) ---------- */
 function avatarSVG(a,o={}){return sprite(a,{head:o.head,legs:o.legs,label:o.label,holo:o.holo,ghost:o.ghost,holoC:o.holoC,cell:10,attrs:(o.extra||"")+(o.style?` style="${o.style}"`:"")})}
@@ -918,7 +919,7 @@ function bind(){
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{const k=b.dataset.pdec;S.place[k]--;render()});
     on("#cashOut",()=>{if(G.cashOut(ME).ok)render()});
     if(!roundDone())tick("left",S.su,autoLockPoints);   /* time up: unplaced points go in by the bot rule */
-    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
+    on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */stopTimer();endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
     on("#restart",signOut);
   }
 }
