@@ -74,8 +74,8 @@ classDiagram
     +Player[] members
     +won  this round
     +int trialWins
-    +int MIN$  3
-    +int MAX$  5
+    +int MIN = 3$
+    +int MAX = 5$
     +active() not Stuck, not idle
     +mates(p)
     +has(p)
@@ -298,7 +298,7 @@ classDiagram
 
   class Gift {
     <<rules, no state>>
-    +MIN_COST$  1
+    +int MIN_COST = 1$
     +cost(giver, pts)$ 1 or 2 points
     +refundPerPoint(giver)$
     +check(giver, receiver, team, pts)$
@@ -325,7 +325,7 @@ classDiagram
   class SopTrial {
     Level 1
     +scores  per team, 0 to 7
-    +MAX_SCORE$  7
+    +int MAX_SCORE = 7$
     +STEPS, ENDLESS$
     +score(built, steps, endless)$
     +setScore(team, score)
@@ -342,7 +342,7 @@ classDiagram
     +writing  open, closed
     +submissions  max 300 characters
     +Vote vote
-    +WRITING_SECONDS$  180
+    +int WRITING_SECONDS = 180$
     +prompts(level)$
     +choosePrompt(i)
     +customPrompt(text)
