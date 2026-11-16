@@ -227,7 +227,7 @@ After each step: tell me what changed, then give me the exact git commands to co
 
 One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, check_screens.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
 
-Next up: Part 9 (move rule math out of game.js). Parts 6 and 8 are done.
+Next up: Part 12 (ES modules). Parts 6, 8, 9, 10 and 11 are done.
 
 1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
 2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
@@ -270,6 +270,7 @@ Next up: Part 9 (move rule math out of game.js). Parts 6 and 8 are done.
    - Parked, not fixed: (b) all-Cooperative lobby; odd team counts at 20 players; aware play not paying off; the small 5-person vote gap.
    - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
    - Standing check: Tests/check_screens.js plays Level 1 in a fake browser, replays it, and checks the gift window closes on time with no console errors. Run it after every part (about 75 seconds).
+   - Standing check: Tests/check_teams.js (Part 11). Run it after every part (about 1 second).
    - check_screens.js needs "npm install" once first (installs jsdom from package.json).
    - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
 6. Done. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
@@ -302,6 +303,9 @@ Next up: Part 9 (move rule math out of game.js). Parts 6 and 8 are done.
 9. Move all rule math out of game.js (checkSop, payCost, lockPoints and any other). game.js only draws screens and calls the rules classes. Remove global rule state that duplicates Game.
 10. Full screen button on the game screens.
 11. Tests/check_teams.js: 1,000 games each at 16 players (4 teams of 4), 20 players (5 teams of 4), 24 players (7 teams: three of 4, four of 3). Report graduation, win by type, type gap, win by team size.
+   Done. Random types (equal odds), players shuffled into even teams, typical spending, seed 11. Report only, no tuning.
+   First results: 16 players: graduation 60.9%, type gap 4.7 FAIL. 20: 72.9%, gap 2.3 PASS. 24: 69.7%, gap 4.6 FAIL.
+   Team size at 24: 4-person win 78.9%, 3-person 77.0% (spread 1.8). Full run about 1 second.
 12. Convert every file in rules/ to ES modules (export class / import). Browser prototype keeps working (script type="module"); all Node tests keep passing.
 13. Save and load. Game.toJSON() returns the whole state as plain data (players, teams, hearts, glitches, round, step, gifts, sabotages, accusations, votes, attendance, idle flags, rng state), with players and teams referenced by id. Game.fromJSON(data) rebuilds an identical game. Tests/check_save.js plays random bot games, saves and reloads after every step, and confirms final results match games that never reload. Reason: Base44 Actors sleep after about 10 seconds of quiet and lose anything not saved.
 
