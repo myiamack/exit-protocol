@@ -60,8 +60,8 @@ async function fullscreen() {
   check("blocked by the browser: nothing happens, no error", !FS.el && isEnter() && errors.length === before, b.textContent);
 }
 
-async function creation() {
-  $('[data-type="coop"]').click(); await sleep(30);
+async function creation(type = "coop") {
+  $('[data-type="' + type + '"]').click(); await sleep(30);
   while (true) { const b = $$("[data-inc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
   next(); await sleep(50);
   for (let i = 0; i < 40 && !/Start Level 1/.test($("#navNext").textContent); i++) { next(); await sleep(200); }
@@ -86,6 +86,42 @@ async function level1(trialWait) {
   check("points locked", /Level 2 locked/.test($("#navNext").textContent), $("#navNext").textContent);
 }
 
+/* Breakout Room USE label (map): it must say "Sabotage" only when a Sabotage button inside would work.
+   A Contrarian walks to the Breakout Room in Open Floor, sabotages twice (1 + 2 hearts, so 0 hearts left).
+   With every button blocked, the label must no longer say "Sabotage". The player walks by holding keys;
+   the position is read from the map (#wme). */
+const key = (type, k) => d.body.dispatchEvent(new w.KeyboardEvent(type, { key: k, bubbles: true }));
+const pos = () => { const m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec($("#wme").getAttribute("transform")); return { x: +m[1], y: +m[2] }; };
+async function walk(k, until) {   // hold a key until the condition holds, or the player stops moving (a wall)
+  key("keydown", k);
+  let last = pos(), still = 0;
+  for (let i = 0; i < 800; i++) {
+    await sleep(10);
+    const p = pos();
+    if (until && until(p)) break;
+    if (Math.abs(p.x - last.x) + Math.abs(p.y - last.y) < 0.5) { if ((still += 10) >= 300) break; } else still = 0;
+    last = p;
+  }
+  key("keyup", k); await sleep(40);
+}
+async function breakoutLabel() {
+  next(); await sleep(50);   // > briefing
+  next(); await sleep(100);  // > open floor (map)
+  await walk("s");                       // down to the elevator wall
+  await walk("d");                       // right to the reception wall
+  await walk("w", p => p.y <= 712);      // up into the hallway
+  await walk("d", p => p.x >= 1628);     // along the hallway to the Breakout Room door
+  await walk("s");                       // into the room, stops at the table
+  check("walked into the Breakout Room", $("#wroom").textContent === "Breakout Room", $("#wroom").textContent + " " + JSON.stringify(pos()));
+  check("USE says Sabotage when a sabotage would work", $("#usebtn").textContent === "Sabotage", $("#usebtn").textContent);
+  key("keydown", "e"); await sleep(50); key("keyup", "e");
+  for (let i = 0; i < 3; i++) { const b = $$("[data-sab]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(50); }
+  const left = $$("[data-sab]").filter(b => !b.disabled).length;
+  key("keydown", "Escape"); await sleep(100);
+  check("all Sabotage buttons blocked (0 hearts)", left === 0, left + " enabled");
+  check("USE no longer says Sabotage when every sabotage is blocked", $("#usebtn").textContent !== "Sabotage", $("#usebtn").textContent);
+}
+
 w.addEventListener("load", async () => {
   try {
     await sleep(300);
@@ -104,6 +140,10 @@ w.addEventListener("load", async () => {
     await level1(12000);
     log("waiting 10 s more for any stale timer");
     await sleep(10000);
+    $("#replay").click(); await sleep(50);
+    await creation("contra");
+    log("run 3: Contrarian, Breakout Room label");
+    await breakoutLabel();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

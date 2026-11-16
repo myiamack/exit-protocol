@@ -842,7 +842,9 @@ function useAction(){const mode=S.step===6&&floorOpen()?"floor":"lobby";
   if(Math.hypot(S.pos.x-ROOK.x,S.pos.y-ROOK.y)<90)return{label:"Talk",ok:true,act:"npc"};
   const r=S.wroom;
   if(r==="kitchen")return{label:"Look",ok:true,act:"room"};
-  if(r==="breakout")return mode==="floor"&&T().ct.canSabotage()&&!ME.wasCaughtBy(MYTEAM.id)?{label:"Sabotage",ok:true,cls:"red",act:"room"}:{label:"Inspect",ok:true,act:"room"};
+  /* "Sabotage" only if a Sabotage button inside would work: the same EP.Sabotage.check the buttons use
+     (type, hearts, Stuck, idle, blocked after a catch on any team, caught by this team). */
+  if(r==="breakout")return mode==="floor"&&MYTEAM.mates(ME).some(p=>!EP.Sabotage.check(ME,p,MYTEAM))?{label:"Sabotage",ok:true,cls:"red",act:"room"}:{label:"Inspect",ok:true,act:"room"};
   if(r==="hightea")return{label:"Network",ok:true,cls:"green",act:"room"};
   if(r==="allskate")return{label:"Reflect",ok:true,act:"room"};
   if(r==="conf")return{label:"Button",ok:true,cls:"red",act:"room"};
