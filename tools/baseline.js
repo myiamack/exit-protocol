@@ -52,6 +52,7 @@ function save() {
   fs.mkdirSync(BASELINE_DIR, { recursive: true });
   let failed = false;
   for (const name of TESTS) {
+    if (name === "check_bundle") continue;
     const res = runTest(name);
     if (res.status !== 0) {
       console.log(`FAIL  ${name}  (exit ${res.status})`);
@@ -68,6 +69,16 @@ function save() {
 function check() {
   let failed = false;
   for (const name of TESTS) {
+    if (name === "check_bundle") {
+      const res = runTest(name);
+      if (res.status === 0) console.log(`PASS  ${name}`);
+      else {
+        console.log(`FAIL  ${name}  (exit ${res.status})`);
+        if (res.out) console.log(res.out);
+        failed = true;
+      }
+      continue;
+    }
     const basePath = path.join(BASELINE_DIR, name + ".txt");
     if (!fs.existsSync(basePath)) {
       console.log(`FAIL  ${name}  (missing baseline; run npm run baseline)`);

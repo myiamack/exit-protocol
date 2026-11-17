@@ -5,7 +5,7 @@ After each refactor step, run `npm run build`, then `npm test`. Run `npm run tes
 1. [x] Bundler rule
 2. [x] Tests use EP.Rng
 3. [x] Fixed-seed baseline run
-4. [ ] Timer
+4. [x] Timer
 5. [ ] Wallet
 6. [ ] PlayerStatus
 7. [ ] Actions into Round (rename trial label to trialName)

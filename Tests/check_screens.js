@@ -13,8 +13,9 @@ catch (e) { console.log('jsdom is missing. Run "npm install" once in the repo fo
 const repo = path.join(__dirname, "..");
 const errors = [];
 const FS = { el: null, block: false };   // fake full screen state
+const isFontError = msg => /fonts\.(googleapis|gstatic)\.com/.test(msg);
 const vc = new VirtualConsole();
-vc.on("jsdomError", e => errors.push(String(e.message || e).split("\n")[0]));
+vc.on("jsdomError", e => { const msg = String(e.message || e).split("\n")[0]; if (!isFontError(msg)) errors.push(msg); });
 vc.on("error", e => errors.push("console.error " + e));
 
 const dom = new JSDOM(fs.readFileSync(path.join(repo, "index.html"), "utf8"), {
