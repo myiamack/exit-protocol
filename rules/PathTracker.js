@@ -12,11 +12,9 @@ class PathTracker {
   constructor(player) { this.#player = player; }
 
   get pathProgress() { return this.#pathProgress; }
-  set pathProgress(n) { this.#pathProgress = n; }
   get pathDone() { return this.#pathDone; }
   set pathDone(v) { this.#pathDone = !!v; }
   get locked() { return this.#locked; }
-  set locked(v) { this.#locked = v ? Object.freeze({ ...v }) : null; }
 
   /* An event happened (rescue, correctAccusation, uncaughtSabotage). It counts only if it is
      this type's second-path event. Returns true if it counted. */

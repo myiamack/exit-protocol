@@ -15,3 +15,4 @@ After each refactor step, run `npm run build`, then `npm test`. Run `npm run tes
 11. [x] Remove Game-to-Bots link
 12. [x] Split game.js and remove Level 1 hardcoding
 13. [x] Update class diagram, CLAUDE.md, and README to match the new classes
+14. [x] Encapsulation fix (attrs copy, unused setters, timer copy)

@@ -144,7 +144,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
 {
   const c = EP.Bots.makePlayer(200, "T", "contra");
   const tieCase = (label, attrs, want) => {
-    Object.assign(c.attrs, attrs);
+    c.setAttrsForTest(attrs);
     c.takeFromHighest(1);
     const lost = Object.keys(attrs).filter(k => c.attrs[k] === attrs[k] - 1);
     expect("Wrong accusation tie order: " + label, lost.length === 1 && lost[0] === want, lost.join(","));
@@ -159,7 +159,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
 // Part 4b: stat abilities. "at" makes an rng that always returns x.
 {
   const at = x => () => x;
-  const set = (p, a) => { p.attrs = { focus: 5, initiative: 5, collab: 5, composure: 5, grit: 5, ...a }; };
+  const set = (p, a) => { p.setAttrsForTest({ focus: 5, initiative: 5, collab: 5, composure: 5, grit: 5, ...a }); };
   const ps = ["coop", "coop", "indep", "contra", "coop", "coop", "coop", "coop"].map((t, i) => EP.Bots.makePlayer(200 + i, "S" + i, t));
   const [a, b, ind, con] = ps;
   const team = new EP.Team({ id: "S", name: "S", members: ps.slice(0, 4) });
@@ -291,7 +291,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
 
 // Part 5b: vote points divided by active players. 5-person team B vs 3-person team S; team X votes.
 {
-  const mk = (n, i) => { const p = EP.Bots.makePlayer(300 + i, n, "coop"); p.attrs.initiative = 0; return p; };   // weight 1
+  const mk = (n, i) => { const p = EP.Bots.makePlayer(300 + i, n, "coop"); p.setAttrsForTest({ initiative: 0 }); return p; };   // weight 1
   const bs = [0, 1, 2, 3, 4].map(i => mk("b" + i, i));
   const ss = [0, 1, 2].map(i => mk("s" + i, 5 + i));
   const xs = [0, 1, 2].map(i => mk("x" + i, 8 + i));
@@ -319,11 +319,11 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("5 vs 3: top half win (3 teams -> 2): S and B", row(tl, "S").won && row(tl, "B").won && !row(tl, "X").won);
 
   // Initiative still applies to each voter's points before the division. x2 Initiative 10 = weight 2.
-  tl = tallyWith(() => { xs[2].attrs.initiative = 10; });
+  tl = tallyWith(() => { xs[2].setAttrsForTest({ initiative: 10 }); });
   expect("Initiative first, then divide: B (3+3+8) / 30 = 0.467 beats S (3+3+4) / 24 = 0.417",
          row(tl, "B").total === 14 && near(row(tl, "B").score, 14 / 30) && near(row(tl, "S").score, 10 / 24) &&
          tl[0].team.name === "B", show(tl));
-  xs[2].attrs.initiative = 0;
+  xs[2].setAttrsForTest({ initiative: 0 });
 
   // Stuck players do not count, as members or as voters. B with 2 Stuck: 3 active, 6 voters (S 3 + X 3).
   tl = tallyWith(() => { bs[3].glitches = 2; bs[4].glitches = 2; });
@@ -474,8 +474,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // The 5 statuses.
   const st = p => g.board().players.find(x => x.name === p.name).status;
   const [pA, pR, pG, pS, pI] = ps;
-  pR.attrs.grit = 0; pR.hearts.empty();          // cannot pay 3 even with hearts
-  pG.attrs.focus = -1;                           // below 0
+  pR.setAttrsForTest({ grit: 0 }); pR.hearts.empty();          // cannot pay 3 even with hearts
+  pG.setAttrsForTest({ focus: -1 });                           // below 0
   pS.glitches = 2;                               // Stuck
   pI.idle = true;                                // missed an Attendance check (Part 8 sets this)
   expect("Status Active", st(pA) === "Active", st(pA));
@@ -483,9 +483,9 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("Status Glitching", st(pG) === "Glitching", st(pG));
   expect("Status Stuck", st(pS) === "Stuck", st(pS));
   expect("Status Idle", st(pI) === "Idle", st(pI));
-  pR.attrs.grit = 6; pR.hearts.refill(); pR.hearts.refill(); pR.hearts.refill();
+  pR.setAttrsForTest({ grit: 6 }); pR.hearts.refill(); pR.hearts.refill(); pR.hearts.refill();
   expect("Status updates live (At risk back to Active)", st(pR) === "Active", st(pR));
-  pG.attrs.focus = 4; pS.glitches = 0; pI.idle = false;
+  pG.setAttrsForTest({ focus: 4 }); pS.glitches = 0; pI.idle = false;
 
   // Play all 6 levels with bots; check team wins after each trial.
   let ok = true, detail = "";
@@ -568,11 +568,11 @@ throws("Finish the round before points are placed", () => game.finishRound());
     me.attendancePending = false; me.idle = true;
     expect("Board: idle, not Glitching shows Idle", boardOf(me) === "Idle", boardOf(me));
     const grit = me.attrs.grit, h = me.hearts.count;
-    me.attrs.grit = 0; me.hearts.empty();
+    me.setAttrsForTest({ grit: 0 }); me.hearts.empty();
     expect("Board: idle and At risk shows Idle", me.isAtRisk() && boardOf(me) === "Idle", boardOf(me));
     me.idle = false;
     expect("Board: At risk, not idle shows At risk", boardOf(me) === "At risk", boardOf(me));
-    me.attrs.grit = grit; me.hearts.refund(h); me.attendancePending = true;   // back as it was for the tests below
+    me.setAttrsForTest({ grit }); me.hearts.refund(h); me.attendancePending = true;   // back as it was for the tests below
     expect("Bots are never checked", g.players.filter(p => p.isBot).every(p => p.glitches === 0));
   }
 
@@ -607,7 +607,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   {
     const { g, me } = mkGame();
     g.startNextRound(); g.advance(); g.activity(me, 0);
-    me.attrs.focus = -1; me.lockIn();             // one locked (attribute) glitch, an earlier round
+    me.setAttrsForTest({ focus: -1 }); me.lockIn();             // one locked (attribute) glitch, an earlier round
     me.glitchedThisRound = false;
     expect("One locked glitch: not Stuck", me.glitches === 1 && !me.isStuck());
     missAt(g, s(75));
@@ -726,7 +726,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
     const g = new EP.Game({ teams: ts, rng: NO, clock: () => clock.now });
     const me = ps[0], coopMate = ps[1];
     g.startNextRound(); g.advance(); g.activity(me, 0);
-    me.attrs = { focus: 5, initiative: 3, collab: 6, composure: 6, grit: 6 };   // Level 1 costs 2 Grit: stays above 0
+    me.setAttrsForTest({ focus: 5, initiative: 3, collab: 6, composure: 6, grit: 6 });   // Level 1 costs 2 Grit: stays above 0
     const miss = t => { g.checkAttendance(t - s(15)); return g.checkAttendance(t)[0]; };
     const toGiftWindow = () => { g.advance(); g.runTrial(); g.payTrialCosts(); g.advance(); g.endGlitchReport(); g.advance(); };
     return { g, me, coopMate, miss, toGiftWindow };
@@ -776,7 +776,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   {
     const { g, me, miss, toGiftWindow } = mk();
     miss(s(75));
-    toGiftWindow(); me.attrs.focus = -1; g.advance(); g.lockIn();
+    toGiftWindow(); me.setAttrsForTest({ focus: -1 }); g.advance(); g.lockIn();
     expect("Pending miss + attribute below 0 in the same round = 1 glitch", me.glitches === 1 && me.attrs.focus === 1 && !me.attendanceGlitchThisRound, "glitches " + me.glitches);
   }
   // A miss after the gift window closed locks in at once, same reboot.
@@ -794,7 +794,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   }
   {
     const { g, me, toGiftWindow } = mk();
-    toGiftWindow(); me.attrs.focus = -1; g.advance(); g.lockIn(); g.advance();
+    toGiftWindow(); me.setAttrsForTest({ focus: -1 }); g.advance(); g.lockIn(); g.advance();
     const r = g.attendanceMiss(me, true);
     expect("Attribute glitch locked, then a miss after the window: still 1 glitch", !r.locked && me.glitches === 1, "glitches " + me.glitches);
   }
@@ -903,7 +903,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   const clock = { now: 0 };
   const g = new EP.Game({ teams: ts, rng: NO, clock: () => clock.now });
   g.startNextRound(); g.level = 6; g.round = null;                // jump straight to Level 7
-  for (const k of EP.Player.KEYS) maxed.attrs[k] = maxed.max(k);  // no room: 0 points to place
+  for (const k of EP.Player.KEYS) maxed.setAttrsForTest({ [k]: maxed.max(k) });  // no room: 0 points to place
   g.startNextRound();
   expect("Level 7 opens with a briefing, everyone paused", g.step === "briefing" && g.players.every(p => p.attendancePaused));
   clock.now = s(1000);
@@ -926,14 +926,14 @@ throws("Finish the round before points are placed", () => game.finishRound());
 
   placing.placePoints(EP.Bots.allocate(placing, placing.earned, false));
   EP.Bots.statsUpdate(g);                                                 // bots place theirs
-  ps[3].attrs.focus = 0;                                                  // one player misses the lowest-attribute rule
+  ps[3].setAttrsForTest({ focus: 0 });                                                  // one player misses the lowest-attribute rule
   const res = g.results();
   const before = res.map(r => r.player.name + ":" + r.ending + ":" + r.wins).join(" ");
   expect("After results(): everyone paused", g.players.every(p => p.attendancePaused));
   // Try to change every ending: graduates become Stuck, everyone else gets maxed attributes and no glitches.
   for (const r of res) {
     if (r.ending === "Graduated") r.player.glitches = 2;
-    else { for (const k of EP.Player.KEYS) r.player.attrs[k] = r.player.max(k); r.player.glitches = 0; r.player.pathDone = true; }
+    else { for (const k of EP.Player.KEYS) r.player.setAttrsForTest({ [k]: r.player.max(k) }); r.player.glitches = 0; r.player.pathDone = true; }
   }
   const after = g.results().map(r => r.player.name + ":" + r.ending + ":" + r.wins).join(" ");
   const live = g.players.map(p => p.name + ":" + p.ending() + ":" + p.wins()).join(" ");
@@ -1032,8 +1032,8 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Light influence: active players only.
   {
     const { ps, ts } = mk();
-    for (const p of ps) p.attrs.grit = 2;
-    ps[1].attrs.grit = 10; ps[1].idle = true;     // team 0 has one idle player with high Grit
+    for (const p of ps) p.setAttrsForTest({ grit: 2 });
+    ps[1].setAttrsForTest({ grit: 10 }); ps[1].idle = true;     // team 0 has one idle player with high Grit
     const inf = EP.Trial.influence({ attr: "grit" }, ts);
     expect("Part 8: light influence leaves out idle players", inf.get(ts[0]) === 0 && inf.get(ts[1]) === 0,
            inf.get(ts[0]) + " / " + inf.get(ts[1]));
@@ -1072,10 +1072,10 @@ throws("Finish the round before points are placed", () => game.finishRound());
   // Graduation: 60 s placement timer; idle at results() = Contract renewed, unless the second path is done.
   {
     const { g, ps } = mk();
-    const fill = (p, v) => { for (const k of EP.Player.KEYS) p.attrs[k] = Math.min(v, p.max(k)); };
+    const fill = (p, v) => { for (const k of EP.Player.KEYS) p.setAttrsForTest({ [k]: Math.min(v, p.max(k)) }); };
     ps.forEach(p => fill(p, 5));                  // total 24 or 25, every attribute 2+: graduates
     const [idleGrad, idlePath, activeGrad, cameBack, lowFocus, partial] = ps;
-    fill(lowFocus, 6); lowFocus.attrs.focus = 0;  // one attribute below 2
+    fill(lowFocus, 6); lowFocus.setAttrsForTest({ focus: 0 });  // one attribute below 2
     g.startNextRound(); g.level = 6; g.round = null;
     g.startNextRound(); g.advance();
     expect("Graduation step", g.step === "graduation");

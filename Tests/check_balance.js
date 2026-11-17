@@ -25,9 +25,9 @@ const SPENDING = ["typical", "aware"];
 function awareAllocate(p, n, nextAttr) {
   const alloc = {};
   let toNext = nextAttr ? Math.min(Math.ceil(n / 2), p.max(nextAttr) - p.attrs[nextAttr]) : 0;
-  if (toNext > 0) { alloc[nextAttr] = toNext; p.attrs[nextAttr] += toNext; }
+  if (toNext > 0) { alloc[nextAttr] = toNext; p.setAttrsForTest({ [nextAttr]: p.attr(nextAttr) + toNext }); }
   const rest = EP.Bots.allocate(p, n - toNext, false);
-  if (toNext > 0) p.attrs[nextAttr] -= toNext;   // allocate() only reads attrs; placePoints adds them
+  if (toNext > 0) p.setAttrsForTest({ [nextAttr]: p.attr(nextAttr) - toNext });   // allocate() only reads attrs; placePoints adds them
   for (const k in rest) alloc[k] = (alloc[k] || 0) + rest[k];
   return alloc;
 }

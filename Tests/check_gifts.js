@@ -20,7 +20,7 @@ function setup() {
   const round = new EP.Round(1);
   return { ps, team, round };
 }
-const set = (p, a) => { p.attrs = { ...a }; };
+const set = (p, a) => { p.setAttrsForTest(a); };
 const sendAccept = (round, g, r, team, pts) => {
   const res = EP.Gift.apply(round, g, r, team, pts, NO);
   return res.ok && res.gift.status === "pending" ? EP.Gift.accept(round, res.gift) : res;

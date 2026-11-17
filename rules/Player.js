@@ -82,7 +82,7 @@ class Player {
   spendHearts(n) { return this.hearts.spend(n); }
 
   get attrs() { return this.#attributes.attrs; }
-  set attrs(a) { this.#attributes.attrs = a; }
+  setAttrsForTest(values) { this.#attributes.setAttrsForTest(values); }
   rate(k) { return this.#attributes.rate(k); }
   attr(k) { return this.#attributes.attr(k); }
   addAttr(k, delta) { this.#attributes.addAttr(k, delta); }
@@ -212,9 +212,7 @@ class Player {
   get earned() { return this.#wallet.earned; }
   set earned(n) { this.#wallet.earned = n; }
   get draft() { return this.#wallet.draft; }
-  set draft(d) { this.#wallet.draft = d; }
   get placedThisRound() { return this.#wallet.placedThisRound; }
-  set placedThisRound(n) { this.#wallet.placedThisRound = n; }
   get skimUsed() { return this.#wallet.skimUsed; }
   get cashOutUsed() { return this.#wallet.cashOutUsed; }
   get cashedOutThisRound() { return this.#wallet.cashedOutThisRound; }
@@ -230,11 +228,9 @@ class Player {
   roomLeft() { return this.#wallet.roomLeft(); }
 
   get pathProgress() { return this.#pathTracker.pathProgress; }
-  set pathProgress(n) { this.#pathTracker.pathProgress = n; }
   get pathDone() { return this.#pathTracker.pathDone; }
   set pathDone(v) { this.#pathTracker.pathDone = v; }
   get locked() { return this.#pathTracker.locked; }
-  set locked(v) { this.#pathTracker.locked = v; }
 
   creditPath(event) { return this.#pathTracker.creditPath(event); }
   gradChecks() { return this.#pathTracker.gradChecks(); }

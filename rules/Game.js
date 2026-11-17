@@ -109,7 +109,7 @@ class Game {
   }
 
   /* ----- step timers (Part 13) ----- */
-  get timer() { return this._timer.current; }
+  get timer() { return this._timer.current ? { ...this._timer.current } : null; }
   get running() { return this._timer.running; }
   now() { return this._timer.now(); }
   start() { return this._timer.start(); }

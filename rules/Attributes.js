@@ -37,8 +37,8 @@ class Attributes {
     if (total !== SPEND) throw new Error("Must spend exactly " + SPEND + " points");
   }
 
-  get attrs() { return this.#attrs; }
-  set attrs(a) { this.#attrs = a; }
+  get attrs() { return { ...this.#attrs }; }
+  setAttrsForTest(values) { this.#attrs = { ...this.#attrs, ...values }; }
 
   rate(k) { return this.#player.isBonus(k) ? 1 : 2; }   // hearts per point covered
   attr(k) { return this.#attrs[k]; }

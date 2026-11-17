@@ -1,5 +1,7 @@
 # Encapsulation Report
 
+> **Step 14 fixes:** `Player.attrs` / `Attributes.attrs` now return a copy with the `attrs` setter removed (tests use `Player.setAttrsForTest(values)`); unused setters `draft`, `placedThisRound`, `pathProgress`, and `locked` were removed from `Player`, `Wallet`, and `PathTracker`; `Game.timer` now returns a copy of the timer info (or `null`).
+
 Read-only audit of `rules/`, `game.js`, `pixel-art.js`, `world-map.js`, `pages/vote-test.js`, and `Tests/` at commit `6be32c6`.
 
 ---

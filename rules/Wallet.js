@@ -19,9 +19,7 @@ class Wallet {
   get earned() { return this.#earned; }
   set earned(n) { this.#earned = n; }
   get draft() { return this.#draft; }
-  set draft(d) { this.#draft = d; }
   get placedThisRound() { return this.#placedThisRound; }
-  set placedThisRound(n) { this.#placedThisRound = n; }
   get skimUsed() { return this.#skimUsed; }
   get cashOutUsed() { return this.#cashOutUsed; }
   get cashedOutThisRound() { return this.#cashedOutThisRound; }

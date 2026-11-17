@@ -184,9 +184,7 @@ class Wallet {
   get earned() { return this.#earned; }
   set earned(n) { this.#earned = n; }
   get draft() { return this.#draft; }
-  set draft(d) { this.#draft = d; }
   get placedThisRound() { return this.#placedThisRound; }
-  set placedThisRound(n) { this.#placedThisRound = n; }
   get skimUsed() { return this.#skimUsed; }
   get cashOutUsed() { return this.#cashOutUsed; }
   get cashedOutThisRound() { return this.#cashedOutThisRound; }
@@ -377,8 +375,8 @@ class Attributes {
     if (total !== SPEND) throw new Error("Must spend exactly " + SPEND + " points");
   }
 
-  get attrs() { return this.#attrs; }
-  set attrs(a) { this.#attrs = a; }
+  get attrs() { return { ...this.#attrs }; }
+  setAttrsForTest(values) { this.#attrs = { ...this.#attrs, ...values }; }
 
   rate(k) { return this.#player.isBonus(k) ? 1 : 2; }   // hearts per point covered
   attr(k) { return this.#attrs[k]; }
@@ -521,11 +519,9 @@ class PathTracker {
   constructor(player) { this.#player = player; }
 
   get pathProgress() { return this.#pathProgress; }
-  set pathProgress(n) { this.#pathProgress = n; }
   get pathDone() { return this.#pathDone; }
   set pathDone(v) { this.#pathDone = !!v; }
   get locked() { return this.#locked; }
-  set locked(v) { this.#locked = v ? Object.freeze({ ...v }) : null; }
 
   /* An event happened (rescue, correctAccusation, uncaughtSabotage). It counts only if it is
      this type's second-path event. Returns true if it counted. */
@@ -668,7 +664,7 @@ class Player {
   spendHearts(n) { return this.hearts.spend(n); }
 
   get attrs() { return this.#attributes.attrs; }
-  set attrs(a) { this.#attributes.attrs = a; }
+  setAttrsForTest(values) { this.#attributes.setAttrsForTest(values); }
   rate(k) { return this.#attributes.rate(k); }
   attr(k) { return this.#attributes.attr(k); }
   addAttr(k, delta) { this.#attributes.addAttr(k, delta); }
@@ -798,9 +794,7 @@ class Player {
   get earned() { return this.#wallet.earned; }
   set earned(n) { this.#wallet.earned = n; }
   get draft() { return this.#wallet.draft; }
-  set draft(d) { this.#wallet.draft = d; }
   get placedThisRound() { return this.#wallet.placedThisRound; }
-  set placedThisRound(n) { this.#wallet.placedThisRound = n; }
   get skimUsed() { return this.#wallet.skimUsed; }
   get cashOutUsed() { return this.#wallet.cashOutUsed; }
   get cashedOutThisRound() { return this.#wallet.cashedOutThisRound; }
@@ -816,11 +810,9 @@ class Player {
   roomLeft() { return this.#wallet.roomLeft(); }
 
   get pathProgress() { return this.#pathTracker.pathProgress; }
-  set pathProgress(n) { this.#pathTracker.pathProgress = n; }
   get pathDone() { return this.#pathTracker.pathDone; }
   set pathDone(v) { this.#pathTracker.pathDone = v; }
   get locked() { return this.#pathTracker.locked; }
-  set locked(v) { this.#pathTracker.locked = v; }
 
   creditPath(event) { return this.#pathTracker.creditPath(event); }
   gradChecks() { return this.#pathTracker.gradChecks(); }
@@ -1982,7 +1974,7 @@ class Game {
   }
 
   /* ----- step timers (Part 13) ----- */
-  get timer() { return this._timer.current; }
+  get timer() { return this._timer.current ? { ...this._timer.current } : null; }
   get running() { return this._timer.running; }
   now() { return this._timer.now(); }
   start() { return this._timer.start(); }
