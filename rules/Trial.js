@@ -34,6 +34,15 @@ class Trial {
     return this.ranking;
   }
 
+  /* Run the trial once for a round, recording completion on round.completed. */
+  runTrial(round, teams) {
+    if (round && round.completed) {
+      if (round.completed.has("runTrial")) throw new Error("runTrial already ran this round.");
+      round.completed.add("runTrial");
+    }
+    return this.run(round, teams);
+  }
+
   /* Sort best first. keys: list of functions, higher is better. Full ties go by a random roll. */
   sortBy(entries, keys) {
     entries.forEach(e => { e.roll = this.rng(); });
@@ -122,6 +131,44 @@ class SopTrial extends Trial {
   setScore(team, score) {
     if (this.ranking) throw new Error("The trial already ran.");
     this.scores.set(team, score);
+  }
+  setSopScore(team, score) { this.setScore(team, score); }
+
+  /* Level 1 in one call: score the team's SOP board, then rank every team.
+     built = the steps in board order. Returns { right, endlessOut, score, rank }. */
+  scoreSop(team, built, steps, endless, round, teams) {
+    const r = SopTrial.score(built, steps, endless);
+    this.setSopScore(team, r.score);
+    return { ...r, rank: this.runTrial(round, teams) };
+  }
+
+  /* The team's shared SOP board (Level 1): the steps in board order. Any active teammate can edit it. */
+  static sopBoard(round, team) { return ((round && round.sopBoards) || {})[team.id] || []; }
+  sopBoard(round, team) { return SopTrial.sopBoard(round, team); }
+
+  setSopBoard(round, p, team, built) {
+    const all = [...SopTrial.STEPS, SopTrial.ENDLESS];
+    const closed = !!this.ranking || !!(round && round.completed && round.completed.has("runTrial"));
+    const why = (closed ? "The SOP is closed." : null) ||
+      (p.isStuck() ? "You are Stuck." : null) ||
+      (!Array.isArray(built) || built.some(s => !all.includes(s)) || new Set(built).size !== built.length ? "Not a valid board." : null);
+    if (why) return { ok: false, reason: why };
+    round.sopBoards[team.id] = built.slice();
+    return { ok: true };
+  }
+
+  /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
+     stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
+     Results per team id: { right, endlessOut, score } in round.sopResults. */
+  closeSop(round, teams) {
+    round.sopResults = {};
+    for (const t of teams) {
+      if (!t.members.some(p => !p.isBot)) continue;
+      const r = SopTrial.score(this.sopBoard(round, t), SopTrial.STEPS, SopTrial.ENDLESS);
+      this.setSopScore(t, r.score);
+      round.sopResults[t.id] = r;
+    }
+    return this.runTrial(round, teams);
   }
 
   /* Teams with no score yet (bot teams in the prototype) get a random score from 0 to 7. */
@@ -215,13 +262,32 @@ class JudgedTrial extends Trial {
     return this.prompt;
   }
 
-  startWriting() {
-    if (this.writing) throw new Error("Writing already started.");
-    if (!this.prompt) throw new Error("No prompt yet.");
-    this.writing = "open";
+  /* Levels 5-6, host only: a list number (0 to 9) or custom text. */
+  setPrompt(choice, host = true) {
+    if (!host) return { ok: false, reason: "No host. The engine picks the prompt." };
+    return typeof choice === "number" ? this.choosePrompt(choice) : this.customPrompt(choice);
   }
-  /* One submission per player, 1 to 300 characters. Stuck players do not write. */
-  submit(p, text) {
+  /* Opens writing. No host: the engine picks a prompt at random. */
+  startWriting({ host = false, prompts = null } = {}) {
+    if (this.writing) throw new Error("Writing already started.");
+    if (!this.prompt) {
+      if (host) throw new Error("The host picks a prompt first.");
+      this.randomPrompt();
+    }
+    this.writing = "open";
+    if (prompts) prompts.push({ ...this.prompt });
+    return this.prompt;
+  }
+  /* Submission length check for the writing box. */
+  static typeSubmission(pOrText, text) {
+    const s = typeof pOrText === "object" && pOrText !== null ? text : pOrText;
+    const n = String(s || "").trim().length, max = JudgedTrial.MAX_CHARS;
+    return { length: n, left: max - n, tooLong: n > max };
+  }
+  typeSubmission(pOrText, text) { return JudgedTrial.typeSubmission(pOrText, text); }
+  /* One submission per player, 1 to 300 characters. Stuck players do not write.
+     Writing closes early when every active player has submitted. */
+  submit(p, text, { players = null, submissions = null } = {}) {
     const t = String(text == null ? "" : text).trim();
     const why = this.writing !== "open" ? (this.writing ? "Writing is closed." : "Writing has not started.") :
       p.isStuck() ? "Stuck players do not write." :
@@ -230,13 +296,27 @@ class JudgedTrial extends Trial {
       t.length > JudgedTrial.MAX_CHARS ? "Too long: " + t.length + " of " + JudgedTrial.MAX_CHARS + " characters." : null;
     if (why) return { ok: false, reason: why };
     this.submissions.set(p, t);
-    return { ok: true, text: t };
+    const r = { ok: true, text: t };
+    if (players && this.allSubmitted(players)) {
+      this.closeWriting(submissions);
+      r.closed = true;
+    }
+    return r;
   }
-  closeWriting() { if (this.writing === "open") this.writing = "closed"; }
+  closeWriting(submissions = null) {
+    if (this.writing !== "open") return false;
+    this.writing = "closed";
+    if (submissions) {
+      for (const [p, text] of this.submissions) submissions.push({ level: this.level, name: p.name, text });
+    }
+    return true;
+  }
   allSubmitted(players) { return players.filter(p => p.isActive()).every(p => this.submissions.has(p)); }   // idle players are not waited for
 
   /* With submissions in use, only players who submitted can be ranked. */
   startVote(teams) {
+    if (this.writing === "open") throw new Error("Writing is still open. Close it first (closeWriting).");
+    if (this.level !== null && !this.writing) throw new Error("Writing has not started (startWriting).");
     if (!this.vote) {
       const canBeRanked = this.writing ? (p => this.submissions.has(p)) : null;
       this.vote = new Vote(teams, this.rng, canBeRanked);

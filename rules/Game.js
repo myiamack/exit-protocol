@@ -322,45 +322,39 @@ class Game {
   /* 2. Trial. The round's Trial ranks the teams; the top half win.
      Level 1: the screen sets a team's SOP score (teams with none get a random score).
      Levels 5-6: players cast votes on startVote(), then runTrial. */
-  setSopScore(team, score) {
+  sop() {
     this.mustBe("trial");
     if (!(this.round.trial instanceof Trial.SopTrial)) throw new Error("This level has no SOP.");
-    this.round.trial.setScore(team, score);
+    return this.round.trial;
+  }
+  setSopScore(team, score) {
+    this.sop().setSopScore(team, score);
   }
   /* Level 1 in one call: score the team's SOP board, then rank every team.
      built = the steps in board order. Returns { right, endlessOut, score, rank }. */
   scoreSop(team, built, steps, endless) {
-    const r = Trial.SopTrial.score(built, steps, endless);
-    this.setSopScore(team, r.score);
-    return { ...r, rank: this.runTrial() };
+    const out = this.sop().scoreSop(team, built, steps, endless, this.round, this.teams);
+    this.refreshTimer();
+    return out;
   }
   /* The team's shared SOP board (Level 1): the steps in board order. Any active teammate can edit it. */
-  sopBoard(team) { return ((this.round && this.round.sopBoards) || {})[team.id] || []; }
+  sopBoard(team) {
+    return this.round && this.round.trial instanceof Trial.SopTrial
+      ? this.round.trial.sopBoard(this.round, team)
+      : Trial.SopTrial.sopBoard(this.round, team);
+  }
   setSopBoard(p, built) {
-    const all = [...Trial.SopTrial.STEPS, Trial.SopTrial.ENDLESS];
-    const why = this.wrongStep("trial") ||
-      (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null) ||
-      (this.didRun("runTrial") ? "The SOP is closed." : null) ||
-      (p.isStuck() ? "You are Stuck." : null) ||
-      (!Array.isArray(built) || built.some(s => !all.includes(s)) || new Set(built).size !== built.length ? "Not a valid board." : null);
+    const why = this.wrongStep("trial") || (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null);
     if (why) return { ok: false, reason: why };
-    this.round.sopBoards[this.teamOf(p).id] = built.slice();
-    return { ok: true };
+    return this.round.trial.setSopBoard(this.round, p, this.teamOf(p), built);
   }
   /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
      stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
      Results per team id: { right, endlessOut, score } in round.sopResults. */
   closeSop() {
-    this.mustBe("trial");
-    if (!(this.round.trial instanceof Trial.SopTrial)) throw new Error("This level has no SOP.");
-    this.round.sopResults = {};
-    for (const t of this.teams) {
-      if (!t.members.some(p => !p.isBot)) continue;
-      const r = Trial.SopTrial.score(this.sopBoard(t), Trial.SopTrial.STEPS, Trial.SopTrial.ENDLESS);
-      this.round.trial.setScore(t, r.score);
-      this.round.sopResults[t.id] = r;
-    }
-    return this.runTrial();
+    const ranking = this.sop().closeSop(this.round, this.teams);
+    this.refreshTimer();
+    return ranking;
   }
   judged() {
     this.mustBe("trial");
@@ -370,55 +364,40 @@ class Game {
   /* Levels 5-6, host only: a list number (0 to 9) or custom text. A custom prompt is saved on this game's
      record (game.prompts), not added to the list. */
   setPrompt(choice) {
-    const jt = this.judged();
-    if (!this.host) return { ok: false, reason: "No host. The engine picks the prompt." };
-    return typeof choice === "number" ? jt.choosePrompt(choice) : jt.customPrompt(choice);
+    return this.judged().setPrompt(choice, this.host);
   }
   /* Opens writing. No host: the engine picks a prompt at random. */
   startWriting() {
-    const jt = this.judged();
-    if (!jt.prompt) {
-      if (this.host) throw new Error("The host picks a prompt first.");
-      jt.randomPrompt();
-    }
-    jt.startWriting();
-    this.prompts.push({ ...jt.prompt });
+    const prompt = this.judged().startWriting({ host: this.host, prompts: this.prompts });
     this.refreshTimer();
-    return jt.prompt;
+    return prompt;
   }
   /* Called on every keystroke in the writing box. Typing counts as activity (Attendance check). */
   typeSubmission(p, text, now) {
     this.activity(p, now);
-    const n = String(text || "").trim().length, max = Trial.JudgedTrial.MAX_CHARS;
-    return { length: n, left: max - n, tooLong: n > max };
+    return this.round && this.round.trial instanceof Trial.JudgedTrial
+      ? this.round.trial.typeSubmission(text)
+      : Trial.JudgedTrial.typeSubmission(text);
   }
   /* Writing closes early when every active player has submitted. */
   submit(p, text, now) {
     const jt = this.judged();
     this.activity(p, now);
-    const r = jt.submit(p, text);
-    if (r.ok && jt.allSubmitted(this.players)) { this.closeWriting(); r.closed = true; }
+    const r = jt.submit(p, text, { players: this.players, submissions: this.submissions });
+    if (r.closed) this.refreshTimer();
     return r;
   }
   /* The 3-minute timer ran out (or the host closes it). Submissions go on the game record. */
   closeWriting() {
-    const jt = this.judged();
-    if (jt.writing !== "open") return;
-    jt.closeWriting();
-    for (const [p, text] of jt.submissions) this.submissions.push({ level: this.level, name: p.name, text });
-    this.refreshTimer();
+    if (this.judged().closeWriting(this.submissions)) this.refreshTimer();
   }
   startVote() {
-    const jt = this.judged();
-    if (jt.writing === "open") throw new Error("Writing is still open. Close it first (closeWriting).");
-    if (!jt.writing) throw new Error("Writing has not started (startWriting).");
-    return jt.startVote(this.teams);
+    return this.judged().startVote(this.teams);
   }
   /* Returns the ranked list: [{ team, place, won, ... }] best first. */
   runTrial() {
     this.mustBe("trial");
-    this.once("runTrial");
-    const ranking = this.round.trial.run(this.round, this.teams);
+    const ranking = this.round.trial.runTrial(this.round, this.teams);
     this.refreshTimer();
     return ranking;
   }
