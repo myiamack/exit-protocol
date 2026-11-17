@@ -35,11 +35,18 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 - Use one name for hearts everywhere. Done: "hearts" (code, screen text, this file).
 - Each type briefing shows the type's real drawback: Cooperative Empathy, Independent cannot accept gifts, Contrarian caught rules.
 
-## Build path (decided)
+## Build path and Base44 plan (decided)
 
-1. Update the exit-protocol prototype first. No Base44 credits.
-2. Base44 later, for multiplayer only. Rule classes will move there through Base44's Code tab.
-3. The prototype is single player with bot teammates. That is fine for now.
+1. Update the exit-protocol prototype first. No Base44 credits. The prototype is single player with bot teammates.
+2. Base44 later, for multiplayer only:
+   - Use the Base44 backend service through the Base44 CLI, not the Base44 app editor and not Base Code (repo import).
+   - Our own frontend (`index.html`, `game.js`, `pixel-art.js`, `world-map.js`, `styles.css`, and the view files) is deployed as the site.
+   - The rules engine (`rules/`) runs inside a Base44 actor: a long-running backend session that many players connect to over WebSockets, with persistent storage and scheduled wakes.
+   - Mapping: `Game.toJSON` / `fromJSON` is the actor's saved state (restored in `handleStart`); each step deadline becomes a scheduled wake; the seeded `Rng` state is saved with the game.
+   - The actor sends each player only what that player may see (their own stats and type, plus `Game.board()` fields). Hidden types and other players' stats never leave the server.
+   - Login uses Base44 auth. The `@icstars.org` rule is enforced by the actor rejecting connections from other emails (not yet confirmed that the actor can read the email; test this first).
+   - Why: no rebuild of the game in Base44's editor, and almost no AI credits. The backend service is in beta and uses workspace integration credits.
+   - Open questions: is version 1 real multiplayer; does the actor see the player's email.
 
 ## Code structure (decided): OOAD rule classes and screen split
 
