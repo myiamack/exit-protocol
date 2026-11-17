@@ -1836,13 +1836,31 @@ class Economy {
     return { ok: true };
   }
 
+  /* Typical placement: every other point to the lowest bonus attribute, else the lowest open one. */
+  static allocate(p, n, final) {
+    const KEYS = Player.KEYS;
+    const a = { ...p.attrs }, alloc = {};
+    const add = k => { a[k] += 1; alloc[k] = (alloc[k] || 0) + 1; n -= 1; };
+    if (final) for (const k of KEYS) while (a[k] < 2 && n > 0 && a[k] < p.max(k)) add(k);
+    let i = 0;
+    while (n > 0) {
+      const open = KEYS.filter(k => a[k] < p.max(k));
+      if (!open.length) break;
+      let pool = open;
+      if (i % 2 === 0) { const b = p.type.bonus.filter(k => a[k] < p.max(k)); if (b.length) pool = b; }
+      add(pool.reduce((m, k) => (a[k] < a[m] ? k : m), pool[0]));
+      i += 1;
+    }
+    return alloc;
+  }
+
   /* Keep the points already picked (partial), and place the rest by the bot placement rule. */
   autoPlacePoints(p, partial = p.draft, final = false) {
     const KEYS = Player.KEYS;
     p.earned = Math.min(p.earned, p.roomLeft());
     const mine = KEYS.reduce((n, k) => n + (partial[k] || 0), 0);
     for (const k of KEYS) p.addAttr(k, partial[k] || 0);        // place the rest on top of what was picked
-    const rest = Bots.allocate(p, Math.max(0, p.earned - mine), final);
+    const rest = Economy.allocate(p, Math.max(0, p.earned - mine), final);
     for (const k of KEYS) p.addAttr(k, -(partial[k] || 0));
     const alloc = {};
     for (const k of KEYS) if ((partial[k] || 0) + (rest[k] || 0)) alloc[k] = (partial[k] || 0) + (rest[k] || 0);
@@ -2620,21 +2638,7 @@ const Bots = {
   },
 
   /* Typical placement: every other point to the lowest bonus attribute, else the lowest open one. */
-  allocate(p, n, final) {
-    const a = { ...p.attrs }, alloc = {};
-    const add = k => { a[k] += 1; alloc[k] = (alloc[k] || 0) + 1; n -= 1; };
-    if (final) for (const k of KEYS()) while (a[k] < 2 && n > 0 && a[k] < p.max(k)) add(k);
-    let i = 0;
-    while (n > 0) {
-      const open = KEYS().filter(k => a[k] < p.max(k));
-      if (!open.length) break;
-      let pool = open;
-      if (i % 2 === 0) { const b = p.type.bonus.filter(k => a[k] < p.max(k)); if (b.length) pool = b; }
-      add(pool.reduce((m, k) => (a[k] < a[m] ? k : m), pool[0]));
-      i += 1;
-    }
-    return alloc;
-  },
+  allocate(p, n, final) { return Economy.allocate(p, n, final); },
 
   /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
      beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends.

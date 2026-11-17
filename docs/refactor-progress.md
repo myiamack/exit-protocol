@@ -12,6 +12,6 @@ After each refactor step, run `npm run build`, then `npm test`. Run `npm run tes
 8. [x] Economy
 9. [x] Trial flow into Trial
 10. [x] PathTracker and Attributes
-11. [ ] Remove Game-to-Bots link
+11. [x] Remove Game-to-Bots link
 12. [ ] Split game.js and remove Level 1 hardcoding
 13. [ ] Update class diagram, CLAUDE.md, and README to match the new classes
