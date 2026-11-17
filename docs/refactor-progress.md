@@ -1,0 +1,14 @@
+# Refactor Progress
+
+1. [x] Bundler rule
+2. [ ] Tests use EP.Rng
+3. [ ] Fixed-seed baseline run
+4. [ ] Timer
+5. [ ] Wallet
+6. [ ] PlayerStatus
+7. [ ] Actions into Round (rename trial label to trialName)
+8. [ ] Economy
+9. [ ] Trial flow into Trial
+10. [ ] PathTracker and Attributes
+11. [ ] Remove Game-to-Bots link
+12. [ ] Split game.js and remove Level 1 hardcoding

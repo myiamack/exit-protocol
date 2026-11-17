@@ -1,6 +1,7 @@
 /* All rule classes in one place. Node tests and Base44 import from here.
    The browser loads rules/rules.bundle.js instead, built from these files by "npm run build".
-   The order below is the load order in the bundle. */
+   The order below is the load order in the bundle.
+   Every import and export in rules/*.js must stay on one line, because tools/build-rules.js only reads single-line imports and exports. */
 export { Rng } from "./Rng.js";
 export { Hearts } from "./Hearts.js";
 export { CharacterType } from "./CharacterType.js";

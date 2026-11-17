@@ -63,6 +63,8 @@ Player.type is a CharacterType object, not a string. Its `key` ("coop", "indep",
 
 Small things (single attributes, flags) are fields and methods inside these classes, not their own classes. Add a class later only if one gets too crowded.
 
+Every import and export in `rules/*.js` must stay on one line, because `tools/build-rules.js` only reads single-line imports and exports.
+
 ## Final rules
 
 These are rules v2 from my OOAD Class Reference v2, plus changes decided after balance testing. Where this list and the v2 doc disagree, **this list wins**.
