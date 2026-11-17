@@ -739,84 +739,6 @@ Team.MAX = 5;
 return Team;
 })();
 
-/* ---------- rules/Round.js ---------- */
-const Round = (() => {
-/* Round: one level. Trial attribute, cost, how it is scored, and the step order. */
-
-// Package A order. Trial activities stay in their original levels.
-const LEVELS = [
-  { n: 1, name: "Boot Up",    trial: "SOP mini-game",                attr: "grit",       cost: 2, judged: false, trialKind: "sop" },
-  { n: 2, name: "Sprint 1",   trial: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "auto" },
-  { n: 3, name: "The Mirror", trial: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false, trialKind: "auto" },
-  { n: 4, name: "Geek Week",  trial: "Testing challenge",            attr: "initiative", cost: 4, judged: false, trialKind: "auto" },
-  { n: 5, name: "Sprint 2",   trial: "Fix the broken team",          attr: "composure",  cost: 4, judged: true,  trialKind: "judged" },
-  { n: 6, name: "Sprint 3",   trial: "Final build and dream speech", attr: "composure",  cost: 5, judged: true,  trialKind: "judged" },
-  { n: 7, name: "Graduation", trial: "Crack the simulation",         attr: null,         cost: 0, judged: false, trialKind: null }
-];
-
-// Every level opens with a briefing (no player actions). Level 7: briefing, then graduation.
-const STEPS = ["briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate"];
-const FINAL_STEPS = ["briefing", "graduation"];
-
-class Round {
-  constructor(levelNumber) {
-    const lv = LEVELS[levelNumber - 1];
-    if (!lv) throw new Error("No level " + levelNumber);
-    Object.assign(this, lv);
-    this.isFinal = lv.n === 7;
-    this.stepIndex = 0;
-    this.sabotages = [];    // { actor, target, drain, cost }
-    this.accusations = [];  // { accuser, target, correct }
-    this.gifts = [];        // { giver, receiver, pts, cost, refused, cancelled }
-    this.completed = new Set();   // one-time Game actions already run this round
-  }
-  static get LEVELS() { return LEVELS; }
-  static get STEPS() { return STEPS; }
-  get steps() { return this.isFinal ? FINAL_STEPS : STEPS; }
-  get step() { return this.steps[this.stepIndex]; }
-  nextStep() { if (this.stepIndex < this.steps.length - 1) this.stepIndex += 1; return this.step; }
-  saboteurs() { return [...new Set(this.sabotages.map(s => s.actor))]; }
-  /* Total drained from this player by sabotage this round. */
-  drainOn(p) { return this.sabotages.filter(s => s.target === p).reduce((n, s) => n + s.drain, 0); }
-  /* Teammates caught sabotaging this round by a correct accusation (each once), leaving out one player. */
-  caughtOn(team, except = null) {
-    return [...new Set(this.accusations.filter(a => a.correct && team.has(a.target) && a.target !== except).map(a => a.target))];
-  }
-
-  /* Save (Part 13): plain data, players by id. The level's fixed data (name, attr, cost...) comes back from LEVELS. */
-  toJSON() {
-    const id = p => p.id;
-    const out = {
-      n: this.n, stepIndex: this.stepIndex, completed: [...this.completed],
-      sabotages: this.sabotages.map(s => ({ ...s, actor: s.actor.id, target: s.target.id })),
-      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id })),
-      gifts: this.gifts.map(g => ({ ...g, giver: g.giver.id, receiver: g.receiver.id })),
-    };
-    if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
-    if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
-    if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
-    return out;
-  }
-  /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
-  static fromJSON(data, { byId, trialFromJSON }) {
-    const r = new Round(data.n);
-    const P = id => byId.get(id);
-    r.stepIndex = data.stepIndex;
-    r.completed = new Set(data.completed);
-    r.sabotages = data.sabotages.map(s => ({ ...s, actor: P(s.actor), target: P(s.target) }));
-    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target) }));
-    r.gifts = data.gifts.map(g => ({ ...g, giver: P(g.giver), receiver: P(g.receiver) }));
-    if (data.trialState) r.trial = trialFromJSON(data.trialState);
-    if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
-    if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
-    return r;
-  }
-}
-return Round;
-})();
-
 /* ---------- rules/Sabotage.js ---------- */
 const Sabotage = (() => {
 /* Sabotage: Contrarian only, teammates only, costs hearts, drains the trial attribute. */
@@ -993,6 +915,117 @@ class Gift {
 
 Gift.MIN_COST = 1;   // every gift costs at least 1 heart
 return Gift;
+})();
+
+/* ---------- rules/Round.js ---------- */
+const Round = (() => {
+/* Round: one level. Trial attribute, cost, how it is scored, and the step order. */
+
+// Package A order. Trial activities stay in their original levels.
+const LEVELS = [
+  { n: 1, name: "Boot Up",    trialName: "SOP mini-game",                attr: "grit",       cost: 2, judged: false, trialKind: "sop" },
+  { n: 2, name: "Sprint 1",   trialName: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "auto" },
+  { n: 3, name: "The Mirror", trialName: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false, trialKind: "auto" },
+  { n: 4, name: "Geek Week",  trialName: "Testing challenge",            attr: "initiative", cost: 4, judged: false, trialKind: "auto" },
+  { n: 5, name: "Sprint 2",   trialName: "Fix the broken team",          attr: "composure",  cost: 4, judged: true,  trialKind: "judged" },
+  { n: 6, name: "Sprint 3",   trialName: "Final build and dream speech", attr: "composure",  cost: 5, judged: true,  trialKind: "judged" },
+  { n: 7, name: "Graduation", trialName: "Crack the simulation",         attr: null,         cost: 0, judged: false, trialKind: null }
+];
+
+// Every level opens with a briefing (no player actions). Level 7: briefing, then graduation.
+const STEPS = ["briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate"];
+const FINAL_STEPS = ["briefing", "graduation"];
+
+class Round {
+  constructor(levelNumber) {
+    const lv = LEVELS[levelNumber - 1];
+    if (!lv) throw new Error("No level " + levelNumber);
+    Object.assign(this, lv);
+    this.isFinal = lv.n === 7;
+    this.stepIndex = 0;
+    this.trial = null;
+    this.sabotages = [];    // { actor, target, drain, cost }
+    this.accusations = [];  // { accuser, target, correct }
+    this.gifts = [];        // { giver, receiver, pts, cost, refused, cancelled }
+    this.completed = new Set();   // one-time Game actions already run this round
+    this.sopBoards = {};
+    this.sopResults = {};
+    this.earnings = {};
+    this.quietHearts = [];
+    this.gritBonus = [];
+    this.done = false;
+  }
+  static get LEVELS() { return LEVELS; }
+  static get STEPS() { return STEPS; }
+  get steps() { return this.isFinal ? FINAL_STEPS : STEPS; }
+  get step() { return this.steps[this.stepIndex]; }
+  nextStep() { if (this.stepIndex < this.steps.length - 1) this.stepIndex += 1; return this.step; }
+  saboteurs() { return [...new Set(this.sabotages.map(s => s.actor))]; }
+  /* Total drained from this player by sabotage this round. */
+  drainOn(p) { return this.sabotages.filter(s => s.target === p).reduce((n, s) => n + s.drain, 0); }
+  /* Teammates caught sabotaging this round by a correct accusation (each once), leaving out one player. */
+  caughtOn(team, except = null) {
+    return [...new Set(this.accusations.filter(a => a.correct && team.has(a.target) && a.target !== except).map(a => a.target))];
+  }
+
+  /* Round actions (Step 7): Game checks step order, then calls Round. */
+  sabotage(actor, target, team, rng) { return Sabotage.apply(this, actor, target, team, rng); }
+  gift(giver, receiver, team, pts, rng) { return Gift.apply(this, giver, receiver, team, pts, rng); }
+  answerGift(gift, accept) {
+    // Only a gift accepted in the gift window saves a player from a missed check-in.
+    return accept ? Gift.accept(this, gift, { savesAttendance: this.step === "giftWindow" })
+                  : Gift.decline(this, gift);
+  }
+  accuse(accuser, target, team, rng) { return Accusation.apply(this, accuser, target, team, rng); }
+  endGlitchReport() {
+    // Exploit: +1 for each Contrarian who sabotaged this round and was not caught.
+    for (const p of this.saboteurs()) if (!p.caughtThisRound) p.creditPath(CharacterType.PATH_EVENTS.uncaughtSabotage);
+  }
+  closeGlitchReport({ advance, refreshTimer } = {}) {
+    this.endGlitchReport();
+    if (refreshTimer) refreshTimer();
+    if (advance) advance();
+  }
+  closeGiftWindow({ advance, lockIn, computeEarnings }) {
+    advance();
+    lockIn();
+    advance();
+    return computeEarnings();
+  }
+
+  /* Save (Part 13): plain data, players by id. The level's fixed data (name, attr, cost...) comes back from LEVELS. */
+  toJSON() {
+    const id = p => p.id;
+    const out = {
+      n: this.n, stepIndex: this.stepIndex, completed: [...this.completed],
+      sabotages: this.sabotages.map(s => ({ ...s, actor: s.actor.id, target: s.target.id })),
+      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id })),
+      gifts: this.gifts.map(g => ({ ...g, giver: g.giver.id, receiver: g.receiver.id })),
+    };
+    if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
+    if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
+    if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
+    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
+    return out;
+  }
+  /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
+  static fromJSON(data, { byId, trialFromJSON }) {
+    const r = new Round(data.n);
+    const P = id => byId.get(id);
+    r.stepIndex = data.stepIndex;
+    r.completed = new Set(data.completed);
+    r.sabotages = data.sabotages.map(s => ({ ...s, actor: P(s.actor), target: P(s.target) }));
+    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target) }));
+    r.gifts = data.gifts.map(g => ({ ...g, giver: P(g.giver), receiver: P(g.receiver) }));
+    const ts = data.trialState || (data.trial && typeof data.trial === "object" ? data.trial : null);
+    if (ts) r.trial = trialFromJSON(ts);
+    if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
+    if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
+    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
+    return r;
+  }
+}
+return Round;
 })();
 
 /* ---------- rules/Vote.js ---------- */
@@ -1805,7 +1838,7 @@ class Game {
   sabotage(actor, target) {
     const why = this.wrongStep("openFloor");
     if (why) return { ok: false, reason: why };
-    return Sabotage.apply(this.round, actor, target, this.teamOf(actor), this.rng);
+    return this.round.sabotage(actor, target, this.teamOf(actor), this.rng);
   }
 
   /* Team switching (Open Floor only). Teams stay 3 to 5 members.
@@ -1852,7 +1885,6 @@ class Game {
       (p.isStuck() ? "You are Stuck." : null) ||
       (!Array.isArray(built) || built.some(s => !all.includes(s)) || new Set(built).size !== built.length ? "Not a valid board." : null);
     if (why) return { ok: false, reason: why };
-    if (!this.round.sopBoards) this.round.sopBoards = {};
     this.round.sopBoards[this.teamOf(p).id] = built.slice();
     return { ok: true };
   }
@@ -1953,19 +1985,19 @@ class Game {
   accuse(accuser, target) {
     const why = this.wrongStep("glitchReport") || (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null);
     if (why) return { ok: false, reason: why };
-    return Accusation.apply(this.round, accuser, target, this.teamOf(accuser), this.rng);
+    return this.round.accuse(accuser, target, this.teamOf(accuser), this.rng);
   }
   endGlitchReport() {
     this.mustBe("glitchReport");
     this.once("endGlitchReport");
-    // Exploit: +1 for each Contrarian who sabotaged this round and was not caught.
-    for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.creditPath(CharacterType.PATH_EVENTS.uncaughtSabotage);
+    this.round.endGlitchReport();
     this.refreshTimer();
   }
   /* Glitch Report over (accusations done or 30 s up): credit Exploit, then open the gift window. */
   closeGlitchReport() {
-    this.endGlitchReport();
-    this.advance();
+    this.mustBe("glitchReport");
+    this.once("endGlitchReport");
+    this.round.closeGlitchReport({ advance: () => this.advance(), refreshTimer: () => this.refreshTimer() });
   }
 
   /* Gifts: Open Floor or the gift window. */
@@ -1973,16 +2005,14 @@ class Game {
     const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
       "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
     if (why) return { ok: false, reason: why };
-    return Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts, this.rng);
+    return this.round.gift(giver, receiver, this.teamOf(giver), pts, this.rng);
   }
   /* The receiver answers a pending gift: accept (true) or decline (false). */
   answerGift(gift, accept) {
     const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
       "Not allowed now. Gifts are answered in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
     if (why) return { ok: false, reason: why };
-    // Only a gift accepted in the gift window saves a player from a missed check-in.
-    return accept ? Gift.accept(this.round, gift, { savesAttendance: this.step === "giftWindow" })
-                  : Gift.decline(this.round, gift);
+    return this.round.answerGift(gift, accept);
   }
 
   /* 5. Lock-in: glitches count (attribute below 0, or a missed check-in nobody saved), reboot, Empathy. */
@@ -2002,10 +2032,11 @@ class Game {
   /* Gift window over: lock in glitches, move to Stats Update and work out earnings. Returns the earnings lines. */
   closeGiftWindow() {
     this.mustBe("giftWindow");
-    this.advance();
-    this.lockIn();
-    this.advance();
-    return this.computeEarnings();
+    return this.round.closeGiftWindow({
+      advance: () => this.advance(),
+      lockIn: () => this.lockIn(),
+      computeEarnings: () => this.computeEarnings(),
+    });
   }
 
   /* 6. Stats Update */
@@ -2375,5 +2406,5 @@ const Bots = {
 return Bots;
 })();
 
-globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Wallet, PlayerStatus, Player, Team, Round, Sabotage, Accusation, Gift, Vote, Trial, Attendance, Timer, Game, Bots });
+globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Wallet, PlayerStatus, Player, Team, Sabotage, Accusation, Gift, Round, Vote, Trial, Attendance, Timer, Game, Bots });
 })();

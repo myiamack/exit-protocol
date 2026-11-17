@@ -18,15 +18,12 @@
    Idle (Part 8): any missed Attendance check sets p.idle; any input (activity) clears it. Idle players take no
    optional actions (gifts, answering gifts, accusations, sabotage, votes); the rule classes refuse them.
    Trial costs are paid as normal. Their points are placed when the timer ends, like anyone else's. */
-import { Accusation } from "./Accusation.js";
 import { Attendance } from "./Attendance.js";
 import { Bots } from "./bots.js";
-import { CharacterType } from "./CharacterType.js";
 import { Gift } from "./Gift.js";
 import { Player } from "./Player.js";
 import { Rng } from "./Rng.js";
 import { Round } from "./Round.js";
-import { Sabotage } from "./Sabotage.js";
 import { Team } from "./Team.js";
 import { Timer } from "./Timer.js";
 import { Trial } from "./Trial.js";
@@ -302,7 +299,7 @@ class Game {
   sabotage(actor, target) {
     const why = this.wrongStep("openFloor");
     if (why) return { ok: false, reason: why };
-    return Sabotage.apply(this.round, actor, target, this.teamOf(actor), this.rng);
+    return this.round.sabotage(actor, target, this.teamOf(actor), this.rng);
   }
 
   /* Team switching (Open Floor only). Teams stay 3 to 5 members.
@@ -349,7 +346,6 @@ class Game {
       (p.isStuck() ? "You are Stuck." : null) ||
       (!Array.isArray(built) || built.some(s => !all.includes(s)) || new Set(built).size !== built.length ? "Not a valid board." : null);
     if (why) return { ok: false, reason: why };
-    if (!this.round.sopBoards) this.round.sopBoards = {};
     this.round.sopBoards[this.teamOf(p).id] = built.slice();
     return { ok: true };
   }
@@ -450,19 +446,19 @@ class Game {
   accuse(accuser, target) {
     const why = this.wrongStep("glitchReport") || (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null);
     if (why) return { ok: false, reason: why };
-    return Accusation.apply(this.round, accuser, target, this.teamOf(accuser), this.rng);
+    return this.round.accuse(accuser, target, this.teamOf(accuser), this.rng);
   }
   endGlitchReport() {
     this.mustBe("glitchReport");
     this.once("endGlitchReport");
-    // Exploit: +1 for each Contrarian who sabotaged this round and was not caught.
-    for (const p of this.round.saboteurs()) if (!p.caughtThisRound) p.creditPath(CharacterType.PATH_EVENTS.uncaughtSabotage);
+    this.round.endGlitchReport();
     this.refreshTimer();
   }
   /* Glitch Report over (accusations done or 30 s up): credit Exploit, then open the gift window. */
   closeGlitchReport() {
-    this.endGlitchReport();
-    this.advance();
+    this.mustBe("glitchReport");
+    this.once("endGlitchReport");
+    this.round.closeGlitchReport({ advance: () => this.advance(), refreshTimer: () => this.refreshTimer() });
   }
 
   /* Gifts: Open Floor or the gift window. */
@@ -470,16 +466,14 @@ class Game {
     const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
       "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
     if (why) return { ok: false, reason: why };
-    return Gift.apply(this.round, giver, receiver, this.teamOf(giver), pts, this.rng);
+    return this.round.gift(giver, receiver, this.teamOf(giver), pts, this.rng);
   }
   /* The receiver answers a pending gift: accept (true) or decline (false). */
   answerGift(gift, accept) {
     const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
       "Not allowed now. Gifts are answered in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
     if (why) return { ok: false, reason: why };
-    // Only a gift accepted in the gift window saves a player from a missed check-in.
-    return accept ? Gift.accept(this.round, gift, { savesAttendance: this.step === "giftWindow" })
-                  : Gift.decline(this.round, gift);
+    return this.round.answerGift(gift, accept);
   }
 
   /* 5. Lock-in: glitches count (attribute below 0, or a missed check-in nobody saved), reboot, Empathy. */
@@ -499,10 +493,11 @@ class Game {
   /* Gift window over: lock in glitches, move to Stats Update and work out earnings. Returns the earnings lines. */
   closeGiftWindow() {
     this.mustBe("giftWindow");
-    this.advance();
-    this.lockIn();
-    this.advance();
-    return this.computeEarnings();
+    return this.round.closeGiftWindow({
+      advance: () => this.advance(),
+      lockIn: () => this.lockIn(),
+      computeEarnings: () => this.computeEarnings(),
+    });
   }
 
   /* 6. Stats Update */
