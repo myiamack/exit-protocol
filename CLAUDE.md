@@ -41,29 +41,54 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 2. Base44 later, for multiplayer only. Rule classes will move there through Base44's Code tab.
 3. The prototype is single player with bot teammates. That is fine for now.
 
-## Code structure (decided): lean OOAD, 8 classes
+## Code structure (decided): OOAD rule classes and screen split
 
-Rule classes must contain **no screen code**. They only change numbers and return results. No DOM, no buttons, no `document`. This lets the same files run in the prototype, in a Node test script, and later in Base44.
+Rule classes in `rules/` must contain **no screen code**. They only change numbers and return results. No DOM, no buttons, no `document`. This lets the same files run in the prototype, in a Node test script, and later in Base44.
+
+Refactor result:
+- **Game is the front desk:** `Game` enforces step order and delegates round actions to `Round`, trial flow to `Trial`, timers to `Timer`, and points/placement to `Economy` through pass-through methods. `Bots` connects only through `Game` hooks (`onStart`, `beforeClose`).
+- **Player owns private parts:** `Player` holds `#attributes` (`Attributes`), `#status` (`PlayerStatus`), `#pathTracker` (`PathTracker`), and `#wallet` (`Wallet`) as private fields and exposes pass-through methods. `Hearts` (`player.hearts`) stays public on purpose.
 
 | Class | Owns |
 |---|---|
-| Player | Type, 5 attributes, hearts (a Hearts object), glitch count, flags, second-path progress. Methods: pay trial cost, cover shortfall with hearts, take points from highest, reboot, place earned points, status flags. |
-| Team | Members, trial result for the round. |
-| Round | Level number, trial attribute, cost, judged or auto-scored, step order. |
+| Player | Coordinates type, hearts, and its 4 private parts (`Attributes`, `PlayerStatus`, `PathTracker`, `Wallet`), plus round flags, caught-by list, and attendance timestamps. |
+| Attributes | 5 attributes, ability rolls, trial cost payment, losses, heart cover, gift target/receive, and stat reboot. |
+| PlayerStatus | Glitch count, idle flag, pending attendance glitch flag, and status flags (`OK`, `At risk`, `Glitching`, `Stuck`, `Idle`). |
+| PathTracker | Second-path progress, graduation checks, and locked ending after `results()`. |
+| Wallet | Points earned, placement draft, Skim, and Cash Out. |
+| Hearts | The heart count (start 3, cap 3). Only its methods change it: spend, refill, refund, lose, empty. Nothing else touches the number. |
+| Team | Members, trial result for the round (`won`), and `trialWins`. |
+| Round | Level number, trial attribute, cost, step index, round records (`sabotages`, `accusations`, `gifts`), and round action delegation (`sabotage`, `gift`, `answerGift`, `accuse`, `endGlitchReport`, `closeGlitchReport`, `closeGiftWindow`). |
 | Sabotage | Cost, drain, Composure shield, target rules. |
 | Accusation | One per player per round, correct or wrong, point effects. |
 | Gift | Cost by type, Independent refusal and refund, overflow refund, Lifeline credit. |
 | Vote | Ranked top 3, team totals, top half wins (rounded up), tie rule. |
-| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: SopTrial (Level 1), AutoTrial (Levels 2 to 4, random order for now), JudgedTrial (Levels 5 and 6, uses Vote). Ties: judged = more first places, then random; others = random. |
-| Game | Runs rounds in step order, applies all rules, Stuck, graduation check, endings, host or no-host mode. |
+| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: `SopTrial` (Level 1, owns `setSopBoard` and `closeSop`), `AutoTrial` (Levels 2 to 4, random order for now), `JudgedTrial` (Levels 5 and 6, owns prompts, writing, and `Vote`). Ties: judged = more first places, then random; others = random. |
+| Economy | Trial cost payments, Stats Update earnings, draft/lock/auto-place points, Cash Out. |
+| Timer | Step timer deadlines, injected clock, `tick()`, `close()`, and save/restore state. |
+| Attendance | Idle and popup timers, pause/resume, and missed check-in detection. |
+| Rng | Seeded, saveable random number generator (`Rng.seeded`, `getState`, `setState`). |
+| Game | Front desk: runs rounds in step order, owns `Timer`, `Economy`, `Attendance`, and `Round`, enforces step rules, Graduation check, endings, `board()`, and `toJSON`/`fromJSON`. |
 | CharacterType | Base class with 3 subclasses: Cooperative, Independent, Contrarian. Each answers: bonus, penalty, max, giftCost, giftRefundPerPoint, canAcceptGifts, canSabotage, path name and goal, plus hasEmpathy, hasCashOut, hasSkim and which event counts for its second path. No `type === "coop"/"indep"/"contra"` checks anywhere else: other code asks the type. |
-| Hearts | The heart count (start 3, cap 3). Only its methods change it: spend, refill, refund, lose, empty. Nothing else touches the number. |
 
 Player.type is a CharacterType object, not a string. Its `key` ("coop", "indep", "contra") is only for lookups and saved data.
 
-Small things (single attributes, flags) are fields and methods inside these classes, not their own classes. Add a class later only if one gets too crowded.
-
 Every import and export in `rules/*.js` must stay on one line, because `tools/build-rules.js` only reads single-line imports and exports.
+
+### File map and screen split
+
+- `rules/`: ES module rule classes (`index.js` exports all; `rules.bundle.js` is built for the browser).
+- `pixel-art.js`: Pixel Intern sprite engine, SVG art, wardrobe tab icons, instructors, and tool icons.
+- `world-map.js`: walkable Floor 60 map (movement, collision, rooms, furniture, doors, ghosts, minimap, fog, room popups) and static office preview map.
+- `game.js`: session, navigation, screens `V[0]` to `V[9]`, HUD, timers display, code rain, elevator cutscene, and button wiring.
+- `board.js`, `attendance-view.js`, `fullscreen-view.js`: shared UI panels/buttons used by `index.html` and `pages/vote-test.html`.
+
+### Test commands
+
+- `npm run build`: rebuild `rules/rules.bundle.js` from `rules/*.js`.
+- `npm test`: run the baseline checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`).
+- `npm run baseline`: save a new fixed-seed baseline snapshot.
+- `npm run test:screens`: run `Tests/check_screens.js` in jsdom.
 
 ## Final rules
 

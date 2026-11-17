@@ -14,14 +14,27 @@ This prototype is single-player with sample teammates. It covers sign-in, menu, 
 ## What's here
 | Path | What it is |
 |---|---|
-| `index.html`, `styles.css`, `game.js` | The playable prototype |
+| `index.html`, `styles.css`, `game.js`, `pixel-art.js`, `world-map.js` | The playable prototype (split into pixel art, Floor 60 map, and game/screen flow) |
+| `board.js`, `attendance-view.js`, `fullscreen-view.js` | Shared screen components used by `index.html` and `pages/vote-test.html` |
+| `rules/` | OOAD rule classes (ES modules, no screen code) and `rules/rules.bundle.js` for the browser |
+| `tools/` | `build-rules.js` (builds `rules/rules.bundle.js`) and `baseline.js` (runs/checks test baselines) |
+| `Tests/` | Automated rule, balance, cheese, save/load, and screen checks |
 | `pages/character-system.html` | Pixel Intern builder, instructors, tools, cursor, holograms and ghosts |
 | `pages/character-concepts.html` | The six original character directions |
+| `pages/vote-test.html`, `pages/vote-test.js` | Test page for Levels 5–6 submissions and voting |
 | `docs/Game_Index.md` | One-page overview: rounds, design decisions, open items |
+| `docs/class-diagram.md` | Mermaid class diagrams for the `rules/` classes |
 | `docs/base44-prompts/` | Build prompts: 0 (start/login/avatar), 1 Characters, 2 Economy, 3 Rules & Round Flow |
 | `docs/design/` | Build notes, Floor 60 room checklist, trial question bank |
 | `docs/research/` | Cycle 60 timeline research, cohort journey interview plan |
 | `docs/ben-coppage/` | Ben Coppage's first brainstorm for the game |
+
+## Running tests
+First install dev dependencies once (`npm install`, needed for `jsdom` in the screen test).
+- `npm run build`: rebuild `rules/rules.bundle.js` after editing any file in `rules/`.
+- `npm test`: run all rule, team, balance, cheese, bundle, and save/load checks (`tools/baseline.js check`).
+- `npm run baseline`: save a new fixed-seed baseline snapshot.
+- `npm run test:screens`: run `Tests/check_screens.js` (plays Level 1 and checks the map/UI in jsdom).
 
 ## Turn on GitHub Pages
 Settings → Pages → Build and deployment → Deploy from a branch → `main` / `(root)` → Save. The game will be live at `https://<username>.github.io/exit-protocol/`.
