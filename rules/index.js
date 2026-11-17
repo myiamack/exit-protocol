@@ -17,5 +17,6 @@ export { Vote } from "./Vote.js";
 export { Trial } from "./Trial.js";
 export { Attendance } from "./Attendance.js";
 export { Timer } from "./Timer.js";
+export { Economy } from "./Economy.js";
 export { Game } from "./Game.js";
 export { Bots } from "./bots.js";

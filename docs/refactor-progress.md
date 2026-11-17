@@ -9,7 +9,7 @@ After each refactor step, run `npm run build`, then `npm test`. Run `npm run tes
 5. [x] Wallet
 6. [x] PlayerStatus
 7. [x] Actions into Round (rename trial label to trialName)
-8. [ ] Economy
+8. [x] Economy
 9. [ ] Trial flow into Trial
 10. [ ] PathTracker and Attributes
 11. [ ] Remove Game-to-Bots link

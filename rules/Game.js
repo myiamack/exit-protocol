@@ -19,7 +19,7 @@
    optional actions (gifts, answering gifts, accusations, sabotage, votes); the rule classes refuse them.
    Trial costs are paid as normal. Their points are placed when the timer ends, like anyone else's. */
 import { Attendance } from "./Attendance.js";
-import { Bots } from "./bots.js";
+import { Economy } from "./Economy.js";
 import { Gift } from "./Gift.js";
 import { Player } from "./Player.js";
 import { Rng } from "./Rng.js";
@@ -27,9 +27,6 @@ import { Round } from "./Round.js";
 import { Team } from "./Team.js";
 import { Timer } from "./Timer.js";
 import { Trial } from "./Trial.js";
-
-
-const POINTS = { win: 4, lose: 2, glitched: 1, correctAccusation: 1, final: 3 };
 
 // Part 6: a team with this many active players or fewer gets the quiet heart buff at round start.
 const QUIET_HEART_TEAM_MAX = 3;
@@ -92,6 +89,7 @@ class Game {
     this.prompts = [];         // game record: the prompt used at each judged level { level, index, text, custom }
     this.submissions = [];     // game record: Level 5-6 submissions once writing closes { level, name, text }
     this.attendance = new Attendance(attendance);
+    this.economy = new Economy();
     this.hooks = hooks;
     this._timer = this._makeTimer(clock);
     this.syncAttendance();   // starts in intermission: paused
@@ -151,7 +149,7 @@ class Game {
   /* Timer ran out at Stats Update or Graduation: everyone's unplaced points go in by the bot rule.
      Points a player already picked (their draft) stay. */
   placeAllRemaining() {
-    for (const p of this.players) if (!p.isStuck() && p.earned > 0) this.autoPlacePoints(p);
+    this.economy.placeAllRemaining(this.players, this.step === "graduation");
   }
 
   /* True if this player's Attendance timer should be paused right now:
@@ -269,7 +267,7 @@ class Game {
     this.players.forEach(p => p.resetRoundFlags());
     this.teams.forEach(t => t.resetRound());
     if (this.round.isFinal) {
-      for (const p of this.players) if (!p.isStuck()) p.earned = Math.min(POINTS.final, p.roomLeft());
+      for (const p of this.players) if (!p.isStuck()) p.earned = Math.min(Economy.POINTS.final, p.roomLeft());
     }
     this.quietHeartBuff();
     this.syncAttendance();   // briefing: paused
@@ -428,12 +426,7 @@ class Game {
     this.mustBe("trial");
     if (!this.didRun("runTrial")) throw new Error("Run the trial first (runTrial).");
     this.once("payTrialCosts");
-    const out = new Map();
-    for (const p of this.players) {
-      const r = p.payTrial(this.round.attr, this.round.cost);
-      if (r) out.set(p, r);
-    }
-    return out;
+    return this.economy.payTrialCosts(this.players, this.round);
   }
   /* Trial over: pay the cost (the trial must have run), then move to the Glitch Report. Returns the payments. */
   endTrial() {
@@ -504,58 +497,38 @@ class Game {
   computeEarnings() {
     this.mustBe("statsUpdate");
     this.once("computeEarnings");
-    const out = new Map();
-    for (const team of this.teams) {
-      for (const p of team.members) {
-        if (p.isStuck()) continue;
-        const lines = [];
-        let e;
-        if (p.glitchedThisRound) { e = POINTS.glitched; lines.push("Glitched this round: 1"); }
-        else if (team.won) { e = POINTS.win; lines.push("Points earned: 4"); }
-        else { e = POINTS.lose; lines.push("Points earned: 2"); }
-        if (p.correctAccusation) { e += POINTS.correctAccusation; lines.push("Correct accusation: +1"); }
-        const skim = p.takeSkim();
-        if (skim) { e += skim; lines.push("Skim: +1"); }
-        p.earned = Math.min(e, p.roomLeft());
-        out.set(p, lines);
-      }
-    }
-    this.round.earnings = Object.fromEntries([...out].map(([p, lines]) => [p.id, lines]));   // saved; the screen reads it
+    const out = this.economy.computeEarnings(this.teams, this.round);
     this.refreshTimer();
     return out;
   }
   /* Stats Update (after earnings) or Graduation: one point picked (+1) or taken back (-1) in the
      player's draft. Picked points stay if the timer runs out. */
   placingWhy() {
-    if (this.step === "graduation") return this.over ? "Results are locked." : null;
-    return this.wrongStep("statsUpdate") || (!this.didRun("computeEarnings") ? "Earnings come first." : null);
+    return this.economy.placingWhy({
+      step: this.step,
+      over: this.over,
+      stepWhy: this.wrongStep("statsUpdate"),
+      earningsReady: this.didRun("computeEarnings"),
+    });
   }
   draftPoint(p, k, delta) {
-    const why = this.placingWhy() || (p.isStuck() ? "You are Stuck." : null) ||
-      (!Player.KEYS.includes(k) ? "No such attribute." : null) ||
-      (delta === 1 ? (!p.canPlace(p.draft, k) ? "No point or no room left there." : null) :
-       delta === -1 ? (!p.canUnplace(p.draft, k) ? "Nothing to take back there." : null) : "Pick +1 or -1.");
+    const why = this.placingWhy();
     if (why) return { ok: false, reason: why };
-    p.draft[k] = (p.draft[k] || 0) + delta;
-    if (!p.draft[k]) delete p.draft[k];
-    return { ok: true, draft: { ...p.draft } };
+    return this.economy.draftPoint(p, k, delta);
   }
   /* Lock in the draft. It must use all the player's points. */
   lockPoints(p) {
-    const why = this.placingWhy() || (p.placeLeft(p.draft) !== 0 ? "Place all your points first." : null);
+    const why = this.placingWhy();
     if (why) return { ok: false, reason: why };
-    p.placePoints(p.draft);
-    return { ok: true };
+    return this.economy.lockPoints(p);
   }
   /* Cash Out adds 1 to p.earned. Only after earnings, before the round ends. */
   cashOut(p) {
     const why = this.wrongStep("statsUpdate") ||
                 (!this.didRun("computeEarnings") ? "Earnings come first." : null) ||
-                (this.didRun("finishRound") ? "The round is over." : null) ||
-                (!p.canCashOut() ? "Cash Out needs an Independent with full hearts, once per game." : null);
+                (this.didRun("finishRound") ? "The round is over." : null);
     if (why) return { ok: false, reason: why };
-    p.cashOut();
-    return { ok: true };
+    return this.economy.cashOut(p);
   }
   /* Stats Update (30 s) or Graduation (60 s) ran out of time: keep the points this player already placed
      (partial), and place the rest by the bot placement rule (at Graduation, the Round 7 way: attributes below
@@ -565,16 +538,7 @@ class Game {
     if (!final) this.mustBe("statsUpdate");
     if (final && this.over) throw new Error("Results are locked.");
     if (!final && !this.didRun("computeEarnings")) throw new Error("Compute earnings first.");
-    const KEYS = Player.KEYS;
-    p.earned = Math.min(p.earned, p.roomLeft());
-    const mine = KEYS.reduce((n, k) => n + (partial[k] || 0), 0);
-    for (const k of KEYS) p.attrs[k] += partial[k] || 0;        // place the rest on top of what was picked
-    const rest = Bots.allocate(p, Math.max(0, p.earned - mine), final);
-    for (const k of KEYS) p.attrs[k] -= partial[k] || 0;
-    const alloc = {};
-    for (const k of KEYS) if ((partial[k] || 0) + (rest[k] || 0)) alloc[k] = (partial[k] || 0) + (rest[k] || 0);
-    p.placePoints(alloc);
-    return alloc;
+    return this.economy.autoPlacePoints(p, partial, final);
   }
   finishRound() {
     this.mustBe("statsUpdate");
@@ -629,7 +593,7 @@ class Game {
     Object.assign(g, {
       teams, players, rng, host: data.host, level: data.level, round: null,
       log: data.log.map(x => ({ ...x })), prompts: data.prompts.map(x => ({ ...x })), submissions: data.submissions.map(x => ({ ...x })),
-      attendance: new Attendance(data.attendance), hooks,
+      attendance: new Attendance(data.attendance), economy: new Economy(), hooks,
     });
     g._timer = g._makeTimer(clock);
     g._timer.restore({ running: data.running, timer: data.timer });
@@ -660,9 +624,10 @@ class Game {
     }
     return this.players.map(p => ({ player: p, ending: p.ending(), wins: p.wins() }));
   }
+
+  static get POINTS() { return Economy.POINTS; }
 }
 
-Game.POINTS = POINTS;
 Game.QUIET_HEART_TEAM_MAX = QUIET_HEART_TEAM_MAX;
 Game.STEP_NAME = STEP_NAME;
 Game.PAUSED_STEPS = PAUSED_STEPS;
