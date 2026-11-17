@@ -108,6 +108,8 @@ async function walk(k, until) {   // hold a key until the condition holds, or th
 async function breakoutLabel() {
   next(); await sleep(50);   // > briefing
   next(); await sleep(100);  // > open floor (map)
+  /* Stop random ghost hops so a ghost near the Breakout Room table cannot flip USE from "Sabotage" to "Listen". */
+  w.eval("W.ghostT = Infinity; W.near = -1; W.ghostPos.forEach(p => { p.on = false; p.x = -9999; p.y = -9999; });");
   await walk("s");                       // down to the elevator wall
   await walk("d");                       // right to the reception wall
   await walk("w", p => p.y <= 712);      // up into the hallway
