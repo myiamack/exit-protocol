@@ -269,6 +269,73 @@ Wallet.CASHOUT_COST = CASHOUT_COST;
 return Wallet;
 })();
 
+/* ---------- rules/PlayerStatus.js ---------- */
+const PlayerStatus = (() => {
+/* PlayerStatus: glitches, idle, pending attendance glitch, and status flags (Step 6).
+   Only reads stats and hearts through Player; never changes them.
+   Rule code only. No screen code. */
+
+const KEYS = ["focus", "initiative", "collab", "composure", "grit"];
+const AT_RISK_COST = 3;
+const STUCK_AT = 2;
+
+class PlayerStatus {
+  #player;
+  #glitches = 0;
+  #idle = false;
+  #attendancePending = false;
+
+  constructor(player) { this.#player = player; }
+
+  get glitches() { return this.#glitches; }
+  set glitches(n) { this.#glitches = n; }
+  get idle() { return this.#idle; }
+  set idle(v) { this.#idle = !!v; }
+  get attendancePending() { return this.#attendancePending; }
+  set attendancePending(v) { this.#attendancePending = !!v; }
+
+  addGlitch() { this.#glitches += 1; }
+  isStuck() { return this.#glitches >= STUCK_AT; }
+  isActive() { return !this.isStuck() && !this.#idle; }
+  isGlitching() { return KEYS.some(k => this.#player.attr(k) < 0); }
+  isGlitchingAny() { return this.isGlitching() || this.#attendancePending; }
+  isAtRisk() {
+    return KEYS.some(k => this.#player.attr(k) + Math.floor(this.#player.hearts.count / this.#player.rate(k)) < AT_RISK_COST);
+  }
+
+  /* What other players see. Never numbers. */
+  flag() {
+    if (this.isStuck()) return "Stuck";
+    if (this.isGlitchingAny()) return "Glitching";
+    if (this.isAtRisk()) return "At risk";
+    return "OK";
+  }
+  /* Progress board status. First that applies: Stuck, Glitching, Idle, At risk, Active. */
+  boardStatus() {
+    if (this.isStuck()) return "Stuck";
+    if (this.isGlitchingAny()) return "Glitching";
+    if (this.#idle) return "Idle";
+    if (this.isAtRisk()) return "At risk";
+    return "Active";
+  }
+
+  toJSON() {
+    return { glitches: this.#glitches, idle: this.#idle, attendancePending: this.#attendancePending };
+  }
+  static fromJSON(player, data) {
+    const s = new PlayerStatus(player);
+    s.#glitches = data.glitches || 0;
+    s.#idle = !!data.idle;
+    s.#attendancePending = !!data.attendancePending;
+    return s;
+  }
+}
+
+PlayerStatus.AT_RISK_COST = AT_RISK_COST;
+PlayerStatus.STUCK_AT = STUCK_AT;
+return PlayerStatus;
+})();
+
 /* ---------- rules/Player.js ---------- */
 const Player = (() => {
 /* Player: one intern. Holds type, 5 attributes, hearts, glitches, flags, second path.
@@ -282,10 +349,11 @@ const GIFT_TIE_ORDER = TIE_ORDER;
 const START_EACH = 1;      // every attribute starts at 1
 const SPEND = 15;          // points the player spends at creation
 const BOOST = 2;           // type boost per bonus attribute
-const AT_RISK_COST = 3;
-const STUCK_AT = 2;        // locked glitches of any kind that make a player Stuck
+const AT_RISK_COST = PlayerStatus.AT_RISK_COST;
+const STUCK_AT = PlayerStatus.STUCK_AT;
 const GRAD_TOTAL = 24, GRAD_MIN = 2;
 const SKIM_MAX = Wallet.SKIM_MAX, CASHOUT_COST = Wallet.CASHOUT_COST;
+const STATUS_KEYS = ["glitches", "idle", "attendancePending"];
 const WALLET_KEYS = ["earned", "draft", "placedThisRound", "skimUsed", "cashOutUsed", "cashedOutThisRound"];
 
 /* Stat abilities (Part 4b). per = chance per stat point. */
@@ -320,8 +388,7 @@ class Player {
     if (total !== SPEND) throw new Error("Must spend exactly " + SPEND + " points");
 
     this.hearts = new Hearts();
-    this.glitches = 0;
-    this.idle = false;          // Part 8: set by any missed Attendance check; cleared by the next input
+    this.status = new PlayerStatus(this);
     this.lastActivity = null;   // time of the last key, click or touch (read by the Attendance check, Part 7)
     this.attendanceMissAt = null;   // time of the last missed Attendance check (restarts the timer)
     this.attendancePopupAt = null;  // time the "Still there?" popup opened; null when closed
@@ -367,33 +434,22 @@ class Player {
   highestKey() { return KEYS.reduce((m, k) => (this.attrs[k] > this.attrs[m] ? k : m), KEYS[0]); }
   lowestKey() { return KEYS.reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m), KEYS[0]); }
 
-  isStuck() { return this.glitches >= STUCK_AT; }
-  /* Active: not Stuck and not idle (Part 8). Used for team counts, the vote math and the light influence. */
-  isActive() { return !this.isStuck() && !this.idle; }
+  get glitches() { return this.status.glitches; }
+  set glitches(n) { this.status.glitches = n; }
+  get idle() { return this.status.idle; }
+  set idle(v) { this.status.idle = v; }
+  get attendancePending() { return this.status.attendancePending; }
+  set attendancePending(v) { this.status.attendancePending = v; }
+
+  isStuck() { return this.status.isStuck(); }
+  isActive() { return this.status.isActive(); }
   /* Any input (including typing a submission) counts as activity and resets the Attendance check. */
   markActive(now = Date.now()) { this.lastActivity = now; }
-  isGlitching() { return KEYS.some(k => this.attrs[k] < 0); }   // an attribute below 0; exactly 0 is safe
-  /* Glitching for any reason: an attribute below 0, or a missed check-in waiting to lock in.
-     This is what the player and their teammates see. */
-  isGlitchingAny() { return this.isGlitching() || this.attendancePending; }
-  isAtRisk() {
-    return KEYS.some(k => this.attrs[k] + Math.floor(this.hearts.count / this.rate(k)) < AT_RISK_COST);
-  }
-  /* What other players see. Never numbers. */
-  flag() {
-    if (this.isStuck()) return "Stuck";
-    if (this.isGlitchingAny()) return "Glitching";
-    if (this.isAtRisk()) return "At risk";
-    return "OK";
-  }
-  /* Progress board status. First that applies: Stuck, Glitching, Idle, At risk, Active. Same At risk rule as flag(). */
-  boardStatus() {
-    if (this.isStuck()) return "Stuck";
-    if (this.isGlitchingAny()) return "Glitching";
-    if (this.idle) return "Idle";
-    if (this.isAtRisk()) return "At risk";
-    return "Active";
-  }
+  isGlitching() { return this.status.isGlitching(); }
+  isGlitchingAny() { return this.status.isGlitchingAny(); }
+  isAtRisk() { return this.status.isAtRisk(); }
+  flag() { return this.status.flag(); }
+  boardStatus() { return this.status.boardStatus(); }
 
   /* Stat abilities (Part 4b). The stat's value right now: negative counts as 0, max 10. */
   abilityValue(k) { return Math.max(0, Math.min(10, this.attrs[k])); }
@@ -436,7 +492,7 @@ class Player {
     this.correctAccusation = false;
     this.glitchedThisRound = false;
     this.attendanceMissesThisRound = 0;      // counted misses (max 1 per round); a miss saved by a gift still counts
-    this.attendancePending = false;          // missed check-in, not yet locked: Glitching until a gift saves it or it locks in
+    this.status.attendancePending = false;   // missed check-in, not yet locked: Glitching until a gift saves it or it locks in
     this.attendanceGlitchThisRound = false;  // this round's locked glitch came only from a missed check-in
     this.wallet.resetRound();
   }
@@ -447,8 +503,12 @@ class Player {
     for (const [k, v] of Object.entries(this)) {
       if (k === "type") out.type = v.key;
       else if (k === "hearts") out.hearts = v.count;
+      else if (k === "status") { out.glitches = v.glitches; out.idle = v.idle; }
       else if (k === "wallet") Object.assign(out, v.toJSON());
-      else out[k] = v === undefined ? null : JSON.parse(JSON.stringify(v));
+      else {
+        out[k] = v === undefined ? null : JSON.parse(JSON.stringify(v));
+        if (k === "attendanceMissesThisRound") out.attendancePending = this.status.attendancePending;
+      }
     }
     return out;
   }
@@ -456,6 +516,10 @@ class Player {
   static fromJSON(data) {
     const p = Object.create(Player.prototype);
     for (const [k, v] of Object.entries(data)) {
+      if (STATUS_KEYS.includes(k)) {
+        if (!p.status) p.status = PlayerStatus.fromJSON(p, data);
+        continue;
+      }
       if (WALLET_KEYS.includes(k)) {
         if (!p.wallet) p.wallet = Wallet.fromJSON(p, data);
         continue;
@@ -464,6 +528,7 @@ class Player {
     }
     p.type = CharacterType.get(data.type);
     p.hearts = new Hearts(data.hearts);
+    if (!p.status) p.status = PlayerStatus.fromJSON(p, data);
     if (!p.wallet) p.wallet = Wallet.fromJSON(p, data);
     if (p.locked) p.locked = Object.freeze(p.locked);
     return p;
@@ -528,10 +593,10 @@ class Player {
      Returns true if a glitch locked in. */
   lockIn() {
     if (this.isStuck() || !this.isGlitchingAny()) return false;
-    if (this.glitchedThisRound && !this.isGlitching()) { this.attendancePending = false; return false; }   // counts as one
+    if (this.glitchedThisRound && !this.isGlitching()) { this.status.attendancePending = false; return false; }   // counts as one
     if (!this.isGlitching()) this.attendanceGlitchThisRound = true;   // attendance only
-    this.attendancePending = false;
-    this.glitches += 1;
+    this.status.attendancePending = false;
+    this.status.addGlitch();
     this.glitchedThisRound = true;
     this.reboot();
     return true;
@@ -2310,5 +2375,5 @@ const Bots = {
 return Bots;
 })();
 
-globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Wallet, Player, Team, Round, Sabotage, Accusation, Gift, Vote, Trial, Attendance, Timer, Game, Bots });
+globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Wallet, PlayerStatus, Player, Team, Round, Sabotage, Accusation, Gift, Vote, Trial, Attendance, Timer, Game, Bots });
 })();
