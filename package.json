@@ -3,7 +3,10 @@
   "private": true,
   "description": "Exit_ProtocoL prototype. Rules in rules/, checks in Tests/.",
   "scripts": {
-    "build": "node tools/build-rules.js"
+    "build": "node tools/build-rules.js",
+    "baseline": "node tools/baseline.js save",
+    "test": "node tools/baseline.js check",
+    "test:screens": "node Tests/check_screens.js"
   },
   "devDependencies": {
     "jsdom": "24.1.3"

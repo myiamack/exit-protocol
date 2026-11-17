@@ -1,0 +1,18 @@
+-- 1. Save and load after every action (20 games, 5492 saves)
+PASS  both copies hold the same state after every action  -> all equal
+PASS  final endings match the game that never reloaded
+PASS  saved and loaded at every round step  -> intermission, briefing, openFloor, trial, glitchReport, giftWindow, lockIn, statsUpdate, graduation
+PASS  saved and loaded while every timer was running  -> intermission, openFloor, sop, glitchReport, giftWindow, statsUpdate, writing, graduation
+-- 2. Load after a passed deadline (48 saves)
+PASS  a passed timer closes on load
+PASS  loading late gives the same game as one that never stopped  -> all equal
+PASS  the next timer starts from the missed deadline  -> all equal
+PASS  tested with every timer  -> intermission, openFloor, sop, glitchReport, giftWindow, statsUpdate, writing, graduation
+-- 3. Saved JSON is plain data
+PASS  no functions, Maps, class objects, undefined or circular links in any save  -> all plain
+PASS  save is plain data at the start of a game
+PASS  save survives JSON text unchanged
+PASS  a game with unsaveable random numbers refuses to save, with a clear reason
+PASS  random numbers continue the same sequence after loading
+
+13 passed, 0 failed  (4.2 s)

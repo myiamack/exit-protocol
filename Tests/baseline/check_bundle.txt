@@ -1,0 +1,21 @@
+PASS  rules/rules.bundle.js exists
+PASS  bundle matches the modules (if not: npm run build)
+PASS  bundle loads as a plain script
+PASS  bundle sets the same names as rules/index.js  -> Rng, Hearts, CharacterType, Player, Team, Round, Sabotage, Accusation, Gift, Vote, Trial, Attendance, Game, Bots
+PASS  modules export the same names as rules/index.js  -> Accusation, Attendance, Bots, CharacterType, Game, Gift, Hearts, Player, Rng, Round, Sabotage, Team, Trial, Vote
+PASS  Rng: same constants and methods in bundle and module
+PASS  Hearts: same constants and methods in bundle and module
+PASS  CharacterType: same constants and methods in bundle and module
+PASS  Player: same constants and methods in bundle and module
+PASS  Team: same constants and methods in bundle and module
+PASS  Round: same constants and methods in bundle and module
+PASS  Sabotage: same constants and methods in bundle and module
+PASS  Accusation: same constants and methods in bundle and module
+PASS  Gift: same constants and methods in bundle and module
+PASS  Vote: same constants and methods in bundle and module
+PASS  Trial: same constants and methods in bundle and module
+PASS  Attendance: same constants and methods in bundle and module
+PASS  Game: same constants and methods in bundle and module
+PASS  Bots: same constants and methods in bundle and module
+
+19 passed, 0 failed

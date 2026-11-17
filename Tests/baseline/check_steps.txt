@@ -1,0 +1,305 @@
+PASS  Round starts in Open Floor  -> openFloor
+PASS  Accuse during Open Floor  -> Not allowed now. That happens in Glitch Report; the game is in Open Floor.
+PASS  Pay trial costs during Open Floor  -> Not allowed now. That happens in Trial; the game is in Open Floor.
+PASS  Sabotage during Open Floor is allowed
+PASS  Gift during Open Floor is allowed
+PASS  Advance moves to Trial  -> trial
+PASS  Sabotage during Trial  -> Not allowed now. That happens in Open Floor; the game is in Trial.
+PASS  Accuse during Trial  -> Not allowed now. That happens in Glitch Report; the game is in Trial.
+PASS  Gift during Trial  -> Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in Trial.
+PASS  Pay costs before the trial runs  -> Run the trial first (runTrial).
+PASS  Advance before trial costs are paid  -> Finish Trial first (payTrialCosts).
+PASS  Vote on a level that is not judged  -> This level is not judged.
+PASS  Level 1 ranks every team
+PASS  Run the trial twice  -> runTrial already ran this round.
+PASS  Pay trial costs twice  -> payTrialCosts already ran this round.
+PASS  Accuse during Glitch Report is allowed
+PASS  Advance before the Glitch Report is closed  -> Finish Glitch Report first (endGlitchReport).
+PASS  Accuse after the Glitch Report closed  -> The Glitch Report is closed.
+PASS  Lock-in during the Gift window  -> Not allowed now. That happens in Lock-in; the game is in Gift window.
+PASS  Reaches Stats Update  -> statsUpdate
+PASS  Cash Out before earnings  -> Earnings come first.
+PASS  Advance past Stats Update  -> Stats Update is the last step. Call finishRound, then startNextRound.
+PASS  Start the next round before finishing this one  -> Finish this round first (finishRound).
+PASS  Finish the round before points are placed  -> P0 has not placed their points.
+PASS  Winners: 4 teams -> 2, 5 -> 3, 7 -> 4  -> 2,3,4
+PASS  SOP score: all 6 right, endless step out = 7
+PASS  SOP score: endless step included = right steps only
+PASS  SOP score: nothing placed = 0 (not counted as leaving it out)
+PASS  SOP ranks by score (7, 5, 3, 1) and the top 2 win  -> S1:7 S3:5 S0:3 S2:1
+PASS  AutoTrial: 4 teams, exactly 2 win
+PASS  Judged: 5 teams, 3 win; cutoff tie goes to more first places  -> A:9.6/2W C:9.6/1W E:6/1W D:6/0 B:4.8/1
+PASS  Sabotage on own team allowed before being caught
+PASS  Correct accusation catches the Contrarian
+PASS  Caught list holds team A only  -> A
+PASS  Caught Contrarian loses 0 points  -> 24
+PASS  Caught round gives no Skim
+PASS  Next round: sabotage blocked flag is on
+PASS  Next round: blocked on team A  -> You were caught last round. No sabotage on any team this round.
+PASS  Next round: blocked on team B too (any team)  -> You were caught last round. No sabotage on any team this round.
+PASS  Round after: block is off
+PASS  Round after: still refused on team A (caught there)  -> This team caught you. No sabotage while you are on it.
+PASS  Round after: sabotage allowed on team B
+PASS  Exploit still counts after being caught  -> 1
+PASS  Uncaught round gives Skim
+PASS  Caught on team B: 0 points lost  -> 24 -> 24
+PASS  Caught list now holds A and B  -> A,B
+PASS  Exploit never lost after a second catch  -> 1
+PASS  Blocked again the round after the second catch
+PASS  Wrong accusation tie order: all equal -> Focus  -> focus
+PASS  Wrong accusation tie order: Collab = Initiative -> Collaboration  -> collab
+PASS  Wrong accusation tie order: Initiative = Grit -> Initiative  -> initiative
+PASS  Wrong accusation tie order: Grit = Composure -> Grit  -> grit
+PASS  Wrong accusation tie order: Highest wins over order -> Composure  -> composure
+PASS  Negative stat counts as 0
+PASS  Stat above 10 counts as 10
+PASS  Own screen line: 'Focus 6: 60% safe accusation'  -> Focus 6: 60% safe accusation
+PASS  An ability roll without the seeded rng is refused  -> rollAbility needs the game's seeded rng.
+PASS  Focus 6, roll 0.59: wrong accusation costs nothing
+PASS  Focus 6, roll 0.61: wrong accusation costs 1
+PASS  Collab 3, roll 0.29: 2-point gift costs 1 heart (2 - 1)  -> 2
+PASS  Declined discounted gift refunds the 1 heart paid  -> 3
+PASS  Discount never goes below 1: 1-point gift still costs 1  -> 2
+PASS  Cooperative 1-point gift, roll fires: no discount shown (cost stayed 1)
+PASS  Collab 3, roll 0.31: gift costs 2 hearts  -> 1
+PASS  Refused gift: no Collaboration roll, nothing spent
+PASS  Independent 1-point gift with discount: 2 -> 1 heart  -> 2
+PASS  Independent 2-point gift with discount: 3 -> 2 hearts  -> 1
+PASS  Discounted gift that cannot land refunds the 1 paid, not 2  -> 3
+PASS  0 hearts: gift refused, even when the discount would fire  -> Not enough hearts.
+PASS  Composure 6, roll 0.59: drain 1
+PASS  Composure 6, roll 0.61: drain 2
+PASS  Old rule gone: Composure 9, roll 0.95: drain 2
+PASS  Grit 10, roll 0.49: extra heart
+PASS  Grit 10, roll 0.51: no extra heart
+PASS  Initiative 5: 1st+2nd = (3+2) x 1.5 = 7.5, 3rd = 1 x 1.5 = 1.5  -> 7.5 / 1.5
+PASS  Influence: +1.5 and -1.5 (negative grit counts as 0)  -> 1.5 / -1.5
+PASS  AutoTrial: base is a whole number 0 to 7, score = base + influence
+PASS  SOP score includes influence: 5 + 1.5 = 6.5 beats 7 - 1.5 = 5.5  -> 6.5 / 5.5
+PASS  Switch to your own team  -> You are already on that team.
+PASS  Switch into a full team (5)  -> Team B is full (5 members).
+PASS  Switch out of a team of 3  -> Team C would drop below 3 members.
+PASS  Contrarian sabotages a teammate
+PASS  Saboteur switches the same round  -> You sabotaged this round. You cannot switch teams this round.
+PASS  Switch from 4 to 3 is allowed
+PASS  Player moved: A has 3, C has 4  -> 3 / 4
+PASS  teamId and teamOf follow the switch
+PASS  Switch out of A now that it has 3  -> Team A would drop below 3 members.
+PASS  Switch during Trial  -> Not allowed now. That happens in Open Floor; the game is in Trial.
+PASS  Stuck player switches  -> You are Stuck.
+PASS  Move back to A (A 4, C 3)
+PASS  Caught Contrarian sabotages on the team that caught them  -> This team caught you. No sabotage while you are on it.
+PASS  Caught Contrarian switches to C
+PASS  Sabotage allowed on the new team
+PASS  5 vs 3: B voters 6, S voters 8  -> S:8/(3x8)=0.333 B:10/(5x6)=0.333 X:0/(3x8)=0.000
+PASS  5 vs 3: B 10 / (5 x 6) = 0.333, S 8 / (3 x 8) = 0.333  -> S:8/(3x8)=0.333 B:10/(5x6)=0.333 X:0/(3x8)=0.000
+PASS  5 vs 3: equal score, tie goes to more first places (S 2, B 1)  -> S:8/(3x8)=0.333 B:10/(5x6)=0.333 X:0/(3x8)=0.000
+PASS  5 vs 3: top half win (3 teams -> 2): S and B
+PASS  Initiative first, then divide: B (3+3+8) / 30 = 0.467 beats S (3+3+4) / 24 = 0.417  -> B:14/(5x6)=0.467 S:10/(3x8)=0.417 X:0/(3x8)=0.000
+PASS  Stuck not counted: B 10 / (3 x 6) = 0.556 beats S 8 / (3 x 6) = 0.444  -> B:10/(3x6)=0.556 S:8/(3x6)=0.444 X:0/(3x6)=0.000
+PASS  Team with no active players scores 0  -> B:10/(5x3)=0.667 S:8/(0x8)=0.000 X:0/(3x5)=0.000
+PASS  10 prompts each for Levels 5 and 6
+PASS  No host: setPrompt is refused  -> No host. The engine picks the prompt.
+PASS  No host: random prompt from the Level 5 list  -> Halfway through the sprint, you find a bug that breaks the main feature. Fix it now or finish the planned work first? Why?
+PASS  No host: different seeds pick different prompts  -> 6,7,9,5,0,1
+PASS  Host: writing cannot start before a prompt is picked  -> The host picks a prompt first.
+PASS  Host: empty custom prompt is refused  -> Type a prompt first.
+PASS  Host: custom prompt of 201 characters is refused  -> Prompt too long: 201 of 200 characters.
+PASS  Host: custom prompt of exactly 200 characters is accepted
+PASS  Host: list pick works
+PASS  Host: custom prompt replaces the pick
+PASS  Custom prompt saved on the game record  -> {"level":5,"index":null,"text":"What did you learn this week?","custom":true}
+PASS  Custom prompt not added to the list
+PASS  Prompt cannot change after writing starts  -> Writing already started.
+PASS  Submission of 301 characters is refused  -> Too long: 301 of 300 characters.
+PASS  Empty submission is refused  -> Write something first.
+PASS  Submission of exactly 300 characters is accepted
+PASS  Second submission by the same player is refused  -> You already submitted.
+PASS  Counter: 301 characters shows 1 over  -> {"length":301,"left":-1,"tooLong":true}
+PASS  Stuck player cannot submit  -> Stuck players do not write.
+PASS  Writing still open with one active player left
+PASS  Vote cannot start while writing is open  -> Writing is still open. Close it first (closeWriting).
+PASS  Writing closes early when every active player has submitted
+PASS  Submit after writing closed is refused  -> Writing is closed.
+PASS  Writing stays open until the timer ends if someone has not submitted
+PASS  No submission: not in anyone's choices
+PASS  No submission: ranking them is refused  -> J0 has no submission and cannot be ranked.
+PASS  No submission: they can still vote
+PASS  Vote runs and ranks every team  -> Team J1:6.0 Team J2:1.2 Team J0:0.0
+PASS  Every bot submits "Bot answer"  -> Bot answer
+PASS  Bot votes counted
+PASS  Typing resets the Attendance check (last activity updated)  -> 5000
+PASS  Submitting also counts as activity  -> 9000
+PASS  Board has only players, teams, submissions  -> players,teams,submissions
+PASS  Board players: only name, team, status  -> name,team,status
+PASS  Board teams: only name, wins  -> name,wins
+PASS  Board values are plain text and numbers (no Player objects)
+PASS  Board JSON has no type, attributes, hearts, gifts, Skim or Cash Out
+PASS  Status Active  -> Active
+PASS  Status At risk (same rule as the HUD flag)  -> At risk
+PASS  Status Glitching  -> Glitching
+PASS  Status Stuck  -> Stuck
+PASS  Status Idle  -> Idle
+PASS  Status updates live (At risk back to Active)  -> Active
+PASS  Level 5 submissions appear on the board with name and level  -> 12 entries
+PASS  Team wins update after every trial (2 winners each level)
+PASS  Team wins add up to 12 after 6 levels  -> Team B0:4 Team B1:6 Team B2:2
+PASS  Level 6 submissions added after Level 5's  -> 11 at Level 6
+PASS  No submissions on the board before Level 5
+PASS  Default settings: 60 s idle, 15 s popup, 1 per round  -> {"idleMs":60000,"popupMs":15000,"maxPerRound":1}
+PASS  Settings can be changed (idle, popup, per-round max)  -> {"idleMs":30000,"popupMs":5000,"maxPerRound":2}
+PASS  A bad setting is refused  -> Bad value for idleMs: -5
+PASS  No popup before 60 s
+PASS  Popup opens at 60 s with a 15 s countdown  -> popup 15000
+PASS  Popup still open at 74 s
+PASS  No input by 75 s (Open Floor): missed, pending, Glitching, glitch count unchanged  -> glitches 0
+PASS  Pending miss leaves attributes and hearts unchanged
+PASS  Pending miss is not a locked glitch yet (no glitchedThisRound)
+PASS  Teammates see Glitching on the Board while idle (Glitching comes before Idle)  -> Glitching
+PASS  After the next input: still Glitching on the Board  -> Glitching
+PASS  Board: idle, not Glitching shows Idle  -> Idle
+PASS  Board: idle and At risk shows Idle  -> Idle
+PASS  Board: At risk, not idle shows At risk  -> At risk
+PASS  Bots are never checked
+PASS  Second miss in the same round is not counted  -> glitches 0
+PASS  Unsaved miss locks in at Lock-in: 1 glitch, not Stuck  -> glitches 1
+PASS  Next round: a miss counts again (pending)  -> true
+PASS  Per-round max is a setting (max 2: two misses count)
+PASS  Two misses in one round still lock in as one glitch  -> glitches 1
+PASS  One locked glitch: not Stuck
+PASS  Locked glitch + locked Attendance glitch = Stuck  -> glitches 2
+PASS  Stuck players are no longer checked
+PASS  Two Attendance glitches (two rounds) = Stuck  -> glitches 2
+PASS  Input at 50 s: no popup at 75 s
+PASS  Popup opens 60 s after the last input (110 s)
+PASS  Input during the popup closes it
+PASS  Input during the popup prevents the glitch
+PASS  Typing a submission counts as input  -> 120000 > 178000
+PASS  First check of the game starts the clock (no popup, no glitch)
+PASS  First time over the limit shows the popup with the full 15 s, not a glitch  -> popup 15000, glitches 0
+PASS  Still the popup 14 s later, no glitch
+PASS  Miss only after the 15 s countdown  -> missed
+PASS  Old input before the first check: popup first, no glitch  -> popup
+PASS  Answering that popup prevents the glitch
+PASS  Paused: no popup or glitch, however long  -> glitches 0
+PASS  Paused: check() says paused
+PASS  Resume: no popup at 59 s after resume
+PASS  Resume gives a full 60 s before the popup  -> popup
+PASS  Then a full 15 s countdown before a miss
+PASS  Popup open at 65 s
+PASS  Pausing during an open popup closes it with no glitch  -> glitches 0
+PASS  After resume, the old popup does not come back (no popup until 60 s later)
+PASS  After resume, popup at 60 s
+PASS  Paused from the start: nothing happens
+PASS  First resume starts the clock: popup at resume + 60 s
+PASS  After a miss, no popup until 60 s later
+PASS  Still pending in the gift window
+PASS  Accepted gift in the gift window cancels the pending glitch
+PASS  Normal gift cost (1 heart for a Cooperative)  -> 3 > 2
+PASS  Points go to the lowest attribute (Initiative 3)  -> initiative
+PASS  Counts for Lifeline  -> progress 1
+PASS  A miss saved by a gift still uses the cap: next miss not counted
+PASS  Saved: nothing locks in
+PASS  Open Floor gift lands but does not cancel the pending glitch, no Lifeline
+PASS  Not saved: locks in at Lock-in (+1 glitch, glitchedThisRound)
+PASS  Reboot: hearts to 0, no attribute refill  -> {"focus":5,"initiative":3,"collab":6,"composure":6,"grit":4}
+PASS  Empathy: Cooperative teammate loses 1 heart  -> 3 > 2
+PASS  1 point that round  -> 1
+PASS  Pending miss + attribute below 0 in the same round = 1 glitch  -> glitches 1
+PASS  In Stats Update a miss cannot wait
+PASS  Miss after the window closed: locks in at once
+PASS  Same reboot: hearts to 0, attributes unchanged, Empathy
+PASS  A second locked glitch in the same round counts as one
+PASS  Attribute glitch locked, then a miss after the window: still 1 glitch  -> glitches 1
+PASS  Uncounted miss: no pending, no glitch
+PASS  Cooperative bot gifts to a pending teammate
+PASS  Accepting it saves the player
+PASS  Glitch Report: no Attendance popup or miss, however long
+PASS  Auto-place refused before Stats Update work is ready  -> Not allowed now. That happens in Stats Update; the game is in Intermission.
+PASS  Auto-place keeps the player's own pick and places the rest  -> {"collab":1,"composure":2,"grit":1} earned 4
+PASS  Stats Update: no Attendance popup or miss
+PASS  Round can finish after auto-place
+PASS  Paused steps are kept in Game: briefing, intermission, Glitch Report, Stats Update
+PASS  Glitch Report and Stats Update end on their own after 30 s
+PASS  New game starts in intermission (covers the intro), paused
+PASS  Gift during the briefing is refused  -> Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in Briefing.
+PASS  Check during the briefing: nothing, however long
+PASS  Leaving the briefing starts a fresh clock (resume time = Game's clock)  -> 2000 vs 2000
+PASS  Graduation: running for players with points to place, paused for players with 0  -> 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R
+PASS  Graduation: everyone paused once all points are placed
+PASS  Every step was visited, Levels 1 to 7  -> briefing,openFloor,trial,glitchReport,giftWindow,lockIn,statsUpdate,intermission,graduation
+PASS  Paused in every briefing, intermission, Glitch Report and Stats Update; running in every other step
+PASS  Level 7 opens with a briefing, everyone paused
+PASS  Graduation step  -> graduation
+PASS  0 points to place: paused from the start of Graduation
+PASS  Players with points to place: running
+PASS  Still placing: popup at 60 s
+PASS  Placed all points: paused at the next check
+PASS  Still placing: a miss at Graduation locks in at once  -> glitches 1
+PASS  Placed all points: no popup or glitch however long  -> glitches 0
+PASS  0 points to place: no popup or glitch however long
+PASS  After results(): everyone paused
+PASS  Endings locked at results(): no later change alters them
+PASS  Both kinds of ending were tested (some Graduated, some not)  -> R0:Contract renewed:false R1:Graduated:true R2:Graduated:true R3:Contract renewed:false R4:Graduated:true R5:Graduated:true R6:Graduated:true R7:Graduated:true
+PASS  Part 8: not idle at the start
+PASS  Part 8: a missed check-in sets idle
+PASS  Part 8: Team.active() leaves out idle players
+PASS  Part 8: the next input clears idle
+PASS  Part 8: a miss over the per-round cap still sets idle (the cap limits glitches only)  -> missed counted false
+PASS  Glitch Report: Attendance paused
+PASS  Part 8: input on a paused screen also clears idle
+PASS  Part 8: bots never go idle
+PASS  Part 8: idle player cannot give a gift  -> You are idle.
+PASS  Part 8: a gift to an idle player can be sent (giver pays)
+PASS  Part 8: idle player cannot accept a gift  -> You are idle.
+PASS  Part 8: idle player cannot decline a gift  -> You are idle.
+PASS  Part 8: idle players can still be sabotaged (only Stuck are protected)
+PASS  Part 8: idle player cannot sabotage  -> You are idle.
+PASS  Part 8: gift to an idle player expires at the end of the step, giver refunded  -> expired hearts 3
+PASS  Part 8: idle players pay trial costs as normal
+PASS  Part 8: idle player cannot accuse  -> You are idle.
+PASS  Part 8: idle player's Glitch Report counts as Skip
+PASS  Part 8: back in time, the player can answer a gift sent while idle
+PASS  Part 8: Cash Out is not blocked for idle players
+PASS  Part 8: idle player's points are auto-placed at Stats Update  -> 4 points, total 22 > 26
+PASS  Round finishes with the idle player's points placed
+PASS  Part 8: team switching is not blocked for idle players
+PASS  Part 8: light influence leaves out idle players  -> 0 / 0
+PASS  Level 5 trial
+PASS  Part 8: writing closes early when every active player has submitted (idle not waited for)
+PASS  Part 8: idle players are not in the ranking choices
+PASS  Only the 2 active players on team 1 can be ranked  -> 2
+PASS  Part 8: an idle player cannot be ranked  -> I5 is idle and cannot be ranked.
+PASS  Part 8: an idle player cannot vote  -> You are idle.
+PASS  Ranking without idle players works
+PASS  Part 8: a ballot cast before going idle stays
+PASS  Part 8: vote math leaves out idle players (each team: 2 active, 2 possible voters)  -> t0 2/2, t1 2/2
+PASS  Graduation step
+PASS  Level 7 placement timer is 60 seconds
+PASS  Level 7 auto-placement: Round 7 bot rule (attributes below 2 first)  -> focus 2
+PASS  Level 7 auto-placement keeps points already placed
+PASS  Part 8: idle at Graduation = Contract renewed, even with graduating stats  -> Contract renewed
+PASS  Part 8: idle with a completed second path still wins  -> Exploit complete
+PASS  Not idle with graduating stats: Graduated
+PASS  Part 8: input before results() clears idle: Graduated  -> Graduated
+PASS  Ending stays locked after idle clears
+PASS  Level 7 auto-placement refused after results()  -> Results are locked.
+PASS  Part 6: team with 3 active players: +1 heart each at round start
+PASS  Part 6: capped at the normal max  -> 3
+PASS  Part 6: team with 4 active players gets nothing
+PASS  Part 6: team of 4 with 1 idle (3 active) gets the buff, idle player included
+PASS  Part 6: team of 4 with 1 Stuck (3 active): the 3 get the buff
+PASS  Part 6: Stuck players get nothing
+PASS  Part 6: logged for the host only (10 players)  -> 1 entries
+PASS  Part 6: not shown on the Board (no hearts in board data)
+PASS  Part 6: leaving the briefing gives no second buff
+PASS  Part 6: the buff happens once per round (1 log entry after the whole round)  -> 1
+PASS  Part 6: the next round gets its own buff  -> 2
+PASS  Hearts start at 3  -> 3
+PASS  Setting hearts.count directly does nothing  -> 3
+PASS  Spend more than you have is refused  -> 3
+PASS  Refill and refund stop at the cap of 3  -> 3
+PASS  Lose never goes below 0
+PASS  Empty sets hearts to 0
+
+303 passed, 0 failed
