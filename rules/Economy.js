@@ -76,9 +76,9 @@ class Economy {
     const KEYS = Player.KEYS;
     p.earned = Math.min(p.earned, p.roomLeft());
     const mine = KEYS.reduce((n, k) => n + (partial[k] || 0), 0);
-    for (const k of KEYS) p.attrs[k] += partial[k] || 0;        // place the rest on top of what was picked
+    for (const k of KEYS) p.addAttr(k, partial[k] || 0);        // place the rest on top of what was picked
     const rest = Bots.allocate(p, Math.max(0, p.earned - mine), final);
-    for (const k of KEYS) p.attrs[k] -= partial[k] || 0;
+    for (const k of KEYS) p.addAttr(k, -(partial[k] || 0));
     const alloc = {};
     for (const k of KEYS) if ((partial[k] || 0) + (rest[k] || 0)) alloc[k] = (partial[k] || 0) + (rest[k] || 0);
     p.placePoints(alloc);

@@ -1,72 +1,61 @@
-/* Player: one intern. Holds type, 5 attributes, hearts, glitches, flags, second path.
+/* Player: one intern. Coordinates type, hearts, attributes, status, second path, and wallet.
    Rule code only. No screen code. Works in the browser and in Node. */
+import { Attributes } from "./Attributes.js";
 import { CharacterType } from "./CharacterType.js";
 import { Hearts } from "./Hearts.js";
+import { PathTracker } from "./PathTracker.js";
 import { PlayerStatus } from "./PlayerStatus.js";
 import { Wallet } from "./Wallet.js";
 
 
-const KEYS = ["focus", "initiative", "collab", "composure", "grit"];
-const TIE_ORDER = ["focus", "collab", "initiative", "grit", "composure"];   // the usual tie order
-const GIFT_TIE_ORDER = TIE_ORDER;
-
-const START_EACH = 1;      // every attribute starts at 1
-const SPEND = 15;          // points the player spends at creation
-const BOOST = 2;           // type boost per bonus attribute
+const KEYS = Attributes.KEYS;
+const TIE_ORDER = Attributes.TIE_ORDER;
+const START_EACH = Attributes.START_EACH;
+const SPEND = Attributes.SPEND;
+const BOOST = Attributes.BOOST;
+const ABILITY = Attributes.ABILITY;
 const AT_RISK_COST = PlayerStatus.AT_RISK_COST;
 const STUCK_AT = PlayerStatus.STUCK_AT;
-const GRAD_TOTAL = 24, GRAD_MIN = 2;
+const GRAD_TOTAL = PathTracker.GRAD_TOTAL;
+const GRAD_MIN = PathTracker.GRAD_MIN;
 const SKIM_MAX = Wallet.SKIM_MAX, CASHOUT_COST = Wallet.CASHOUT_COST;
 const STATUS_KEYS = ["glitches", "idle", "attendancePending"];
+const PATH_KEYS = ["pathProgress", "pathDone", "locked"];
 const WALLET_KEYS = ["earned", "draft", "placedThisRound", "skimUsed", "cashOutUsed", "cashedOutThisRound"];
-
-/* Stat abilities (Part 4b). per = chance per stat point. */
-const ABILITY = {
-  focus:      { name: "Focus",         per: 0.10, what: "safe accusation" },
-  collab:     { name: "Collaboration", per: 0.10, what: "gift costs 1 heart less (min 1)" },
-  initiative: { name: "Initiative",    per: 0,    what: "vote points (applies in Levels 5 and 6)" },
-  grit:       { name: "Grit",          per: 0.05, what: "extra heart at round end" },
-  composure:  { name: "Composure",     per: 0.10, what: "sabotage drains only 1" },
-};
+const PART_KEYS = ["attrs", ...STATUS_KEYS, ...PATH_KEYS, ...WALLET_KEYS];
+const FROM_JSON = Symbol();
 
 class Player {
+  #attributes;
+  #status;
+  #pathTracker;
+  #wallet;
+
   /* type: a key ("coop", "indep", "contra") or a CharacterType.
      spend: { focus: n, ... } adding up to 15. Boost is added here. */
-  constructor({ id, name, type, spend, isBot = false }) {
+  constructor(opts) {
+    if (opts === FROM_JSON) return;
+    const { id, name, type, spend, isBot = false } = opts;
     this.id = id;
     this.name = name;
     this.type = CharacterType.get(type);
     this.isBot = isBot;
     this.teamId = null;
 
-    const t = this.type;
-    this.attrs = {};
-    let total = 0;
-    for (const k of KEYS) {
-      const s = spend[k] || 0;
-      if (s < 0) throw new Error("Spend cannot be negative");
-      total += s;
-      this.attrs[k] = START_EACH + s + (t.bonus.includes(k) ? BOOST : 0);
-      if (this.attrs[k] > this.max(k)) throw new Error(k + " is over its max");
-    }
-    if (total !== SPEND) throw new Error("Must spend exactly " + SPEND + " points");
-
+    this.#attributes = new Attributes(this, spend);
     this.hearts = new Hearts();
-    this.status = new PlayerStatus(this);
+    this.#status = new PlayerStatus(this);
     this.lastActivity = null;   // time of the last key, click or touch (read by the Attendance check, Part 7)
     this.attendanceMissAt = null;   // time of the last missed Attendance check (restarts the timer)
     this.attendancePopupAt = null;  // time the "Still there?" popup opened; null when closed
     this.attendancePaused = false;  // true on screens with no input (intro, briefings, intermissions)
     this.attendanceResumeAt = null; // time the timer last resumed (starts a fresh clock)
 
-    // second path
-    this.pathProgress = 0;
-    this.pathDone = false;
-    this.locked = null;   // { ending, wins }, set once by Game.results()
+    this.#pathTracker = new PathTracker(this);
 
     // Contrarian
     this.caughtBy = [];   // ids of teams that caught this player sabotaging
-    this.wallet = new Wallet(this);
+    this.#wallet = new Wallet(this);
 
     this.resetRoundFlags();
   }
@@ -89,51 +78,43 @@ class Player {
 
   isBonus(k) { return this.type.isBonus(k); }
   max(k) { return this.type.max(k); }
-  rate(k) { return this.isBonus(k) ? 1 : 2; }   // hearts per point covered
-  attr(k) { return this.attrs[k]; }
-  addAttr(k, delta) { this.attrs[k] += delta; }
+  heartCount() { return this.hearts.count; }
+  spendHearts(n) { return this.hearts.spend(n); }
 
-  total() { return KEYS.reduce((s, k) => s + this.attrs[k], 0); }
-  lowest() { return Math.min(...KEYS.map(k => this.attrs[k])); }
-  highestKey() { return KEYS.reduce((m, k) => (this.attrs[k] > this.attrs[m] ? k : m), KEYS[0]); }
-  lowestKey() { return KEYS.reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m), KEYS[0]); }
+  get attrs() { return this.#attributes.attrs; }
+  set attrs(a) { this.#attributes.attrs = a; }
+  rate(k) { return this.#attributes.rate(k); }
+  attr(k) { return this.#attributes.attr(k); }
+  addAttr(k, delta) { this.#attributes.addAttr(k, delta); }
 
-  get glitches() { return this.status.glitches; }
-  set glitches(n) { this.status.glitches = n; }
-  get idle() { return this.status.idle; }
-  set idle(v) { this.status.idle = v; }
-  get attendancePending() { return this.status.attendancePending; }
-  set attendancePending(v) { this.status.attendancePending = v; }
+  total() { return this.#attributes.total(); }
+  lowest() { return this.#attributes.lowest(); }
+  highestKey() { return this.#attributes.highestKey(); }
+  lowestKey() { return this.#attributes.lowestKey(); }
+  highestKeyIn(order) { return this.#attributes.highestKeyIn(order); }
 
-  isStuck() { return this.status.isStuck(); }
-  isActive() { return this.status.isActive(); }
+  get glitches() { return this.#status.glitches; }
+  set glitches(n) { this.#status.glitches = n; }
+  get idle() { return this.#status.idle; }
+  set idle(v) { this.#status.idle = v; }
+  get attendancePending() { return this.#status.attendancePending; }
+  set attendancePending(v) { this.#status.attendancePending = v; }
+
+  isStuck() { return this.#status.isStuck(); }
+  isActive() { return this.#status.isActive(); }
   /* Any input (including typing a submission) counts as activity and resets the Attendance check. */
   markActive(now = Date.now()) { this.lastActivity = now; }
-  isGlitching() { return this.status.isGlitching(); }
-  isGlitchingAny() { return this.status.isGlitchingAny(); }
-  isAtRisk() { return this.status.isAtRisk(); }
-  flag() { return this.status.flag(); }
-  boardStatus() { return this.status.boardStatus(); }
+  isGlitching() { return this.#status.isGlitching(); }
+  isGlitchingAny() { return this.#status.isGlitchingAny(); }
+  isAtRisk() { return this.#status.isAtRisk(); }
+  flag() { return this.#status.flag(); }
+  boardStatus() { return this.#status.boardStatus(); }
 
-  /* Stat abilities (Part 4b). The stat's value right now: negative counts as 0, max 10. */
-  abilityValue(k) { return Math.max(0, Math.min(10, this.attrs[k])); }
-  /* Chance (0 to 1) for the chance-based abilities. */
-  abilityChance(k) { return this.abilityValue(k) * ABILITY[k].per; }
-  /* Vote weight from Initiative: 1 + Initiative / 10. */
-  voteWeight() { return 1 + this.abilityValue("initiative") / 10; }
-  /* True if a chance ability fires. rng is the game's seeded rng. */
-  rollAbility(k, rng) {
-    if (typeof rng !== "function") throw new Error("rollAbility needs the game's seeded rng.");
-    return rng() < this.abilityChance(k);
-  }
-  /* Lines for this player's own screen only. Never show them for other players. */
-  abilityLines() {
-    return KEYS.map(k => {
-      const v = this.abilityValue(k), a = ABILITY[k];
-      const amount = k === "initiative" ? "x" + this.voteWeight().toFixed(1) : Math.round(v * a.per * 100) + "%";
-      return { key: k, value: v, text: a.name + " " + v + ": " + amount + " " + a.what };
-    });
-  }
+  abilityValue(k) { return this.#attributes.abilityValue(k); }
+  abilityChance(k) { return this.#attributes.abilityChance(k); }
+  voteWeight() { return this.#attributes.voteWeight(); }
+  rollAbility(k, rng) { return this.#attributes.rollAbility(k, rng); }
+  abilityLines() { return this.#attributes.abilityLines(); }
 
   /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
   wasCaughtBy(teamId) { return this.caughtBy.includes(teamId); }
@@ -143,8 +124,6 @@ class Player {
     this.caughtThisRound = true;
     if (!this.wasCaughtBy(teamId)) this.caughtBy.push(teamId);
   }
-  /* Highest attribute; ties go to the first in the given order. */
-  highestKeyIn(order) { return order.reduce((m, k) => (this.attrs[k] > this.attrs[m] ? k : m), order[0]); }
 
   resetRoundFlags() {
     // Caught last round: no sabotage on any team this round.
@@ -156,9 +135,9 @@ class Player {
     this.correctAccusation = false;
     this.glitchedThisRound = false;
     this.attendanceMissesThisRound = 0;      // counted misses (max 1 per round); a miss saved by a gift still counts
-    this.status.attendancePending = false;   // missed check-in, not yet locked: Glitching until a gift saves it or it locks in
+    this.#status.attendancePending = false;  // missed check-in, not yet locked: Glitching until a gift saves it or it locks in
     this.attendanceGlitchThisRound = false;  // this round's locked glitch came only from a missed check-in
-    this.wallet.resetRound();
+    this.#wallet.resetRound();
   }
 
   /* Save (Part 13): plain data only. type is saved as its key, hearts as the count. */
@@ -166,101 +145,49 @@ class Player {
     const out = {};
     for (const [k, v] of Object.entries(this)) {
       if (k === "type") out.type = v.key;
-      else if (k === "hearts") out.hearts = v.count;
-      else if (k === "status") { out.glitches = v.glitches; out.idle = v.idle; }
-      else if (k === "wallet") Object.assign(out, v.toJSON());
+      else if (k === "hearts") { out.hearts = v.count; out.glitches = this.#status.glitches; out.idle = this.#status.idle; }
       else {
         out[k] = v === undefined ? null : JSON.parse(JSON.stringify(v));
-        if (k === "attendanceMissesThisRound") out.attendancePending = this.status.attendancePending;
+        if (k === "teamId") out.attrs = this.#attributes.toJSON();
+        else if (k === "attendanceResumeAt") Object.assign(out, this.#pathTracker.toJSON());
+        else if (k === "caughtBy") Object.assign(out, this.#wallet.toJSON());
+        else if (k === "attendanceMissesThisRound") out.attendancePending = this.#status.attendancePending;
       }
     }
     return out;
   }
   /* Load: rebuild a Player from toJSON() data, without re-running character creation. */
   static fromJSON(data) {
-    const p = Object.create(Player.prototype);
+    const p = new Player(FROM_JSON);
     for (const [k, v] of Object.entries(data)) {
-      if (STATUS_KEYS.includes(k)) {
-        if (!p.status) p.status = PlayerStatus.fromJSON(p, data);
-        continue;
-      }
-      if (WALLET_KEYS.includes(k)) {
-        if (!p.wallet) p.wallet = Wallet.fromJSON(p, data);
-        continue;
-      }
+      if (PART_KEYS.includes(k)) continue;
       p[k] = v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
     }
     p.type = CharacterType.get(data.type);
     p.hearts = new Hearts(data.hearts);
-    if (!p.status) p.status = PlayerStatus.fromJSON(p, data);
-    if (!p.wallet) p.wallet = Wallet.fromJSON(p, data);
-    if (p.locked) p.locked = Object.freeze(p.locked);
+    p.#attributes = Attributes.fromJSON(p, data);
+    p.#status = PlayerStatus.fromJSON(p, data);
+    p.#pathTracker = PathTracker.fromJSON(p, data);
+    p.#wallet = Wallet.fromJSON(p, data);
     return p;
   }
 
-  /* Lose points from one attribute, from any cause. Hearts cover any shortfall below 0. */
-  lose(k, n) {
-    this.attrs[k] -= n;
-    this.cover(k);
-  }
-
-  cover(k) {
-    if (this.attrs[k] >= 0) return 0;
-    const short = -this.attrs[k];
-    const r = this.rate(k);
-    const covered = Math.min(short, Math.floor(this.hearts.count / r));
-    this.hearts.spend(covered * r);
-    this.attrs[k] += covered;
-    return covered * r;   // hearts used
-  }
-
-  /* Trial cost. Glitching players pay too. Stuck players do not. */
-  payTrial(k, cost) {
-    if (this.isStuck()) return null;
-    const before = this.attrs[k], heartsBefore = this.hearts.count;
-    this.lose(k, cost);
-    return { attr: k, before, after: this.attrs[k], heartsUsed: heartsBefore - this.hearts.count };
-  }
-
-  /* Wrong accusation penalty. Ties: Focus, Collaboration, Initiative, Grit, Composure. */
-  takeFromHighest(n) {
-    for (let i = 0; i < n; i++) this.lose(this.highestKeyIn(TIE_ORDER), 1);
-  }
-
-  /* Where a gift point goes. Glitching: the glitching attribute (lowest first if two are below 0).
-     Not glitching: the lowest attribute that still has room below its max.
-     Ties: Focus, Collaboration, Initiative, Grit, Composure. The receiver does not pick.
-     Returns null if every attribute is at its max. */
-  giftTarget() {
-    const pool = this.isGlitching() ? KEYS.filter(k => this.attrs[k] < 0)
-                                    : KEYS.filter(k => this.attrs[k] < this.max(k));
-    const order = GIFT_TIE_ORDER.filter(k => pool.includes(k));
-    if (!order.length) return null;
-    return order.reduce((m, k) => (this.attrs[k] < this.attrs[m] ? k : m));
-  }
-
-  /* Points past 0 stay in that attribute. If it fills up, the next point goes to the
-     lowest attribute that still has room. Returns points with nowhere to go (overflow, refunded). */
-  receiveGift(pts) {
-    let target = this.giftTarget();
-    let overflow = 0;
-    for (let i = 0; i < pts; i++) {
-      if (this.isGlitching() || target === null || this.attrs[target] >= this.max(target)) target = this.giftTarget();
-      if (target !== null && this.attrs[target] < this.max(target)) this.attrs[target] += 1;
-      else overflow += 1;
-    }
-    return overflow;
-  }
+  lose(k, n) { this.#attributes.lose(k, n); }
+  cover(k) { return this.#attributes.cover(k); }
+  payTrial(k, cost) { return this.#attributes.payTrial(k, cost); }
+  takeFromHighest(n) { this.#attributes.takeFromHighest(n); }
+  giftTarget() { return this.#attributes.giftTarget(); }
+  receiveGift(pts) { return this.#attributes.receiveGift(pts); }
 
   /* Lock-in: if still below 0, or a missed check-in is still pending, the glitch counts. Reboot.
      An attribute glitch and an attendance glitch in the same round count as one glitch.
      Returns true if a glitch locked in. */
   lockIn() {
     if (this.isStuck() || !this.isGlitchingAny()) return false;
-    if (this.glitchedThisRound && !this.isGlitching()) { this.status.attendancePending = false; return false; }   // counts as one
+    if (this.glitchedThisRound && !this.isGlitching()) { this.#status.attendancePending = false; return false; }   // counts as one
     if (!this.isGlitching()) this.attendanceGlitchThisRound = true;   // attendance only
-    this.status.attendancePending = false;
-    this.status.addGlitch();
+    this.#status.attendancePending = false;
+    this.#status.addGlitch();
     this.glitchedThisRound = true;
     this.reboot();
     return true;
@@ -276,83 +203,45 @@ class Player {
     return this.lockIn();
   }
 
-  /* Take points evenly from the other attributes until the glitched one reaches 1.
-     Any shortfall the others cannot cover is forgiven: it still ends at 1. Hearts set to 0. */
+  /* Reboot: reset any glitched attributes to 1 (donors cover evenly), then empty hearts. */
   reboot() {
-    for (const k of KEYS) {
-      if (this.attrs[k] >= 0) continue;
-      const need = 1 - this.attrs[k];
-      let got = 0;
-      while (got < need) {
-        const donors = KEYS.filter(d => d !== k && this.attrs[d] > 0)
-                           .sort((a, b) => this.attrs[b] - this.attrs[a]);
-        if (!donors.length) break;
-        for (const d of donors) {
-          if (got >= need) break;
-          this.attrs[d] -= 1; got += 1;
-        }
-      }
-      this.attrs[k] = 1;   // always reboots to 1, shortfall forgiven
-    }
+    this.#attributes.reboot();
     this.hearts.empty();
   }
 
-  get earned() { return this.wallet.earned; }
-  set earned(n) { this.wallet.earned = n; }
-  get draft() { return this.wallet.draft; }
-  set draft(d) { this.wallet.draft = d; }
-  get placedThisRound() { return this.wallet.placedThisRound; }
-  set placedThisRound(n) { this.wallet.placedThisRound = n; }
-  get skimUsed() { return this.wallet.skimUsed; }
-  get cashOutUsed() { return this.wallet.cashOutUsed; }
-  get cashedOutThisRound() { return this.wallet.cashedOutThisRound; }
+  get earned() { return this.#wallet.earned; }
+  set earned(n) { this.#wallet.earned = n; }
+  get draft() { return this.#wallet.draft; }
+  set draft(d) { this.#wallet.draft = d; }
+  get placedThisRound() { return this.#wallet.placedThisRound; }
+  set placedThisRound(n) { this.#wallet.placedThisRound = n; }
+  get skimUsed() { return this.#wallet.skimUsed; }
+  get cashOutUsed() { return this.#wallet.cashOutUsed; }
+  get cashedOutThisRound() { return this.#wallet.cashedOutThisRound; }
 
-  canCashOut() { return this.wallet.canCashOut(); }
-  cashOut() { return this.wallet.cashOut(); }
-  takeSkim() { return this.wallet.takeSkim(); }
-  placePoints(alloc) { this.wallet.placePoints(alloc); }
-  placeLeft(place) { return this.wallet.placeLeft(place); }
-  canPlace(place, k) { return this.wallet.canPlace(place, k); }
-  canUnplace(place, k) { return this.wallet.canUnplace(place, k); }
-  coversFromPoints(k, cost) { return this.wallet.coversFromPoints(k, cost); }
-  roomLeft() { return this.wallet.roomLeft(); }
+  canCashOut() { return this.#wallet.canCashOut(); }
+  cashOut() { return this.#wallet.cashOut(); }
+  takeSkim() { return this.#wallet.takeSkim(); }
+  placePoints(alloc) { this.#wallet.placePoints(alloc); }
+  placeLeft(place) { return this.#wallet.placeLeft(place); }
+  canPlace(place, k) { return this.#wallet.canPlace(place, k); }
+  canUnplace(place, k) { return this.#wallet.canUnplace(place, k); }
+  coversFromPoints(k, cost) { return this.#wallet.coversFromPoints(k, cost); }
+  roomLeft() { return this.#wallet.roomLeft(); }
 
-  /* An event happened (rescue, correctAccusation, uncaughtSabotage). It counts only if it is
-     this type's second-path event. Returns true if it counted. */
-  creditPath(event) {
-    if (!this.type.pathCounts(event) || this.pathDone) return false;
-    this.pathProgress += 1;
-    if (this.pathProgress >= this.type.goal) this.pathDone = true;
-    return true;
-  }
+  get pathProgress() { return this.#pathTracker.pathProgress; }
+  set pathProgress(n) { this.#pathTracker.pathProgress = n; }
+  get pathDone() { return this.#pathTracker.pathDone; }
+  set pathDone(v) { this.#pathTracker.pathDone = v; }
+  get locked() { return this.#pathTracker.locked; }
+  set locked(v) { this.#pathTracker.locked = v; }
 
-  /* The three graduation checks, for the Stats Update screen. */
-  gradChecks() {
-    const total = this.total(), lowest = this.lowest();
-    return { total, totalOk: total >= GRAD_TOTAL, lowest, lowestOk: lowest >= GRAD_MIN,
-             glitches: this.glitches, glitchesOk: !this.isStuck() };
-  }
-  graduates() {
-    return !this.isStuck() && this.total() >= GRAD_TOTAL && this.lowest() >= GRAD_MIN;
-  }
-  /* After Game.results() the ending is locked: wins() and ending() return the locked values. */
-  lockEnding() {
-    if (this.locked) return;
-    const ending = this.ending(), wins = this.wins();
-    this.locked = Object.freeze({ ending, wins });
-  }
-  /* Idle at Graduation (when results() runs): Contract renewed, even if the stats would graduate.
-     A second path already completed still wins. */
-  wins() {
-    if (this.locked) return this.locked.wins;
-    return (this.graduates() && !this.idle) || this.pathDone;
-  }
-  ending() {
-    if (this.locked) return this.locked.ending;
-    if (this.graduates() && !this.idle) return "Graduated";
-    if (this.pathDone) return this.type.pathName + " complete";
-    return "Contract renewed";
-  }
+  creditPath(event) { return this.#pathTracker.creditPath(event); }
+  gradChecks() { return this.#pathTracker.gradChecks(); }
+  graduates() { return this.#pathTracker.graduates(); }
+  lockEnding() { this.#pathTracker.lockEnding(); }
+  wins() { return this.#pathTracker.wins(); }
+  ending() { return this.#pathTracker.ending(); }
 }
 
 Player.ABILITY = ABILITY;

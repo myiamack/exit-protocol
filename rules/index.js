@@ -7,6 +7,8 @@ export { Hearts } from "./Hearts.js";
 export { CharacterType } from "./CharacterType.js";
 export { Wallet } from "./Wallet.js";
 export { PlayerStatus } from "./PlayerStatus.js";
+export { Attributes } from "./Attributes.js";
+export { PathTracker } from "./PathTracker.js";
 export { Player } from "./Player.js";
 export { Team } from "./Team.js";
 export { Sabotage } from "./Sabotage.js";
