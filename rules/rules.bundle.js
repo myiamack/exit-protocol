@@ -1286,6 +1286,76 @@ class Attendance {
 return Attendance;
 })();
 
+/* ---------- rules/Timer.js ---------- */
+const Timer = (() => {
+/* Timer: step timer deadlines and injected clock for Game (Step 4).
+   Stores the running flag and current { name, key, deadline }, never seconds left.
+   Rule code only. No screen code. */
+
+class Timer {
+  constructor({ clock = () => Date.now(), durations = {}, getPhase, onStart = null, onClose }) {
+    this.clock = clock;
+    this.durations = durations;
+    this.getPhase = getPhase;
+    this.onStart = onStart;
+    this.onClose = onClose;
+    this.running = false;
+    this.current = null;
+    this.at = null;
+  }
+  /* The time rules use: the clock, except while a timer closes (then that timer's deadline). */
+  now() { return this.at != null ? this.at : this.clock(); }
+  /* Start the step timers (the first intermission starts counting now). */
+  start() { this.running = true; this.refresh(); return this.current; }
+  /* Called after every change that can start or end a timed phase. A new phase gets a deadline from now(). */
+  refresh() {
+    if (!this.running) return;
+    const phase = this.getPhase();
+    const name = phase ? phase.name : null;
+    const key = phase ? phase.key : null;
+    if (key === (this.current ? this.current.key : null)) return;
+    this.current = name ? { name, key, deadline: this.now() + this.durations[name] * 1000 } : null;
+    if (name && this.onStart) this.onStart(name);
+  }
+  /* Seconds left on the running timer (for the screen countdown), or null if none. */
+  secondsLeft(now = this.clock()) { return this.current ? Math.max(0, Math.ceil((this.current.deadline - now) / 1000)) : null; }
+  /* Close every timer whose deadline has passed, in order. Returns the names closed. */
+  tick(now = this.clock()) {
+    const closed = [];
+    while (this.current && now >= this.current.deadline) {
+      if (closed.length > 50) throw new Error("Timer loop.");
+      closed.push(this.current.name);
+      this.closeAt(this.current.deadline);
+    }
+    return closed;
+  }
+  /* End the running timed phase early. Same end rules as the timer. */
+  close(now = this.clock()) {
+    if (!this.current) return null;
+    const name = this.current.name;
+    this.closeAt(now);
+    return name;
+  }
+  closeAt(at) {
+    const t = this.current;
+    this.at = at;
+    try {
+      this.onClose(t.name);
+    } finally { this.at = null; }
+    if (this.current === t) this.current = null;
+  }
+  toJSON() {
+    return { running: this.running, timer: this.current ? { ...this.current } : null };
+  }
+  restore(data) {
+    this.running = !!data.running;
+    this.current = data.timer ? { ...data.timer } : null;
+    this.at = null;
+  }
+}
+return Timer;
+})();
+
 /* ---------- rules/Game.js ---------- */
 const Game = (() => {
 /* Game: runs the rounds in step order and applies every rule.
@@ -1373,19 +1443,29 @@ class Game {
     this.prompts = [];         // game record: the prompt used at each judged level { level, index, text, custom }
     this.submissions = [];     // game record: Level 5-6 submissions once writing closes { level, name, text }
     this.attendance = new Attendance(attendance);
-    this.clock = clock;
     this.hooks = hooks;
-    this.running = false;      // step timers run only after start()
-    this.timer = null;         // { name, key, deadline } for the timed phase now running
-    this.at = null;            // while a timer closes: its deadline, used as "now" (chained timers)
+    this._timer = this._makeTimer(clock);
     this.syncAttendance();   // starts in intermission: paused
   }
 
+  _makeTimer(clock) {
+    return new Timer({
+      clock,
+      durations: TIMER_SECONDS,
+      getPhase: () => { const name = this.timerName(); return name ? { name, key: this.level + ":" + name } : null; },
+      onStart: name => { if (this.hooks.onStart) this.hooks.onStart(this, name); },
+      onClose: name => {
+        if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
+        this._closeTimerPhase(name);
+      },
+    });
+  }
+
   /* ----- step timers (Part 13) ----- */
-  /* The time rules use: the clock, except while a timer closes (then that timer's deadline). */
-  now() { return this.at != null ? this.at : this.clock(); }
-  /* Start the step timers (the first intermission starts counting now). */
-  start() { this.running = true; this.refreshTimer(); return this.timer; }
+  get timer() { return this._timer.current; }
+  get running() { return this._timer.running; }
+  now() { return this._timer.now(); }
+  start() { return this._timer.start(); }
   /* Which timed phase should be running right now, or null. */
   timerName() {
     const s = this.step;
@@ -1402,51 +1482,22 @@ class Game {
     if (s === "graduation") return this.over ? null : "graduation";
     return null;
   }
-  /* Called after every change that can start or end a timed phase. A new phase gets a deadline from now(). */
-  refreshTimer() {
-    if (!this.running) return;
-    const name = this.timerName();
-    const key = name ? this.level + ":" + name : null;
-    if (key === (this.timer ? this.timer.key : null)) return;
-    this.timer = name ? { name, key, deadline: this.now() + TIMER_SECONDS[name] * 1000 } : null;
-    if (name && this.hooks.onStart) this.hooks.onStart(this, name);
-  }
-  /* Seconds left on the running timer (for the screen countdown), or null if none. */
-  secondsLeft(now = this.clock()) { return this.timer ? Math.max(0, Math.ceil((this.timer.deadline - now) / 1000)) : null; }
-  /* Close every timer whose deadline has passed, in order. Returns the names closed. Call about once a second. */
-  tick(now = this.clock()) {
-    const closed = [];
-    while (this.timer && now >= this.timer.deadline) {
-      if (closed.length > 50) throw new Error("Timer loop.");
-      closed.push(this.timer.name);
-      this.closeTimerAt(this.timer.deadline);
+  refreshTimer() { this._timer.refresh(); }
+  secondsLeft(now) { return this._timer.secondsLeft(now); }
+  tick(now) { return this._timer.tick(now); }
+  closeTimer(now) { return this._timer.close(now); }
+  closeTimerAt(at) { this._timer.closeAt(at); }
+  _closeTimerPhase(name) {
+    switch (name) {
+      case "intermission": this.startNextRound(); break;
+      case "openFloor": this.advance(); break;
+      case "sop": this.closeSop(); break;
+      case "writing": this.closeWriting(); break;
+      case "glitchReport": this.closeGlitchReport(); break;
+      case "giftWindow": this.closeGiftWindow(); break;
+      case "statsUpdate": this.placeAllRemaining(); this.finishRound(); break;
+      case "graduation": this.placeAllRemaining(); this.results(); break;
     }
-    return closed;
-  }
-  /* End the running timed phase early (a button, or everyone is done). Same end rules as the timer. */
-  closeTimer(now = this.clock()) {
-    if (!this.timer) return null;
-    const name = this.timer.name;
-    this.closeTimerAt(now);
-    return name;
-  }
-  closeTimerAt(at) {
-    const t = this.timer;
-    this.at = at;
-    try {
-      if (this.hooks.beforeClose) this.hooks.beforeClose(this, t.name);
-      switch (t.name) {
-        case "intermission": this.startNextRound(); break;
-        case "openFloor": this.advance(); break;
-        case "sop": this.closeSop(); break;
-        case "writing": this.closeWriting(); break;
-        case "glitchReport": this.closeGlitchReport(); break;
-        case "giftWindow": this.closeGiftWindow(); break;
-        case "statsUpdate": this.placeAllRemaining(); this.finishRound(); break;
-        case "graduation": this.placeAllRemaining(); this.results(); break;
-      }
-    } finally { this.at = null; }
-    if (this.timer === t) this.timer = null;
   }
   /* Timer ran out at Stats Update or Graduation: everyone's unplaced points go in by the bot rule.
      Points a player already picked (their draft) stay. */
@@ -1915,8 +1966,7 @@ class Game {
       submissions: clone(this.submissions),
       attendance: { ...this.attendance.settings },
       rng: this.rng.getState(),
-      running: this.running,
-      timer: this.timer ? { ...this.timer } : null,
+      ...this._timer.toJSON(),
     };
   }
   /* Rebuild a working Game from toJSON() data. Then any timer whose deadline has passed closes at once,
@@ -1932,9 +1982,10 @@ class Game {
     Object.assign(g, {
       teams, players, rng, host: data.host, level: data.level, round: null,
       log: data.log.map(x => ({ ...x })), prompts: data.prompts.map(x => ({ ...x })), submissions: data.submissions.map(x => ({ ...x })),
-      attendance: new Attendance(data.attendance), clock, hooks,
-      running: data.running, timer: data.timer ? { ...data.timer } : null, at: null,
+      attendance: new Attendance(data.attendance), hooks,
     });
+    g._timer = g._makeTimer(clock);
+    g._timer.restore({ running: data.running, timer: data.timer });
     if (data.round) g.round = Round.fromJSON(data.round, { byId, trialFromJSON: d => Trial.fromJSON(d, { rng, teams, byId }) });
     if (tick) g.tick();
     return g;
@@ -2169,5 +2220,5 @@ const Bots = {
 return Bots;
 })();
 
-globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Player, Team, Round, Sabotage, Accusation, Gift, Vote, Trial, Attendance, Game, Bots });
+globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Player, Team, Round, Sabotage, Accusation, Gift, Vote, Trial, Attendance, Timer, Game, Bots });
 })();
