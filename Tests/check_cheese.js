@@ -23,15 +23,6 @@ const NORMAL = { 16: [4, 4, 4, 4], 20: [4, 4, 4, 4, 4], 24: [4, 4, 4, 3, 3, 3, 3
 const SMALL  = { 16: [4, 3, 3, 3, 3], 20: [5, 3, 3, 3, 3, 3], 24: [3, 3, 3, 3, 3, 3, 3, 3] };
 const COUNTS = [16, 20, 24];
 
-function seeded(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /* Hearts first: place points the typical way, but never in the blocked attribute
    (unless there is nowhere else to put them). */
 function heartsFirstAllocate(p, n, block) {
@@ -101,7 +92,7 @@ function playGame(opts, rng) {
 
 /* Run GAMES games and tally win / graduate / path / stuck by group(row) -> key. */
 function run(opts, groupOf) {
-  const rng = seeded(SEED), s = {};
+  const rng = EP.Rng.seeded(SEED), s = {};
   const add = (key, field, yes) => { s[key] = s[key] || {}; const c = s[key][field] = s[key][field] || [0, 0]; c[0] += yes ? 1 : 0; c[1] += 1; };
   for (let g = 0; g < GAMES; g++) {
     for (const row of playGame(opts, rng)) {
@@ -193,7 +184,7 @@ for (const [label, layout] of LAYOUTS) {
     const key = (level <= 4 ? "1-4" : "L" + level) + "|" + t.size();
     s[key] = s[key] || [0, 0]; s[key][0] += t.won ? 1 : 0; s[key][1] += 1;
   };
-  const rng = seeded(SEED);
+  const rng = EP.Rng.seeded(SEED);
   for (let g = 0; g < GAMES; g++) playGame({ layout, typeOf: randomType, onTrial }, rng);
   const sizes = [...new Set(layout)].sort();
   const cell = (lv, size) => (s[lv + "|" + size] ? f1(100 * s[lv + "|" + size][0] / s[lv + "|" + size][1]) : "  -  ");

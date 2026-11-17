@@ -343,9 +343,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
   const JT = EP.Trial.JudgedTrial;
   // 3 teams of 3, all bots. Play Levels 1-4 with the usual bot rules, then stop at Level 5's Trial.
   function judgedGame({ host = false, seed = 7 } = {}) {
-    let a = seed;   // seeded random numbers (same generator as check_balance.js)
-    const rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const rng = EP.Rng.seeded(seed);
     const ps = Array.from({ length: 9 }, (_, i) => EP.Bots.makePlayer(300 + i, "J" + i, ["coop", "indep", "contra"][i % 3]));
     const ts = [0, 1, 2].map(i => new EP.Team({ id: "J" + i, name: "Team J" + i, members: ps.slice(i * 3, i * 3 + 3) }));
     const g = new EP.Game({ teams: ts, rng, host });
@@ -455,9 +453,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
 
 // Progress board (Part 2).
 {
-  let a = 11;
-  const rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const rng = EP.Rng.seeded(11);
   const ps = Array.from({ length: 12 }, (_, i) => EP.Bots.makePlayer(400 + i, "B" + i, ["coop", "indep", "contra"][i % 3]));
   const ts = [0, 1, 2].map(i => new EP.Team({ id: "B" + i, name: "Team B" + i, members: ps.slice(i * 4, i * 4 + 4) }));
   const g = new EP.Game({ teams: ts, rng });
@@ -842,9 +838,7 @@ throws("Finish the round before points are placed", () => game.finishRound());
 // Game decides Attendance pausing from its own steps (no screen). Briefing and intermission: paused.
 // Every other step: running. Checked at every step of Levels 1 to 7.
 {
-  let a = 7;
-  const rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const rng = EP.Rng.seeded(7);
   const ps = Array.from({ length: 12 }, (_, i) => EP.Bots.makePlayer(300 + i, "G" + i, ["coop", "indep", "contra"][i % 3]));
   const ts = [0, 1, 2].map(i => new EP.Team({ id: i, name: "GT" + i, members: ps.slice(i * 4, i * 4 + 4) }));
   const clock = { now: 0 };

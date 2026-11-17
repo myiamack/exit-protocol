@@ -20,16 +20,6 @@ const HEADCOUNTS = [
 ];
 const SPENDING = ["typical", "aware"];
 
-// Seeded random numbers, so every run gives the same result.
-function seeded(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /* Aware spending: half the earned points (rounded up) go to the next level's attribute,
    as far as its max allows. The rest are placed the typical way. */
 function awareAllocate(p, n, nextAttr) {
@@ -132,7 +122,7 @@ const pooled = {};   // spending -> Tally over all headcounts
 for (const spending of SPENDING) {
   pooled[spending] = Tally();
   for (const hc of HEADCOUNTS) {
-    const rng = seeded(SEED);
+    const rng = EP.Rng.seeded(SEED);
     const t = Tally();
     const groups = new Map();   // Contrarian count -> Tally
     for (let g = 0; g < GAMES; g++) {

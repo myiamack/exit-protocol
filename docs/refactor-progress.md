@@ -1,7 +1,7 @@
 # Refactor Progress
 
 1. [x] Bundler rule
-2. [ ] Tests use EP.Rng
+2. [x] Tests use EP.Rng
 3. [ ] Fixed-seed baseline run
 4. [ ] Timer
 5. [ ] Wallet

@@ -14,15 +14,6 @@ function expect(label, ok, detail) {
   console.log((ok ? "PASS  " : "FAIL  ") + label + (detail !== undefined ? "  -> " + detail : ""));
   ok ? pass++ : fail++;
 }
-// Seeded random numbers, so every run gives the same result.
-function seeded(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 function setup() {
   const ps = ["coop", "coop", "indep", "contra"].map((t, i) => EP.Bots.makePlayer(i, "P" + i, t));
   const team = new EP.Team({ id: 0, name: "T", members: ps });
@@ -163,7 +154,7 @@ console.log("-- Who can gift");
 
 console.log("-- Bot answers (seeded)");
 function botRate(seed, n) {
-  const rng = seeded(seed);
+  const rng = EP.Rng.seeded(seed);
   let yes = 0;
   for (let i = 0; i < n; i++) {
     const { ps, game } = gameOf(Array(8).fill("coop"));

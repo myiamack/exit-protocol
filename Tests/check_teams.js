@@ -19,15 +19,6 @@ const HEADCOUNTS = [
   { players: 24, teams: 7 },
 ];
 
-// Seeded random numbers, so every run gives the same result.
-function seeded(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 function shuffle(a, rng) {
   a = a.slice();
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -95,7 +86,7 @@ const started = Date.now();
 const summary = [];
 
 for (const hc of HEADCOUNTS) {
-  const rng = seeded(SEED);
+  const rng = EP.Rng.seeded(SEED);
   const t = Tally();
   const sizes = evenSizes(hc.players, hc.teams);
   const distinct = [...new Set(sizes)].sort((a, b) => b - a);

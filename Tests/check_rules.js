@@ -9,16 +9,7 @@ const EP = require("../rules/index.js");   // ES modules (Part 12)
 const GAMES = 1000;
 const SEED = 1;
 
-// Seeded random numbers, so every run gives the same result.
-function seeded(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const rng = seeded(SEED);
+const rng = EP.Rng.seeded(SEED);
 
 const stats = {};
 const count = (key, yes) => { stats[key] = stats[key] || [0, 0]; stats[key][0] += yes ? 1 : 0; stats[key][1] += 1; };
