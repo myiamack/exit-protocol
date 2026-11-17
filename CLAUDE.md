@@ -46,7 +46,18 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
    - The actor sends each player only what that player may see (their own stats and type, plus `Game.board()` fields). Hidden types and other players' stats never leave the server.
    - Login uses Base44 auth. The `@icstars.org` rule is enforced by the actor rejecting connections from other emails (not yet confirmed that the actor can read the email; test this first).
    - Why: no rebuild of the game in Base44's editor, and almost no AI credits. The backend service is in beta and uses workspace integration credits.
-   - Open questions: is version 1 real multiplayer; does the actor see the player's email.
+   - v1 is real multiplayer on a Base44 actor.
+   - Open question: does the actor see the player's email (test this first).
+
+### Multiplayer join, lobby, and bots (decided)
+- **Join:** players join with a room code and `@icstars.org` login, then create their character in the lobby.
+- **Start:** the host clicks Start. If no host starts it, a 120-second lobby timer begins when the first player joins and starts the game when it ends.
+- **Unfinished characters at start:** auto-finished. Keep any choices the player already made, pick a random look and work style if missing, and place unspent points with the bot rule.
+- **Teams:** the engine shuffles players into even teams of 3 to 5 when the game starts.
+- **Bots fill empty seats:** bots always fill empty seats up to 16 players.
+- **Hidden bots:** no bot tag, believable names, and random looks.
+- **Bot Level 5 and 6 answers:** pre-written answers, 15 per prompt, written after the final prompts are set.
+- **Dropped connections:** follow the idle rule (60 seconds plus the 15-second popup).
 
 ## Code structure (decided): OOAD rule classes and screen split
 
