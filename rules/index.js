@@ -5,6 +5,7 @@
 export { Rng } from "./Rng.js";
 export { Hearts } from "./Hearts.js";
 export { CharacterType } from "./CharacterType.js";
+export { Wallet } from "./Wallet.js";
 export { Player } from "./Player.js";
 export { Team } from "./Team.js";
 export { Round } from "./Round.js";

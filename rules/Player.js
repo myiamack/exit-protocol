@@ -2,6 +2,7 @@
    Rule code only. No screen code. Works in the browser and in Node. */
 import { CharacterType } from "./CharacterType.js";
 import { Hearts } from "./Hearts.js";
+import { Wallet } from "./Wallet.js";
 
 
 const KEYS = ["focus", "initiative", "collab", "composure", "grit"];
@@ -14,7 +15,8 @@ const BOOST = 2;           // type boost per bonus attribute
 const AT_RISK_COST = 3;
 const STUCK_AT = 2;        // locked glitches of any kind that make a player Stuck
 const GRAD_TOTAL = 24, GRAD_MIN = 2;
-const SKIM_MAX = 2, CASHOUT_USES = 1, CASHOUT_COST = 2;
+const SKIM_MAX = Wallet.SKIM_MAX, CASHOUT_COST = Wallet.CASHOUT_COST;
+const WALLET_KEYS = ["earned", "draft", "placedThisRound", "skimUsed", "cashOutUsed", "cashedOutThisRound"];
 
 /* Stat abilities (Part 4b). per = chance per stat point. */
 const ABILITY = {
@@ -63,9 +65,7 @@ class Player {
 
     // Contrarian
     this.caughtBy = [];   // ids of teams that caught this player sabotaging
-    this.skimUsed = 0;
-    // Independent
-    this.cashOutUsed = 0;
+    this.wallet = new Wallet(this);
 
     this.resetRoundFlags();
   }
@@ -89,6 +89,8 @@ class Player {
   isBonus(k) { return this.type.isBonus(k); }
   max(k) { return this.type.max(k); }
   rate(k) { return this.isBonus(k) ? 1 : 2; }   // hearts per point covered
+  attr(k) { return this.attrs[k]; }
+  addAttr(k, delta) { this.attrs[k] += delta; }
 
   total() { return KEYS.reduce((s, k) => s + this.attrs[k], 0); }
   lowest() { return Math.min(...KEYS.map(k => this.attrs[k])); }
@@ -166,10 +168,7 @@ class Player {
     this.attendanceMissesThisRound = 0;      // counted misses (max 1 per round); a miss saved by a gift still counts
     this.attendancePending = false;          // missed check-in, not yet locked: Glitching until a gift saves it or it locks in
     this.attendanceGlitchThisRound = false;  // this round's locked glitch came only from a missed check-in
-    this.earned = 0;
-    this.cashedOutThisRound = false;
-    this.draft = {};            // Stats Update / Graduation: points picked but not locked yet { focus: n, ... }
-    this.placedThisRound = 0;   // points placed this round (for the screen after the round ends)
+    this.wallet.resetRound();
   }
 
   /* Save (Part 13): plain data only. type is saved as its key, hearts as the count. */
@@ -178,6 +177,7 @@ class Player {
     for (const [k, v] of Object.entries(this)) {
       if (k === "type") out.type = v.key;
       else if (k === "hearts") out.hearts = v.count;
+      else if (k === "wallet") Object.assign(out, v.toJSON());
       else out[k] = v === undefined ? null : JSON.parse(JSON.stringify(v));
     }
     return out;
@@ -185,9 +185,16 @@ class Player {
   /* Load: rebuild a Player from toJSON() data, without re-running character creation. */
   static fromJSON(data) {
     const p = Object.create(Player.prototype);
-    for (const [k, v] of Object.entries(data)) p[k] = v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+    for (const [k, v] of Object.entries(data)) {
+      if (WALLET_KEYS.includes(k)) {
+        if (!p.wallet) p.wallet = Wallet.fromJSON(p, data);
+        continue;
+      }
+      p[k] = v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+    }
     p.type = CharacterType.get(data.type);
     p.hearts = new Hearts(data.hearts);
+    if (!p.wallet) p.wallet = Wallet.fromJSON(p, data);
     if (p.locked) p.locked = Object.freeze(p.locked);
     return p;
   }
@@ -291,49 +298,25 @@ class Player {
     this.hearts.empty();
   }
 
-  /* Cash Out (Independent): once per game, needs full hearts, 2 hearts for 1 point. */
-  canCashOut() {
-    return this.type.hasCashOut() && !this.isStuck() && this.cashOutUsed < CASHOUT_USES &&
-           this.hearts.isFull() && this.hearts.has(CASHOUT_COST);
-  }
-  cashOut() {
-    if (!this.canCashOut()) return false;
-    this.hearts.spend(CASHOUT_COST);
-    this.cashOutUsed += 1;
-    this.cashedOutThisRound = true;
-    this.earned += 1;
-    return true;
-  }
+  get earned() { return this.wallet.earned; }
+  set earned(n) { this.wallet.earned = n; }
+  get draft() { return this.wallet.draft; }
+  set draft(d) { this.wallet.draft = d; }
+  get placedThisRound() { return this.wallet.placedThisRound; }
+  set placedThisRound(n) { this.wallet.placedThisRound = n; }
+  get skimUsed() { return this.wallet.skimUsed; }
+  get cashOutUsed() { return this.wallet.cashOutUsed; }
+  get cashedOutThisRound() { return this.wallet.cashedOutThisRound; }
 
-  /* Skim (Contrarian): +1 per uncaught sabotage round, max 2 per game. */
-  takeSkim() {
-    if (!this.type.hasSkim() || this.sabotagesThisRound === 0 || this.caughtThisRound) return 0;
-    if (this.skimUsed >= SKIM_MAX) return 0;
-    this.skimUsed += 1;
-    return 1;
-  }
-
-  /* Place earned points. alloc = { focus: n, ... }. Must use all points and respect max. */
-  placePoints(alloc) {
-    const n = KEYS.reduce((s, k) => s + (alloc[k] || 0), 0);
-    if (n !== this.earned) throw new Error("Place exactly " + this.earned + " points");
-    for (const k of KEYS) {
-      if ((alloc[k] || 0) < 0) throw new Error("No negative placement");
-      if (this.attrs[k] + (alloc[k] || 0) > this.max(k)) throw new Error(k + " would pass its max");
-    }
-    for (const k of KEYS) this.attrs[k] += alloc[k] || 0;
-    this.earned = 0;
-    this.draft = {};
-    this.placedThisRound = n;
-  }
-  /* Stats Update draft: place = { focus: n, ... } points picked on screen but not yet placed. */
-  placeLeft(place) { return this.earned - KEYS.reduce((s, k) => s + (place[k] || 0), 0); }
-  canPlace(place, k) { return this.placeLeft(place) > 0 && this.attrs[k] + (place[k] || 0) < this.max(k); }
-  canUnplace(place, k) { return (place[k] || 0) > 0; }
-  /* True if this attribute can pay the cost without hearts. */
-  coversFromPoints(k, cost) { return this.attrs[k] >= cost; }
-  /* True if there is room left to place points at all. */
-  roomLeft() { return KEYS.reduce((s, k) => s + (this.max(k) - this.attrs[k]), 0); }
+  canCashOut() { return this.wallet.canCashOut(); }
+  cashOut() { return this.wallet.cashOut(); }
+  takeSkim() { return this.wallet.takeSkim(); }
+  placePoints(alloc) { this.wallet.placePoints(alloc); }
+  placeLeft(place) { return this.wallet.placeLeft(place); }
+  canPlace(place, k) { return this.wallet.canPlace(place, k); }
+  canUnplace(place, k) { return this.wallet.canUnplace(place, k); }
+  coversFromPoints(k, cost) { return this.wallet.coversFromPoints(k, cost); }
+  roomLeft() { return this.wallet.roomLeft(); }
 
   /* An event happened (rescue, correctAccusation, uncaughtSabotage). It counts only if it is
      this type's second-path event. Returns true if it counted. */
