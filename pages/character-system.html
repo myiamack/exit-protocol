@@ -9,7 +9,7 @@
    Single dark theme to match the game. */
 :root{--bg:#141922;--frame:#2a3140;--panel:#1d232e;--frame3:#4a5568;--edge:#0b0e13;--ink:#f2f5f8;--muted:#9aa6b8;--red:#e0394d;--sky:#a8d8ff;--gold:#f2b84b;--pink:#ff4fa3;--ok:#4fe08a;--cream:#fff3dc;
 --common:#9aa6b8;--rare:#3a74ff;--epic:#a05cff;--legend:#f2b84b;
---cond:"Barlow Condensed","Arial Narrow",sans-serif;--body:"Barlow",system-ui,sans-serif;--mono:"Share Tech Mono",ui-monospace,monospace;--px:"Pixelify Sans",ui-monospace,monospace;color-scheme:dark}
+--cond:"Barlow Condensed","Arial Narrow",sans-serif;--body:"Barlow",system-ui,sans-serif;--mono:"Share Tech Mono",ui-monospace,monospace;--px:var(--mono);color-scheme:dark}
 *{box-sizing:border-box}
 html,body{background:var(--bg)}
 body{color:var(--ink);font-family:var(--body);margin:0;line-height:1.5}
@@ -341,12 +341,12 @@ document.querySelectorAll("[data-next]").forEach(b=>b.onclick=()=>{const i=+b.da
 /* ================= PIXEL TOOLS ================= */
 function pix(map,pal,s=6){let r="";map.forEach((row,y)=>[...row].forEach((ch,x)=>{if(ch===".")return;r+=`<rect x="${x*s}" y="${y*s}" width="${s+.3}" height="${s+.3}" fill="${pal[ch]}"/>`}));const w=map[0].length*s,h=map.length*s;return `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">${r}</svg>`}
 const TOOLS=[
- {n:"Coffee Mug",rar:"Common",r:"var(--common)",ab:"Recharge",d:"Refill 1 backup heart, even above the round's refill.",uses:"1 use",m:["...g..g...","....g..g..",".kkkkkkk..",".kwwwwwwkk",".kbbbbbbk.k",".kwwwwwwk.k",".kwwwwwwkk.",".kwwwwwwk..","..kkkkkk..",".........."],p:{k:E,w:"#f2f5f8",b:"#7a4d2a",g:"#9aa6b8"}},
+ {n:"Coffee Mug",rar:"Common",r:"var(--common)",ab:"Recharge",d:"Refill 1 heart, even above the round's refill.",uses:"1 use",m:["...g..g...","....g..g..",".kkkkkkk..",".kwwwwwwkk",".kbbbbbbk.k",".kwwwwwwk.k",".kwwwwwwkk.",".kwwwwwwk..","..kkkkkk..",".........."],p:{k:E,w:"#f2f5f8",b:"#7a4d2a",g:"#9aa6b8"}},
  {n:"Sticky Note",rar:"Common",r:"var(--common)",ab:"Reminder",d:"Peek at next level's trial attribute before you place your points.",uses:"2 uses",m:["kkkkkkkkk.","kyyyyyyyk.","kyddddyyk.","kyyyyyyyk.","kydddyyyk.","kyyyyyyyk.","kyyyyykkk.","kyyyyykk..","kkkkkkk...",".........."],p:{k:E,y:"#f5e04a",d:"#a8941f"}},
  {n:"Stapler",rar:"Rare",r:"var(--rare)",ab:"Lock down",d:"Staple one attribute for a round. Sabotage can't drain it.",uses:"1 use",m:["..........","..kkkkkkk.",".krrrrrrwk","krrrrrrrrk","kkkkkkkkkk","kssssssssk","kkkkkkkkkk",".........."],p:{k:E,r:"#d8323f",w:"#fff",s:"#7f8fa1"}},
  {n:"Desk Plant",rar:"Rare",r:"var(--rare)",ab:"Breathe",d:"Add 10 seconds to your team's gift window.",uses:"2 uses",m:["...k..k...","..kgk.kgk.","..kgkkggk.","...kggk...","....kk....","..kkkkkk..","..kccccck.","...kccck..","...kkkkk..",".........."],p:{k:E,g:"#4fe08a",c:"#e2706a"}},
  {n:"Rubber Duck",rar:"Epic",r:"var(--epic)",ab:"Debug",d:"Your team's next wrong accusation costs nothing.",uses:"1 use",m:["....kkk...","...kyyyk..","...kyeykok","...kyyykkk","kk.kyyyk..","kykkyyyykk","kyyyyyyyyk",".kyyyyyyk.","..kkkkkk..",".........."],p:{k:E,y:"#f5e04a",e:E,o:"#f2852a"}},
- {n:"USB Backup",rar:"Legendary",r:"var(--legend)",ab:"Restore point",d:"Your first glitch reboots without losing your backup hearts.",uses:"1 use",m:["..........","kkkkkkk...","kbbbbbkkkk","kbcbbbkssk","kbbbbbkskk","kbbbbbkssk","kbbbbbkkkk","kkkkkkk...",".........."],p:{k:E,b:"#2f5fe0",c:"#5ff2ff",s:"#cbd3dc"}}];
+ {n:"USB Backup",rar:"Legendary",r:"var(--legend)",ab:"Restore point",d:"Your first glitch reboots without losing your hearts.",uses:"1 use",m:["..........","kkkkkkk...","kbbbbbkkkk","kbcbbbkssk","kbbbbbkskk","kbbbbbkssk","kbbbbbkkkk","kkkkkkk...",".........."],p:{k:E,b:"#2f5fe0",c:"#5ff2ff",s:"#cbd3dc"}}];
 document.getElementById("store").innerHTML=TOOLS.map(t=>`<article class="tool" style="--r:${t.r}"><div class="art">${pix(t.m,t.p)}</div>
 <div style="display:grid;gap:4px"><h3>${t.n}<span class="rar">${t.rar.toUpperCase()}</span></h3><span class="ab">Ability · ${t.ab}</span><p>${t.d}</p><span class="uses">${t.uses} per game</span></div></article>`).join("");
 

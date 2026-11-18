@@ -14,11 +14,10 @@ Updated Nov 8, 2026. One place that points to everything about the game. Game de
 
 The .html copies are snapshots from Nov 8, 2026. Open a file in a browser to run it.
 
-## Rules and build prompts (Base44)
-- `Base44 Prompt 1 - Characters`: 3 hidden types (Cooperative, Independent, Contrarian), 5 attributes (Focus, Initiative, Collaboration, Composure, Grit), character creation.
-- `Base44 Prompt 2 - Economy`: round costs, backup pool, gifts, status flags, glitch and reboot.
-- `Base44 Prompt 3 - Rules and Round Flow`: round steps, sabotage, accusations, win conditions (71% typical graduation).
-- Run them in order 1 → 2 → 3.
+## Rules summary
+- Characters: 3 hidden types (Cooperative, Independent, Contrarian), 5 attributes (Focus, Initiative, Collaboration, Composure, Grit), character creation.
+- Economy: round costs, backup pool, gifts, status flags, glitch and reboot.
+- Rules and Round Flow: round steps, sabotage, accusations, win conditions (71% typical graduation).
 
 ## Round map
 | Round | Name | Attribute | Cost |

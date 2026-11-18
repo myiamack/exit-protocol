@@ -1,0 +1,349 @@
+/* Trial: ranks the teams for one round. Top half win.
+   Every trial takes the round and the teams and returns a ranked list (best first).
+   Winners = half the teams, rounded up: 4 teams -> 2, 5 teams -> 3, 7 teams -> 4.
+   Subclasses only decide the order:
+     SopTrial    Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
+     AutoTrial   Levels 2-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
+   Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
+     JudgedTrial Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
+   Rule code only. No screen code. Works in the browser and in Node. */
+import { Vote } from "./Vote.js";
+
+
+class Trial {
+  constructor(rng = Math.random) {
+    this.rng = rng;
+    this.ranking = null;   // set by run(): [{ team, place, won, ...details }]
+  }
+
+  static winners(nTeams) { return Math.ceil(nTeams / 2); }
+
+  /* Subclasses return [{ team, ...details }] best first. */
+  rank(round, teams) { throw new Error("rank() is not written for this trial."); }
+
+  /* Rank, mark the top half as winners (team.won), and return the ranked list. */
+  run(round, teams) {
+    if (this.ranking) throw new Error("This trial already ran.");
+    const order = this.rank(round, teams);
+    const w = Trial.winners(order.length);
+    this.ranking = order.map((r, i) => {
+      r.team.won = i < w;
+      if (r.team.won) r.team.trialWins += 1;
+      return { ...r, place: i + 1, won: r.team.won };
+    });
+    return this.ranking;
+  }
+
+  /* Run the trial once for a round, recording completion on round.completed. */
+  runTrial(round, teams) {
+    if (round && round.completed) {
+      if (round.completed.has("runTrial")) throw new Error("runTrial already ran this round.");
+      round.completed.add("runTrial");
+    }
+    return this.run(round, teams);
+  }
+
+  /* Sort best first. keys: list of functions, higher is better. Full ties go by a random roll. */
+  sortBy(entries, keys) {
+    entries.forEach(e => { e.roll = this.rng(); });
+    return entries.sort((a, b) => {
+      for (const k of keys) { const d = k(b) - k(a); if (d) return d; }
+      return a.roll - b.roll;
+    });
+  }
+
+  /* Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute,
+     active players only, minus the average of all teams). Values count as 0 to 10.
+     A team with no active players gets 0 and is left out of the all-teams average. */
+  static influence(round, teams) {
+    const avg = new Map();
+    for (const t of teams) {
+      const a = t.active();
+      if (a.length) avg.set(t, a.reduce((s, p) => s + p.abilityValue(round.attr), 0) / a.length);
+    }
+    const vals = [...avg.values()];
+    const all = vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : 0;
+    return new Map(teams.map(t => [t, avg.has(t) ? Trial.INFLUENCE * (avg.get(t) - all) : 0]));
+  }
+
+  /* Rank by base + influence. Ties random. */
+  rankWithInfluence(round, teams, baseOf) {
+    const inf = Trial.influence(round, teams);
+    const entries = teams.map(team => {
+      const base = baseOf(team);
+      return { team, base, influence: inf.get(team), score: base + inf.get(team) };
+    });
+    return this.sortBy(entries, [e => e.score]);
+  }
+
+  /* A random whole number from 0 to 7 (same range as the SOP score). */
+  randomBase() { return Math.floor(this.rng() * (Trial.MAX_BASE + 1)); }
+
+  /* The right trial for a round's level. */
+  static forRound(round, rng) {
+    if (round.trialKind === "sop") return new SopTrial(rng);
+    if (round.trialKind === "judged") return new JudgedTrial(rng, round.n);
+    return new AutoTrial(rng);
+  }
+
+  /* Save (Part 13): plain data, teams and players by id. */
+  get kind() { return "auto"; }
+  toJSON() {
+    return { kind: this.kind, ranking: this.ranking ? this.ranking.map(r => ({ ...r, team: r.team.id })) : null };
+  }
+  /* Load. teams: the game's teams (the same array the game uses). byId: player id -> Player. */
+  static fromJSON(data, { rng, teams, byId }) {
+    const teamById = new Map(teams.map(t => [t.id, t]));
+    let t;
+    if (data.kind === "sop") {
+      t = new SopTrial(rng);
+      t.scores = new Map(data.scores.map(([id, s]) => [teamById.get(id), s]));
+    } else if (data.kind === "judged") {
+      t = new JudgedTrial(rng, data.level);
+      t.prompt = data.prompt;
+      t.writing = data.writing;
+      t.submissions = new Map(data.submissions.map(([id, text]) => [byId.get(id), text]));
+      if (data.vote) {
+        const v = t.startVote(teams);
+        v.ballots = new Map(data.vote.ballots.map(([id, ranking]) => [byId.get(id), ranking.map(r => byId.get(r))]));
+      }
+    } else {
+      t = new AutoTrial(rng);
+    }
+    t.ranking = data.ranking ? data.ranking.map(r => ({ ...r, team: teamById.get(r.team) })) : null;
+    return t;
+  }
+}
+
+/* Level 1: the coffee SOP. */
+class SopTrial extends Trial {
+  constructor(rng) { super(rng); this.scores = new Map(); }
+
+  static get MAX_SCORE() { return 7; }
+  /* built: the team's steps in order. correct: the right order. endless: the step that should be left out.
+     Placing nothing does not count as leaving the endless step out. */
+  static score(built, correct, endless) {
+    const right = correct.filter((t, i) => built[i] === t).length;
+    const endlessOut = built.length > 0 && !built.includes(endless);
+    return { right, endlessOut, score: right + (endlessOut ? 1 : 0) };
+  }
+
+  setScore(team, score) {
+    if (this.ranking) throw new Error("The trial already ran.");
+    this.scores.set(team, score);
+  }
+  setSopScore(team, score) { this.setScore(team, score); }
+
+  /* Level 1 in one call: score the team's SOP board, then rank every team.
+     built = the steps in board order. Returns { right, endlessOut, score, rank }. */
+  scoreSop(team, built, steps, endless, round, teams) {
+    const r = SopTrial.score(built, steps, endless);
+    this.setSopScore(team, r.score);
+    return { ...r, rank: this.runTrial(round, teams) };
+  }
+
+  /* The team's shared SOP board (Level 1): the steps in board order. Any active teammate can edit it. */
+  static sopBoard(round, team) { return ((round && round.sopBoards) || {})[team.id] || []; }
+  sopBoard(round, team) { return SopTrial.sopBoard(round, team); }
+
+  setSopBoard(round, p, team, built) {
+    const all = [...SopTrial.STEPS, SopTrial.ENDLESS];
+    const closed = !!this.ranking || !!(round && round.completed && round.completed.has("runTrial"));
+    const why = (closed ? "The SOP is closed." : null) ||
+      (p.isStuck() ? "You are Stuck." : null) ||
+      (!Array.isArray(built) || built.some(s => !all.includes(s)) || new Set(built).size !== built.length ? "Not a valid board." : null);
+    if (why) return { ok: false, reason: why };
+    round.sopBoards[team.id] = built.slice();
+    return { ok: true };
+  }
+
+  /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
+     stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
+     Results per team id: { right, endlessOut, score } in round.sopResults. */
+  closeSop(round, teams) {
+    round.sopResults = {};
+    for (const t of teams) {
+      if (!t.members.some(p => !p.isBot)) continue;
+      const r = SopTrial.score(this.sopBoard(round, t), SopTrial.STEPS, SopTrial.ENDLESS);
+      this.setSopScore(t, r.score);
+      round.sopResults[t.id] = r;
+    }
+    return this.runTrial(round, teams);
+  }
+
+  /* Teams with no score yet (bot teams in the prototype) get a random score from 0 to 7. */
+  rank(round, teams) {
+    for (const t of teams) if (!this.scores.has(t)) this.scores.set(t, this.randomBase());
+    return this.rankWithInfluence(round, teams, t => this.scores.get(t));
+  }
+
+  get kind() { return "sop"; }
+  toJSON() { return { ...super.toJSON(), scores: [...this.scores].map(([team, s]) => [team.id, s]) }; }
+}
+
+/* The coffee SOP: the steps in the right order, and the endless step that should be left out. */
+SopTrial.STEPS = ["Fill the reservoir with cold water", "Place a paper filter in the basket",
+  "Add 2 tablespoons of ground coffee per cup", "Close the lid and press Start",
+  "Wait until brewing finishes", "Pour into a mug and serve"];
+SopTrial.ENDLESS = "Repeat step 1 until performance is satisfactory";
+
+/* Levels 2-4 for now: random whole number 0 to 7 plus light influence. */
+class AutoTrial extends Trial {
+  rank(round, teams) { return this.rankWithInfluence(round, teams, () => this.randomBase()); }
+}
+
+/* Levels 5-6 prompts. Fixed, reviewed list (placeholders; the team may change them). */
+const PROMPTS = {
+  5: [
+    "Halfway through the sprint, you find a bug that breaks the main feature. Fix it now or finish the planned work first? Why?",
+    "A teammate keeps missing standups and their tasks are falling behind. What do you do first?",
+    "The client changed a requirement after you built it. How do you respond?",
+    "Two teammates disagree on a fix and work has stopped. How do you get it moving?",
+    "Your code passed testing, but a teammate says it is hard to read. Rewrite it or move on? Why?",
+    "A task will take twice as long as planned. What do you tell the client?",
+    "You find a mistake in work a teammate already marked done. How do you raise it?",
+    "The backlog has more fixes than time. How do you decide what to drop?",
+    "A fix you made broke something else. What is your next step?",
+    "Your team hits the same problem every sprint. What one change would you make?",
+  ],
+  6: [
+    "The deadline is tomorrow and one feature is not done. Cut it or ask for more time? Why?",
+    "You have five minutes to demo to the client. What do you show first?",
+    "The client asks for one more feature the day before delivery. What do you say?",
+    "The product works but the documentation is thin. What is the minimum you write before handoff?",
+    "A teammate wants to keep polishing. The rest want to ship. How do you decide?",
+    "Final testing finds a small bug most users will never see. Ship or fix? Why?",
+    "What one thing should the client know before using what you built?",
+    "Your team finished a day early. How should you use the extra time?",
+    "The client dislikes the final design, but it matches what they approved. How do you handle it?",
+    "What would your team do differently on the next project?",
+  ],
+};
+
+/* Levels 5-6: submissions, then a player vote.
+   Order: prompt (host picks or writes one; no host = random) > startWriting > submit* > closeWriting
+   (closes early when every active player has submitted) > startVote > cast* > run().
+   A player with no submission cannot be ranked, but can still vote. */
+class JudgedTrial extends Trial {
+  constructor(rng, level = null) {
+    super(rng);
+    this.level = level;
+    this.vote = null;
+    this.prompt = null;          // { level, index, text, custom }
+    this.writing = null;         // null (not started), "open", "closed"
+    this.submissions = new Map();   // player -> text
+  }
+
+  static prompts(level) { return PROMPTS[level] || []; }
+
+  /* Host picks from the list. */
+  choosePrompt(index) {
+    const list = JudgedTrial.prompts(this.level);
+    const why = this.writing ? "Writing already started." :
+      !(Number.isInteger(index) && index >= 0 && index < list.length) ? "Pick a prompt from the list." : null;
+    if (why) return { ok: false, reason: why };
+    this.prompt = { level: this.level, index, text: list[index], custom: false };
+    return { ok: true, prompt: this.prompt };
+  }
+  /* Host types a custom prompt (1 to 200 characters). It is not added to the list. */
+  customPrompt(text) {
+    const t = String(text || "").trim();
+    const why = this.writing ? "Writing already started." : !t ? "Type a prompt first." :
+      t.length > JudgedTrial.MAX_PROMPT_CHARS ? "Prompt too long: " + t.length + " of " + JudgedTrial.MAX_PROMPT_CHARS + " characters." : null;
+    if (why) return { ok: false, reason: why };
+    this.prompt = { level: this.level, index: null, text: t, custom: true };
+    return { ok: true, prompt: this.prompt };
+  }
+  /* No host: the engine picks one at random. */
+  randomPrompt() {
+    const list = JudgedTrial.prompts(this.level);
+    const index = Math.floor(this.rng() * list.length);
+    this.prompt = { level: this.level, index, text: list[index], custom: false };
+    return this.prompt;
+  }
+
+  /* Levels 5-6, host only: a list number (0 to 9) or custom text. */
+  setPrompt(choice, host = true) {
+    if (!host) return { ok: false, reason: "No host. The engine picks the prompt." };
+    return typeof choice === "number" ? this.choosePrompt(choice) : this.customPrompt(choice);
+  }
+  /* Opens writing. No host: the engine picks a prompt at random. */
+  startWriting({ host = false, prompts = null } = {}) {
+    if (this.writing) throw new Error("Writing already started.");
+    if (!this.prompt) {
+      if (host) throw new Error("The host picks a prompt first.");
+      this.randomPrompt();
+    }
+    this.writing = "open";
+    if (prompts) prompts.push({ ...this.prompt });
+    return this.prompt;
+  }
+  /* Submission length check for the writing box. */
+  static typeSubmission(pOrText, text) {
+    const s = typeof pOrText === "object" && pOrText !== null ? text : pOrText;
+    const n = String(s || "").trim().length, max = JudgedTrial.MAX_CHARS;
+    return { length: n, left: max - n, tooLong: n > max };
+  }
+  typeSubmission(pOrText, text) { return JudgedTrial.typeSubmission(pOrText, text); }
+  /* One submission per player, 1 to 300 characters. Stuck players do not write.
+     Writing closes early when every active player has submitted. */
+  submit(p, text, { players = null, submissions = null } = {}) {
+    const t = String(text == null ? "" : text).trim();
+    const why = this.writing !== "open" ? (this.writing ? "Writing is closed." : "Writing has not started.") :
+      p.isStuck() ? "Stuck players do not write." :
+      this.submissions.has(p) ? "You already submitted." :
+      !t ? "Write something first." :
+      t.length > JudgedTrial.MAX_CHARS ? "Too long: " + t.length + " of " + JudgedTrial.MAX_CHARS + " characters." : null;
+    if (why) return { ok: false, reason: why };
+    this.submissions.set(p, t);
+    const r = { ok: true, text: t };
+    if (players && this.allSubmitted(players)) {
+      this.closeWriting(submissions);
+      r.closed = true;
+    }
+    return r;
+  }
+  closeWriting(submissions = null) {
+    if (this.writing !== "open") return false;
+    this.writing = "closed";
+    if (submissions) {
+      for (const [p, text] of this.submissions) submissions.push({ level: this.level, name: p.name, text });
+    }
+    return true;
+  }
+  allSubmitted(players) { return players.filter(p => p.isActive()).every(p => this.submissions.has(p)); }   // idle players are not waited for
+
+  /* With submissions in use, only players who submitted can be ranked. */
+  startVote(teams) {
+    if (this.writing === "open") throw new Error("Writing is still open. Close it first (closeWriting).");
+    if (this.level !== null && !this.writing) throw new Error("Writing has not started (startWriting).");
+    if (!this.vote) {
+      const canBeRanked = this.writing ? (p => this.submissions.has(p)) : null;
+      this.vote = new Vote(teams, this.rng, canBeRanked);
+    }
+    return this.vote;
+  }
+  rank(round, teams) {
+    const vote = this.startVote(teams);
+    return vote.tally().map(r => ({ team: r.team, total: r.total, active: r.active, voters: r.voters, score: r.score, firsts: r.firsts }));
+  }
+
+  get kind() { return "judged"; }
+  toJSON() {
+    return { ...super.toJSON(), level: this.level, prompt: this.prompt, writing: this.writing,
+      submissions: [...this.submissions].map(([p, text]) => [p.id, text]),
+      vote: this.vote ? { ballots: [...this.vote.ballots].map(([v, ranking]) => [v.id, ranking.map(p => p.id)]) } : null };
+  }
+}
+
+Trial.INFLUENCE = 0.5;
+Trial.MAX_BASE = 7;
+JudgedTrial.MAX_CHARS = 300;          // submission length
+JudgedTrial.MAX_PROMPT_CHARS = 200;   // custom host prompt length
+JudgedTrial.WRITING_SECONDS = 180;    // writing timer: 3 minutes
+JudgedTrial.BOT_ANSWER = "Bot answer";
+Trial.SopTrial = SopTrial;
+Trial.AutoTrial = AutoTrial;
+Trial.JudgedTrial = JudgedTrial;
+
+export { Trial };
