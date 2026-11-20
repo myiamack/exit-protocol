@@ -74,6 +74,7 @@ Rule classes in `rules/` must contain **no screen code**. They only change numbe
 Refactor result:
 - **Game is the front desk:** `Game` enforces step order and delegates round actions to `Round`, trial flow to `Trial`, timers to `Timer`, and points/placement to `Economy` through pass-through methods. `Bots` connects only through `Game` hooks (`onStart`, `beforeClose`).
 - **Player owns private parts:** `Player` holds `#attributes` (`Attributes`), `#status` (`PlayerStatus`), `#pathTracker` (`PathTracker`), and `#wallet` (`Wallet`) as private fields and exposes pass-through methods. `Hearts` (`player.hearts`) stays public on purpose.
+- **MirrorTrial owns private parts:** `MirrorTrial` holds `#lobby` (`MirrorLobby`), `#setup` (`SetupCrew`), and `#dance` (`DanceCrew`) as private fields (defined in `rules/MirrorParts.js`, exported through `rules/index.js`). Outside code (`Game`, screens, bots) only calls `MirrorTrial`. Each part has its own `toJSON`/`fromJSON` and uses the seeded `Rng` passed in from `MirrorTrial`.
 
 | Class | Owns |
 |---|---|
@@ -89,7 +90,10 @@ Refactor result:
 | Accusation | One per player per round, correct or wrong, point effects. |
 | Gift | Cost by type, Independent refusal and refund, overflow refund, Lifeline credit. |
 | Vote | Ranked top 3, team totals, top half wins (rounded up), tie rule. |
-| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: `SopTrial` (Level 1, owns `setSopBoard` and `closeSop`), `SplitBriefTrial` (Level 2, owns `deal`, `postNote`, `setBoard`, `lockIn`, `fireTwist`, and `closeSplitBrief`), `MirrorTrial` (Level 3, Presentation Day, `trialKind: "mirror"`), `AutoTrial` (Level 4, random order for now), `JudgedTrial` (Levels 5 and 6, owns prompts, writing, and `Vote`). Ties: split brief = earliest Lock In after the twist, then random; mirror = higher exact attention first, then random; judged = more first places, then random; others = random. |
+| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: `SopTrial` (Level 1, owns `setSopBoard` and `closeSop`), `SplitBriefTrial` (Level 2, owns `deal`, `postNote`, `setBoard`, `lockIn`, `fireTwist`, and `closeSplitBrief`), `MirrorTrial` (Level 3, Presentation Day, `trialKind: "mirror"`, coordinates `#lobby`, `#setup`, and `#dance` as the only entry point for outside code), `AutoTrial` (Level 4, random order for now), `JudgedTrial` (Levels 5 and 6, owns prompts, writing, and `Vote`). Ties: split brief = earliest Lock In after the twist, then random; mirror = higher exact attention first, then random; judged = more first places, then random; others = random. |
+| MirrorLobby | Private part of `MirrorTrial` (`#lobby`, in `rules/MirrorParts.js`): active players in the lobby, connect and miss (tile speed-up), bot connect times, doors-close lockout check, and `toJSON`/`fromJSON`. `MirrorTrial` is its only entry point. |
+| SetupCrew | Private part of `MirrorTrial` (`#setup`, in `rules/MirrorParts.js`): seeded setup slot order, 1/2/3 player step split, current step and whose turn, the 5 step actions as reported results, content picks (mic sequences, file order, Q&A order), setup penalties and Q&A recoveries, wrap-up, and `toJSON`/`fromJSON`. `MirrorTrial` is its only entry point. |
+| DanceCrew | Private part of `MirrorTrial` (`#dance`, in `rules/MirrorParts.js`): dancer roster, per-dancer boost (cap 45) and penalties, averaged boost and penalty, and `toJSON`/`fromJSON`. `MirrorTrial` is its only entry point. |
 | Economy | Trial cost payments, Stats Update earnings, draft/lock/auto-place points, Cash Out. |
 | Timer | Step timer deadlines, injected clock, `tick()`, `close()`, and save/restore state. |
 | Attendance | Idle and popup timers, pause/resume, and missed check-in detection. |
@@ -532,6 +536,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
   - Bot-only teams: roll a random attention 0 to 100 and score from it (`Math.round(attention / 100 * 7)`).
   - Idle humans: follow the existing idle auto-pilot rule (bot rule plays their part).
 - **Multiplayer and code split:** Each player plays their own part on their own device. The screen handles motion and timing (belts, notes). The screen reports results to the rules (hit, miss, held, feedback, answer, timeout); the rules never run per-tick motion. The rules engine holds all Level 3 state, step order, penalties, boosts, content picks (mic sequences, file order, Q&A order), and scoring. All randomness uses the seeded `Rng`. `Game.toJSON` and `Game.fromJSON` must capture mid-trial Level 3 state.
+- **Class split:** `MirrorTrial` coordinates three private parts (`#lobby`: `MirrorLobby`, `#setup`: `SetupCrew`, `#dance`: `DanceCrew`) defined in `rules/MirrorParts.js` (exported through `rules/index.js`, following the one-line import/export rule). Outside code (`Game`, screens, bots) only calls `MirrorTrial`. Each part has its own `toJSON`/`fromJSON` and uses the seeded `Rng` passed in from `MirrorTrial`.
 - **No hardcoded team names:** Never hardcode team names anywhere in Level 3.
 
 ### Level 3 clues, briefing, host script, end screen, and dev jump
