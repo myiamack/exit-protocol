@@ -18,7 +18,7 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 ## Where the code lives
 
 - Repo: `C:\Users\shcop\projects\exit-protocol`
-- Branch: **level2-split-brief**. Never merge to main. Never push to main.
+- Branch: **level3** for Level 3 work (branched from **level2-split-brief**, where the 9 open Level 2 QA bugs stay until carried over). Never merge to main. Never push to main.
 - Word documents stay off GitHub.
 - Class diagram: docs/class-diagram.md (Mermaid, drawn by GitHub). Update it whenever a class in rules/ changes, in the same commit, and update the commit it says it was made from.
 - Balance simulation already in the repo: `Tests\v2_balance\sim_v2.py` (Python). It is the reference for checking our rules code.
@@ -54,6 +54,7 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
    - Login uses Base44 auth. The `@icstars.org` rule is enforced by the actor rejecting connections from other emails (not yet confirmed that the actor can read the email; test this first).
    - Why: no rebuild of the game in Base44's editor, and almost no AI credits. The backend service is in beta and uses workspace integration credits.
    - v1 is real multiplayer on a Base44 actor.
+   - Base44 handoff checklist: remove or gate the dev jump (`Ctrl+Shift+1` to `7`) before live deployment.
    - Open question: does the actor see the player's email (test this first).
 
 ### Multiplayer join, lobby, and bots (decided)
@@ -88,7 +89,7 @@ Refactor result:
 | Accusation | One per player per round, correct or wrong, point effects. |
 | Gift | Cost by type, Independent refusal and refund, overflow refund, Lifeline credit. |
 | Vote | Ranked top 3, team totals, top half wins (rounded up), tie rule. |
-| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: `SopTrial` (Level 1, owns `setSopBoard` and `closeSop`), `SplitBriefTrial` (Level 2, owns `deal`, `postNote`, `setBoard`, `lockIn`, `fireTwist`, and `closeSplitBrief`), `AutoTrial` (Levels 3 to 4, random order for now), `JudgedTrial` (Levels 5 and 6, owns prompts, writing, and `Vote`). Ties: split brief = earliest Lock In after the twist, then random; judged = more first places, then random; others = random. |
+| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: `SopTrial` (Level 1, owns `setSopBoard` and `closeSop`), `SplitBriefTrial` (Level 2, owns `deal`, `postNote`, `setBoard`, `lockIn`, `fireTwist`, and `closeSplitBrief`), `MirrorTrial` (Level 3, Presentation Day, `trialKind: "mirror"`), `AutoTrial` (Level 4, random order for now), `JudgedTrial` (Levels 5 and 6, owns prompts, writing, and `Vote`). Ties: split brief = earliest Lock In after the twist, then random; mirror = higher exact attention first, then random; judged = more first places, then random; others = random. |
 | Economy | Trial cost payments, Stats Update earnings, draft/lock/auto-place points, Cash Out. |
 | Timer | Step timer deadlines, injected clock, `tick()`, `close()`, and save/restore state. |
 | Attendance | Idle and popup timers, pause/resume, and missed check-in detection. |
@@ -143,7 +144,7 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 |---|---|---|---|---|
 | 1 Boot Up | SOP mini-game | Grit | 2 | SopTrial: SOP score |
 | 2 Sprint 1 | Prioritize against a timer | Collaboration | 3 | SplitBriefTrial: post-twist board score |
-| 3 The Mirror | Q&A gauntlet | Focus | 3 | AutoTrial (random for now; later set answers) |
+| 3 The Mirror | Presentation Day | Focus | 3 | MirrorTrial: audience attention score (0 to 7) |
 | 4 Geek Week | Testing challenge | Initiative | 4 | AutoTrial (random for now) |
 | 5 Sprint 2 | Fix the broken team | Composure | 4 | JudgedTrial: player vote |
 | 6 Sprint 3 | Final build and dream speech | Composure (was Grit, changed after balance testing) | 5 (was 6, changed after balance testing) | JudgedTrial: player vote |
@@ -417,7 +418,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - Difficulty dials (round 6 cost 7, graduation total 23).
 - Clue system and special abilities.
 - Engine auto-dials.
-- Trial mini-games for levels 3 to 4. For now AutoTrial ranks teams in random order (top half win) with an on-screen placeholder note.
+- Trial mini-game for level 4. For now AutoTrial ranks teams in random order (top half win) with an on-screen placeholder note.
 - No-repeat prompts across games (Levels 5-6).
 - Ollama prompt generation (Levels 5-6).
 
@@ -489,4 +490,66 @@ Level 6 prompts (Sprint 3, finishing and delivering):
   - Workshops: LW3A Perception vs. Intent · LW3B Roles + Handoff · BW3B Prioritize Under Pressure · W3A 14-Week Budget · BW4A Credibility in Writing · BW4B Tell the Story · LW4A Act on Purpose Under Pressure · W4A Emotional Patterns Map
 - The host script (`FAC`) gets per-level entries. Level 2 entries say: Collaboration, cost 3, Split Brief.
 - After Level 1's Stats Update, the browser continues to Level 2 (`G.startNextRound`, then the Briefing screen).
-- After Level 2's Stats Update, show a "Sprint 1 Complete" screen: your Level 1 and Level 2 trial results (win/loss), hearts left, glitch count (`x/2`), status, your 5 attributes; your team name and trial wins out of 2; all teams ranked by trial wins; a "Level 3 locked" card with Replay and Back to sign-in buttons. Never show work styles or secret path progress on this screen.
+- After Level 2's Stats Update, show a "Sprint 1 Complete" screen: your Level 1 and Level 2 trial results (win/loss), hearts left, glitch count (`x/2`), status, your 5 attributes; your team name and trial wins out of 2; all teams ranked by trial wins; a "Start Level 3" button (replacing the old "Level 3 locked" card) with Replay and Back to sign-in buttons. Never show work styles or secret path progress on this screen.
+
+## Level 3 work rules (for every agent)
+
+- Level 3 is built one step at a time from `docs/level3-progress.md` on branch `level3` (made from `level2-split-brief`). Do one step per task, then stop.
+- At the start of every task, read `CLAUDE.md`, `docs/level3-progress.md`, and `docs/level3-report.md`.
+- Hannah Ziegler is the Level 3 designer. Her first version of Level 3 lives in commit `cdf3eff` on `backup/Level3`. Her code is a reference only: read it with `git show cdf3eff:<path>`. Never merge, rebase, or cherry-pick it.
+- CLAUDE.md is the source of truth for rules. If code and CLAUDE.md disagree, stop and report it. Do not guess.
+- After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only when the step touches screen code (`game.js`, `mirror-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`).
+- Never save a new baseline unless the step says so. Explain any baseline change before saving.
+- At the end of every step: update `docs/level3-progress.md` (mark the step done, list files changed, test results, any open issues), commit on `level3`, and push to `origin` and `backup`.
+- The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3` later.
+- Do not edit `docs/design/Mock_Interview*` (partner's file).
+
+## Level 3 trial: The Mirror: Presentation Day
+
+- **Designer:** Hannah Ziegler (original prototype in `cdf3eff` on `backup/Level3`; rebuilt in our OOAD rules and screen structure).
+- **Name, class, cost:** Name is **The Mirror: Presentation Day**. `trialKind` is `"mirror"`, class `MirrorTrial`. Tests Focus, costs 3 (unchanged in `Round.LEVELS`).
+- **Lobby:** Its own 30-second timer. Each active player connects themselves with Hannah's signal-grab tile (moving cursor 0 to 100, start speed 7 to 10, green band width 14; tap when the moving cursor is in the green band; a miss wobbles the line and speeds up that tile by +2 up to 16, her numbers from `cdf3eff`). Stuck and Idle players are not in the lobby or the crews (`Team.active()` only). If any active player is still out when the doors close, the team's trial fails with score 0. Bots always connect after a random 3 to 15 seconds.
+- **Crew deal and reveal:** Seeded `Rng`, active players only. Setup Crew gets half rounded up, max 3 (`Math.min(3, Math.ceil(activeCount / 2))`). The rest are Dance Crew. Then a 1-second `CREW LOCKED` reveal before showtime starts.
+- **Setup split and turn order:** Setup Crew works the 5 steps in order, each turn starting when the previous Setup player finishes:
+  - 1 Setup player: does all 5 steps (cables, sound, mic, deck, Q&A).
+  - 2 Setup players: P1 does cables, sound, mic; P2 does deck, Q&A.
+  - 3 Setup players: P1 does cables, sound; P2 does mic, deck; P3 does Q&A.
+  - Slot order is dealt by seeded `Rng`. Waiting Setup players see the live step checklist. The last Setup player presses "Wrap up the presentation" to end the trial.
+- **Setup steps and penalties (Hannah's rules and numbers from `cdf3eff`; see `docs/level3-report.md` section 1):**
+  1. **Cables (Patch the rack):** 4 ports (`HDMI`, `USB-C`, `AirLink`, `VGA`) slide across a moving belt toward a plug frame (travel 11 ticks / 2.75 s, spawn gap speeds up 6 -> 5 -> 4 as machines connect). Click the matching machine while its cable is in the frame (within 2 ticks). Wrong clicks spark and cost 3 attention. Missed cables return to the belt.
+  2. **Sound check:** Starts at 45, drifts toward 45 every tick (with slight jitter), and spikes +8 to +17 every 12 to 20 ticks (3 to 5 s) when the crowd whoops. Controls `-10`, `+5`, `+10`. Hold the level in the green zone (70 to 85) for 3 straight seconds (12 ticks). Hitting 100 or higher causes feedback, resets sound to 45 and hold timer to 0, and costs 4 attention.
+  3. **Mic check:** Three memory rounds of lengths 3, 4, and 5 across `MIC 1` to `MIC 4`. The sequence flashes (9 ticks on round 1; `6 + length` ticks on later or retry rounds), hides behind `?`, and the player taps it back. A wrong tap costs 4 attention and flashes a new sequence for that round.
+  4. **Grab the deck:** Six files (`MEDLINE_deck_v1_draft.pptx`, `MEDLINE_deck_v2_client_comments.pptx`, `MEDLINE_deck_v3_CLIENT_SIGNED.pptx` [correct], `MEDLINE_budget_v3.xlsx`, `team_retro_cat_video.mp4`, `DO_NOT_OPEN.exe`) reshuffle every 2 seconds (8 ticks). Clicking a wrong file costs 6 attention and triggers an extra reshuffle (2 ticks / 0.5 s).
+  5. **Rapid-fire Q&A:** 3 Medline multiple-choice questions, one at a time, each with a 29-tick (7.25 s) countdown bar. A right answer restores up to 5 penalty points (`Math.max(0, pen - 5)`). A wrong answer or timeout costs 5 attention. After question 3, the last Setup player presses "Wrap up the presentation" to end the trial.
+- **Dance Crew:** Each dancer plays their own rhythm lane with Hannah's rules and numbers from `cdf3eff` (arrow notes `left/up/right/down` with no 3 identical in a row, travel 10 ticks / 2.5 s, note gap 6 -> 5 after 20 notes -> 4 after 40 notes; inner band within 1 tick = PERFECT +3 boost, outer band within 2 ticks = good +2 boost; stray press costs 1 attention and resets combo; missed note costs 2 attention and resets combo). Each dancer's boost caps at 45. Dancer boosts and dancer penalties are averaged across dancers. 0 dancers means no dance boost (and 0 dance penalty).
+- **Showtime:** Its own 75-second timer. Attention drains only during showtime.
+- **Attention:** `base (showtime seconds left / 75 * 100) + baseBoost + average dancer boost - setup penalties - average dancer penalties`, clamped 0 to 100. Attention 0 ends the trial with score 0.
+- **Score, ranking, and ties:** Score is `Math.round(attention / 100 * 7)`, 0 to 7. Ranking adds the usual light Focus influence (`rankWithInfluence`). Top half of teams win (`Trial.winners`), same as other trials. Ties break by higher exact attention first, then random (`Rng`).
+- **Bots and Idle humans:**
+  - Lobby: bots always connect after a random 3 to 15 seconds.
+  - Setup slots: bot setup slots finish each step after a set time; each step has a 30% hiccup costing 3 attention; a bot in the last slot wraps up automatically.
+  - Dance Crew: bot dancers gain +1 boost every 1.5 to 2.5 seconds up to 45, no misses.
+  - Bot-only teams: roll a random attention 0 to 100 and score from it (`Math.round(attention / 100 * 7)`).
+  - Idle humans: follow the existing idle auto-pilot rule (bot rule plays their part).
+- **Multiplayer and code split:** Each player plays their own part on their own device. The screen handles motion and timing (belts, notes). The rules engine holds all Level 3 state, step order, penalties, boosts, content picks (mic sequences, file order, Q&A order), and scoring. All randomness uses the seeded `Rng`. `Game.toJSON` and `Game.fromJSON` must capture mid-trial Level 3 state.
+- **No hardcoded team names:** Never hardcode team names anywhere in Level 3.
+
+### Level 3 clues, briefing, host script, end screen, and dev jump
+
+- **Ghost hints (per-level hint table, Level 3):**
+  - `USER_???`: "The doors closed with one of us still outside. They don't wait for stragglers. Neither does the client."
+  - `ATTEMPT_01`: "I grabbed the first deck I saw. Draft. Wrong version. The client only trusts what they signed."
+  - `NULL`: "Seventy to eighty-five. Louder is not better. When the crowd roars, pull the sound down."
+- **Tea guest story (Level 3):**
+  - "My first client demo, the projector cable didn't fit. We had tested everything except the room. Now I check the setup first, I keep the signed version of the deck in one place, and I know the client's problem cold before anyone asks me a question. A presentation fails in the setup long before it fails on stage."
+- **Level 3 briefing:**
+  - Header: "System Briefing · Level 3"
+  - Title: "The Mirror: Presentation Day"
+  - Memo (to `{name}` and `{team}`): "Today you present to Medline. The call opens in 30 seconds. Every active member must connect before the doors close, or the room empties and your team scores zero. Once you're in, crews are drawn at random. Setup Crew runs the steps in order: cables, sound, mic, deck, Q&A. Dance Crew keeps the audience awake. Attention drains from the moment showtime starts. Finish fast and finish clean."
+  - Stat cards: same format as Level 2 (tests Focus, costs 3, your Focus).
+- **Host script (`FAC`):**
+  - Briefing: "Level 3. Presentation Day. Read the memo. You present to the Medline client today."
+  - Trial lobby: "Doors open. Connect to the call in the next 30 seconds. Anyone left outside, the whole team fails."
+  - Trial showtime: "Crews are locked. Setup, work your steps in order. Dancers, keep the room awake. Attention is draining. Go."
+- **End screen:** After Level 3 Stats Update, show a "Presentation Day Complete" screen in the same format as Sprint 1 Complete (no work styles or secret paths). Sprint 1 Complete gets a "Start Level 3" button.
+- **Dev jump:** `Ctrl+Shift+1` to `7`, always on in the prototype. Jumping forward fast-forwards rounds. Jumping to the current or an earlier level starts a new game and fast-forwards to that level. Remove or gate the dev jump for Base44 handoff.
