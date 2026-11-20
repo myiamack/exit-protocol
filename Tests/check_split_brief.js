@@ -2,7 +2,7 @@
    Fixed seeds throughout (Rng.seeded). Never uses Math.random.
    Run from the repo folder:  node Tests/check_split_brief.js */
 const EP = require("../rules/index.js");
-const { Bots, Player, Rng, Round, Scenarios, Team, Trial } = EP;
+const { Bots, Game, Player, Rng, Round, Scenarios, Team, Trial } = EP;
 const { SplitBriefTrial } = Trial;
 
 let pass = 0, fail = 0;
@@ -466,6 +466,91 @@ console.log("-- 7. Save and load (toJSON / fromJSON)");
     JSON.stringify(trAfter.toJSON()) === afterRunSaved
       && !trAfter.postNote(teamsA[0].members[1], "Too late").ok
       && !trAfter.setBoard(teamsA[2].members[0], ["D"]).ok
+  );
+}
+
+console.log("-- 8. Per-game label and card order shuffle");
+{
+  const maps = new Set();
+  const orders = new Set();
+  let allScore5 = true;
+  let allTasksValid = true;
+
+  for (let s = 1; s <= 15; s++) {
+    const t = makeTeam(0, 4, { humans: 1, collab: 4 });
+    const round = makeRound2();
+    const tr = new SplitBriefTrial(Rng.seeded(s), Scenarios.MEDLINE_SPRINT_1);
+    tr.deal([t]);
+    maps.add(JSON.stringify(tr.letterMap));
+    orders.add(JSON.stringify(tr.cardOrder));
+
+    const ids = tr.tasks.map(x => x.id);
+    if (JSON.stringify(ids) !== '["A","B","C","D"]') allTasksValid = false;
+
+    const expectedPost = Scenarios.MEDLINE_SPRINT_1.postTwistAnswer.map(id => tr.letterMap[id]);
+    const expectedPre = Scenarios.MEDLINE_SPRINT_1.preTwistAnswer.map(id => tr.letterMap[id]);
+    if (
+      JSON.stringify(tr.postTwistAnswer) !== JSON.stringify(expectedPost) ||
+      JSON.stringify(tr.preTwistAnswer) !== JSON.stringify(expectedPre)
+    ) {
+      allScore5 = false;
+    }
+
+    tr.setBoard(t.members[0], tr.postTwistAnswer);
+    const res = tr.run(round, [t]);
+    if (res[0].base !== 5) allScore5 = false;
+  }
+
+  expect("Different seeds produce different letter maps", maps.size > 1, "distinct=" + maps.size);
+  expect("Different seeds produce different card deal orders", orders.size > 1, "distinct=" + orders.size);
+  expect("Tasks keep sorted A-D ids after shuffle", allTasksValid);
+  expect("Shuffled postTwistAnswer scores 5 under every map", allScore5);
+
+  // Save/load preserves letterMap, cardOrder, tasks, answers, and card botNotes
+  const tOrig = makeTeam(0, 3, { humans: 1, collab: 4 });
+  const byIdOrig = new Map(tOrig.members.map(p => [p.id, p]));
+  const trOrig = new SplitBriefTrial(Rng.seeded(919), Scenarios.MEDLINE_SPRINT_1);
+  trOrig.deal([tOrig]);
+  const saved = JSON.parse(JSON.stringify(trOrig.toJSON()));
+  const pLoaded = tOrig.members.map(p => Player.fromJSON(p.toJSON()));
+  const byIdLoaded = new Map(pLoaded.map(p => [p.id, p]));
+  const tLoaded = Team.fromJSON(tOrig.toJSON(), byIdLoaded);
+  const trLoaded = Trial.fromJSON(saved, { rng: Rng.seeded(0), teams: [tLoaded], byId: byIdLoaded });
+  expect(
+    "Save/load preserves letterMap, cardOrder, tasks, and postTwistAnswer",
+    JSON.stringify(trLoaded.letterMap) === JSON.stringify(trOrig.letterMap) &&
+      JSON.stringify(trLoaded.cardOrder) === JSON.stringify(trOrig.cardOrder) &&
+      JSON.stringify(trLoaded.tasks) === JSON.stringify(trOrig.tasks) &&
+      JSON.stringify(trLoaded.postTwistAnswer) === JSON.stringify(trOrig.postTwistAnswer) &&
+      JSON.stringify(trLoaded.cardsFor(byIdLoaded.get(tOrig.members[0].id))) === JSON.stringify(trOrig.cardsFor(tOrig.members[0]))
+  );
+
+  // Bot notes use shuffled letters
+  let botSeed = null;
+  for (let s = 1; s <= 50; s++) {
+    const trProbe = new SplitBriefTrial(Rng.seeded(s), Scenarios.MEDLINE_SPRINT_1);
+    trProbe.deal([makeTeam(0, 4)]);
+    const m = trProbe.letterMap;
+    if (m.A !== "A" || m.C !== "C" || m.D !== "D") { botSeed = s; break; }
+  }
+  let now = 10000;
+  const botTeam = makeTeam(0, 4, { humans: 0, collab: 4 });
+  const g = new Game({ teams: [botTeam], rng: Rng.seeded(botSeed), clock: () => now, hooks: Bots.hooks });
+  g.start();
+  g.startNextRound(); // Level 1 briefing
+  g.advance();        // openFloor
+  const trBot = new SplitBriefTrial(g.rng);
+  g.setTrialForTest(trBot);
+  g.advance();        // trial -> deals & shuffles
+  for (let s = 1; s <= 35; s++) { now += 1000; g.tick(now); }
+  const notesText = trBot.notesFor(botTeam).map(n => n.text).join("\n");
+  const lm = trBot.letterMap;
+  expect(
+    "Bot notes use shuffled task letters",
+    notesText.includes("(" + lm.D + ")") &&
+      notesText.includes("(" + lm.C + ")") &&
+      notesText.includes("(" + lm.A + ")"),
+    JSON.stringify(lm)
   );
 }
 

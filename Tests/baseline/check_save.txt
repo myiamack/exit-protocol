@@ -1,4 +1,4 @@
--- 1. Save and load after every action (20 games, 5769 saves)
+-- 1. Save and load after every action (20 games, 5774 saves)
 PASS  both copies hold the same state after every action  -> all equal
 PASS  final endings match the game that never reloaded
 PASS  saved and loaded at every round step  -> intermission, briefing, openFloor, trial, glitchReport, giftWindow, lockIn, statsUpdate, graduation
@@ -15,4 +15,4 @@ PASS  save survives JSON text unchanged
 PASS  a game with unsaveable random numbers refuses to save, with a clear reason
 PASS  random numbers continue the same sequence after loading
 
-13 passed, 0 failed  (3.7 s)
+13 passed, 0 failed  (4.0 s)

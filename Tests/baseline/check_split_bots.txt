@@ -1,9 +1,9 @@
 -- 1. Every bot card note posted by 30s, matches botNote, posterName is bot's name
-PASS  All bot card notes posted by 30s  -> notes=15
+PASS  All bot card notes posted by 30s  -> notes=16
 PASS  Every note text matches botNote and posterName matches bot name
 PASS  Bots never edit the board or lock in
 -- 2. Twist held by a bot: twist note posted between 90s and 100s
-PASS  No twist note posted before 90s  -> firstAt=93s
+PASS  No twist note posted before 90s  -> firstAt=92s
 PASS  All 4 bot teams posted twist note between 90s and 100s
 PASS  Twist note poster is the bot holding the twist
 -- 3. Bot holding 3 cards: 2 before twist, 1 spare; twist holder uses spare for twist

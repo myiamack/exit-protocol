@@ -49,8 +49,8 @@
       const maxScore = SBT.MAX_SCORE;
       const shown = x => Math.min(maxScore, Math.max(0, Math.round(x)));
       const board = trial.boardFor(MYTEAM);
-      const rawScore = SBT.score(board, trial.scenario.postTwistAnswer);
-      const keyStr = trial.scenario.postTwistAnswer.join(" then ");
+      const rawScore = SBT.score(board, trial.postTwistAnswer);
+      const keyStr = trial.postTwistAnswer.join(" then ");
       const hint = opts.costHint ? `<span class="hint">${opts.costHint()}</span>` : "";
       const html = `${hdr}<div class="result"><b style="color:${MYTEAM.won ? "var(--ok)" : "var(--bad)"}">Team ${MYTEAM.won ? "WIN" : "LOSS"}. Score ${shown(mine ? mine.score : 0)} of ${maxScore}.</b><span class="hint">Board score: ${rawScore} of ${maxScore} (post-twist key: ${esc(keyStr)}). Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>Result</th></tr></thead><tbody>${rank.map(r => `<tr><td class="n">${r.place}</td><td>${esc(r.team.name)}${r.team === MYTEAM ? " (you)" : ""}</td><td class="n">${shown(r.score)} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`).join("")}</tbody></table>${hint}</div>`;
       return { html, bind: null, tick: null, waitHint: "Wait for the Split Brief trial to finish" };
@@ -65,7 +65,7 @@
     const locked = trial.isLocked(MYTEAM);
     const canAct = ME.isActive();
     const canPost = canAct && left > 0;
-    const tasks = trial.scenario.tasks;
+    const tasks = trial.tasks;
     const taskById = id => tasks.find(t => t.id === id);
 
     const tasksHTML = tasks.map(t => {

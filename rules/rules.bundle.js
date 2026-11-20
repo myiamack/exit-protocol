@@ -1513,6 +1513,8 @@ class SplitBriefTrial extends Trial {
   #scenario;
   #teams = [];
   #dealt = false;
+  #letterMap = {};           // original task id -> shuffled letter
+  #cardOrder = [];           // card ids in shuffled deal order
   #deals = new Map();        // Player -> string[] card ids
   #notes = new Map();        // Team -> [{ posterId, posterName, text, order }]
   #notesUsed = new Map();    // Player -> number
@@ -1528,12 +1530,23 @@ class SplitBriefTrial extends Trial {
     if (typeof rng !== "function") throw new Error("SplitBriefTrial requires a seeded rng.");
     super(rng);
     this.#scenario = scenario || Scenarios.MEDLINE_SPRINT_1;
+    for (const t of this.#scenario.tasks) this.#letterMap[t.id] = t.id;
+    this.#cardOrder = this.#scenario.cards.map(c => c.id);
     this.onAllLocked = null;
   }
 
   get kind() { return "splitBrief"; }
   get scenario() { return this.#scenario; }
   get dealt() { return this.#dealt; }
+  get letterMap() { return { ...this.#letterMap }; }
+  get cardOrder() { return this.#cardOrder.slice(); }
+  get tasks() {
+    return this.#scenario.tasks
+      .map(t => ({ ...t, id: this.#mapLetter(t.id) }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+  get preTwistAnswer() { return this.#scenario.preTwistAnswer.map(id => this.#mapLetter(id)); }
+  get postTwistAnswer() { return this.#scenario.postTwistAnswer.map(id => this.#mapLetter(id)); }
   get twistFired() { return this.#twistFired; }
   get twistDeadline() { return this.#twistDeadline; }
   setTwistDeadline(at) { this.#twistDeadline = at; }
@@ -1549,7 +1562,12 @@ class SplitBriefTrial extends Trial {
 
   #teamOf(player) { return this.#teams.find(t => t.has(player)) || null; }
   #cardById(id) { return this.#scenario.cards.find(c => c.id === id) || null; }
-  #validTaskIds() { return new Set(this.#scenario.tasks.map(t => t.id)); }
+  #mapLetter(id) { return this.#letterMap[id] || id; }
+  #remapText(text) {
+    if (typeof text !== "string") return text;
+    return text.replace(/\(([A-Za-z0-9]+)\)/g, (m, id) => (this.#letterMap[id] ? "(" + this.#letterMap[id] + ")" : m));
+  }
+  #validTaskIds() { return new Set(this.tasks.map(t => t.id)); }
 
   #activeWhy(player, verb) {
     if (!player) return "Unknown player.";
@@ -1561,17 +1579,25 @@ class SplitBriefTrial extends Trial {
 
   #baseScore(team) {
     if (team.members.some(p => !p.isBot)) {
-      return SplitBriefTrial.score(this.boardFor(team), this.#scenario.postTwistAnswer);
+      return SplitBriefTrial.score(this.boardFor(team), this.postTwistAnswer);
     }
     return Math.floor(this.rng() * (SplitBriefTrial.MAX_SCORE + 1));
   }
 
-  /* Deal the scenario's cards round-robin to each team's active players in random seat order. */
+  /* Shuffle task letters and card deal order, then deal round-robin to each team's active players. */
   deal(teams) {
     if (this.#dealt) throw new Error("Cards were already dealt.");
     this.#teams = teams.slice();
     this.#dealt = true;
-    const cards = this.#scenario.cards;
+
+    const origIds = this.#scenario.tasks.map(t => t.id);
+    const shuffledLetters = this.#shuffle(origIds);
+    this.#letterMap = {};
+    origIds.forEach((orig, i) => { this.#letterMap[orig] = shuffledLetters[i]; });
+
+    const cards = this.#shuffle(this.#scenario.cards);
+    this.#cardOrder = cards.map(c => c.id);
+
     for (const team of this.#teams) {
       this.#boards.set(team, []);
       this.#notes.set(team, []);
@@ -1588,9 +1614,12 @@ class SplitBriefTrial extends Trial {
     }
   }
 
-  /* Private view: returns only the asking player's cards. */
+  /* Private view: returns only the asking player's cards, with shuffled task letters applied. */
   cardsFor(player) {
-    return (this.#deals.get(player) || []).map(id => ({ ...this.#cardById(id) }));
+    return (this.#deals.get(player) || []).map(id => {
+      const c = this.#cardById(id);
+      return { ...c, text: this.#remapText(c.text), botNote: this.#remapText(c.botNote) };
+    });
   }
 
   /* Team notes: active players only, max 80 chars, non-empty, max 3 per player, allowed after Lock In. */
@@ -1683,14 +1712,19 @@ class SplitBriefTrial extends Trial {
     return true;
   }
 
+  #twistCard() {
+    const t = this.#scenario.twist;
+    return { ...t, text: this.#remapText(t.text), botNote: this.#remapText(t.botNote) };
+  }
+
   /* Returns the twist card only for the chosen holder on each team, null for everyone else. */
   twistFor(player) {
     if (!this.#twistFired) return null;
     const team = this.#teamOf(player);
-    if (team) return this.#twistHolders.get(team) === player ? { ...this.#scenario.twist } : null;
+    if (team) return this.#twistHolders.get(team) === player ? this.#twistCard() : null;
     if (!this.#teams.length) {
       for (const holder of this.#twistHolders.values()) {
-        if (holder === player) return { ...this.#scenario.twist };
+        if (holder === player) return this.#twistCard();
       }
     }
     return null;
@@ -1735,6 +1769,8 @@ class SplitBriefTrial extends Trial {
       ...super.toJSON(),
       scenarioId: this.#scenario.id,
       dealt: this.#dealt,
+      letterMap: { ...this.#letterMap },
+      cardOrder: this.#cardOrder.slice(),
       teamIds: this.#teams.map(t => t.id),
       deals: [...this.#deals].map(([p, ids]) => [p.id, ids.slice()]),
       notes: [...this.#notes].map(([t, list]) => [t.id, list.map(n => ({ ...n }))]),
@@ -1753,6 +1789,8 @@ class SplitBriefTrial extends Trial {
     const teamById = new Map(teams.map(t => [t.id, t]));
     const t = new SplitBriefTrial(rng, scenario || scenarioById(data.scenarioId));
     t.#dealt = !!data.dealt;
+    if (data.letterMap) t.#letterMap = { ...data.letterMap };
+    if (Array.isArray(data.cardOrder)) t.#cardOrder = data.cardOrder.slice();
     t.#teams = (data.teamIds || []).map(id => teamById.get(id)).filter(Boolean);
     t.#deals = new Map((data.deals || []).map(([id, cards]) => [byId.get(id), cards.slice()]));
     t.#notes = new Map((data.notes || []).map(([id, list]) => [teamById.get(id), list.map(n => ({ ...n }))]));

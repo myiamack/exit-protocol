@@ -54,5 +54,12 @@ PASS  Trial.fromJSON rebuilds identical mid-trial state
 PASS  Lock order counter continues accurately after load
 PASS  Loaded trial produces the exact same ranking as original
 PASS  Post-run save/load preserves ranking and blocks further edits/notes
+-- 8. Per-game label and card order shuffle
+PASS  Different seeds produce different letter maps  -> distinct=12
+PASS  Different seeds produce different card deal orders  -> distinct=14
+PASS  Tasks keep sorted A-D ids after shuffle
+PASS  Shuffled postTwistAnswer scores 5 under every map
+PASS  Save/load preserves letterMap, cardOrder, tasks, and postTwistAnswer
+PASS  Bot notes use shuffled task letters  -> {"A":"D","B":"B","C":"A","D":"C"}
 
-49 passed, 0 failed.
+55 passed, 0 failed.

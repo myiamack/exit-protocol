@@ -1,41 +1,41 @@
 === 16 players: 4 teams (4 of 4), 1000 games ===
-Graduation 61.2%   Overall win 71.7%
+Graduation 61.0%   Overall win 71.7%
 Win by type:
-  Cooperative 69.7%
-  Independent 73.7%
-  Contrarian  71.5%
-Type gap 4.1 points: FAIL  <-- outside the 1 to 3 goal
+  Cooperative 70.2%
+  Independent 73.5%
+  Contrarian  71.3%
+Type gap 3.3 points: FAIL  <-- outside the 1 to 3 goal
 By team size:  Size  Players  Win      Graduate  Trials won  Coop win  Indep win  Contra win
-                  4    16000  71.7%    61.2%     50.0%       69.7%     73.7%      71.5%
+                  4    16000  71.7%    61.0%     50.0%       70.2%     73.5%      71.3%
 All teams the same size, so no size comparison.
 
 === 20 players: 5 teams (5 of 4), 1000 games ===
-Graduation 72.8%   Overall win 80.3%
+Graduation 73.0%   Overall win 80.7%
 Win by type:
-  Cooperative 80.4%
-  Independent 80.4%
-  Contrarian  80.2%
-Type gap 0.3 points: FAIL  <-- outside the 1 to 3 goal
+  Cooperative 81.2%
+  Independent 81.0%
+  Contrarian  79.8%
+Type gap 1.4 points: PASS
 By team size:  Size  Players  Win      Graduate  Trials won  Coop win  Indep win  Contra win
-                  4    20000  80.3%    72.8%     60.0%       80.4%     80.4%      80.2%
+                  4    20000  80.7%    73.0%     60.0%       81.2%     81.0%      79.8%
 All teams the same size, so no size comparison.
 
 === 24 players: 7 teams (3 of 4, 4 of 3), 1000 games ===
-Graduation 69.6%   Overall win 77.9%
+Graduation 69.0%   Overall win 78.0%
 Win by type:
-  Cooperative 77.3%
-  Independent 79.9%
-  Contrarian  76.4%
-Type gap 3.5 points: FAIL  <-- outside the 1 to 3 goal
+  Cooperative 77.5%
+  Independent 80.8%
+  Contrarian  75.8%
+Type gap 5.1 points: FAIL  <-- outside the 1 to 3 goal
 By team size:  Size  Players  Win      Graduate  Trials won  Coop win  Indep win  Contra win
-                  4    12000  79.0%    70.6%     57.4%       79.2%     79.0%      78.8%
-                  3    12000  76.7%    68.7%     57.0%       75.4%     80.8%      73.9%
-Team size win spread 2.3 points (largest minus smallest win %).
+                  4    12000  78.0%    68.8%     57.2%       78.8%     79.1%      76.3%
+                  3    12000  78.0%    69.3%     57.1%       76.2%     82.6%      75.2%
+Team size win spread 0.0 points (largest minus smallest win %).
 
 === Target check: type gap 1 to 3 points ===
 Players  Graduation  Gap    Result
-16       61.2%       4.1    FAIL
-20       72.8%       0.3    FAIL
-24       69.6%       3.5    FAIL
+16       61.0%       3.3    FAIL
+20       73.0%       1.4    PASS
+24       69.0%       5.1    FAIL
 
 Full run time: 1.7 seconds.

@@ -436,6 +436,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 
 - Level 2 uses a new trial kind, Split Brief. Cost 3, paid in Collaboration (already in `Round.LEVELS`). Same light stat influence as other trials (`rankWithInfluence`).
 - Every team gets the same scenario. The brief has 5 cards, dealt round-robin to the team's active players (not Stuck, not idle). Small teams hold extra cards.
+- Shuffle per game: at deal time, `game.rng` shuffles which letter (A, B, C, D) each backlog task gets and the order the brief cards are dealt and shown; answer keys, bot notes, and the screen follow the mapping (saved in `toJSON`/`fromJSON`).
 - Cards are private. Only the holder sees them.
 - Talking out loud is allowed. Team notes exist for remote players and bots.
 - Team notes: active players can post to their own team's feed. 80 characters max per note. 3 notes per player per trial, with a "notes left" counter. Notes show the poster's name. Only that team sees its feed.
