@@ -1,0 +1,26 @@
+PASS  MirrorData exists as plain object
+PASS  MirrorData contains only plain data (no functions)
+PASS  Exactly 4 cable ports  -> HDMI, USB-C, AirLink, VGA
+PASS  Ports match HDMI, USB-C, AirLink, VGA
+PASS  Exactly 6 deck files  -> 6
+PASS  Every deck file has name and boolean correct flag
+PASS  Exactly 1 correct deck file (MEDLINE_deck_v3_CLIENT_SIGNED.pptx)  -> MEDLINE_deck_v3_CLIENT_SIGNED.pptx
+PASS  Exactly 3 Medline Q&A items  -> 3
+PASS  Each Q&A has question, 3 options, single valid correctIndex, and why
+PASS  setupSteps lists all 5 steps in order  -> cables, sound, mic, deck, qa
+PASS  setupSplits covers 1, 2, and 3 players  -> 1, 2, 3
+PASS  Each split covers all 5 steps exactly once in order
+PASS  Timers match 250ms tick, 30s lobby, 1s reveal, 75s showtime
+PASS  Scoring constants match 0..100 attention, max score 7, max setup 3
+PASS  Lobby constants match band 14, speed-up +2 cap 16, bot 3-15s
+PASS  Cable constants match travel 11, window 2, gaps 6/5/4, penalty 3
+PASS  Sound constants match green 70-85 for 3s, feedback at 100 (-4), spikes
+PASS  Mic constants match 4 mics, lengths [3,4,5], flash ticks, penalty 4
+PASS  Deck constants match reshuffle 8 ticks, spite 2 ticks, penalty 6
+PASS  Q&A constants match 29-tick countdown, +5 recover, -5 penalty
+PASS  Dance constants match cap 45, perfect/good +3/+2, stray/miss -1/-2, tempo
+PASS  Bot constants match 6 setup milestones, 30% hiccup (-3), 1.5-2.5s dance
+PASS  Flavor lists and status messages are populated strings
+PASS  Zero hardcoded team names in mirrorData.js source or exported data
+
+24 passed, 0 failed.

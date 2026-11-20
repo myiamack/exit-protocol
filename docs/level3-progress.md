@@ -15,10 +15,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm test` passed 12/12 checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`) against the unchanged baseline.
 - **Open issues:** The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3` later.
 
-### Step 1: Level 3 data module (Effort: Low) - TODO
+### Step 1: Level 3 data module (Effort: Low) - DONE
 - **Goal:** Create `rules/mirrorData.js` (exported via `rules/index.js`) holding plain Level 3 constants and content: 4 cable ports (`HDMI`, `USB-C`, `AirLink`, `VGA`) with no hardcoded team names, 6 deck files, 3 Medline Q&A items, setup split tables for 1/2/3 setup slots, Hannah's timing/penalty/boost numbers, and flavor lines, plus `Tests/check_mirror_data.js` registered in `tools/baseline.js`.
 - **Done when:** Data module exports clean plain data with zero hardcoded team names and the data-shape test + baseline tests pass.
 - **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_data.js`
+- **Files changed:** `rules/mirrorData.js`, `rules/index.js`, `rules/rules.bundle.js`, `Tests/check_mirror_data.js`, `Tests/baseline/check_mirror_data.txt`, `tools/baseline.js`, `CLAUDE.md`, `docs/level3-progress.md`.
+- **Test results:** `npm run build` (22 modules), `npm test` (13/13 checks passed; zero changes to existing baselines), and `node Tests/check_mirror_data.js` (24/24 assertions passed).
+- **Open issues:** `baseBoost` in Hannah's `cdf3eff` depended on a single shared 75-second timer across lobby, reveal, and showtime; in our separate-timer structure (30s lobby, 1s reveal, fresh 75s showtime), that shared timer no longer exists (no replacement invented; confirm handling in Step 2c).
 
 ### Step 2a: `MirrorLobby` and `MirrorTrial` crew deal (Effort: Medium) - TODO
 - **Goal:** Create `rules/MirrorParts.js` (exported through `rules/index.js`, following the one-line import/export rule) with `MirrorLobby` (active players via `Team.active()`, connect and miss tile speed-up, bot connect times, doors-close lockout check, seeded `Rng` passed in from `MirrorTrial`, own `toJSON`/`fromJSON`), and build `MirrorTrial` in `rules/Trial.js` as the coordinator holding `#lobby` as a private field (outside code - `Game`, screens, bots - only calls `MirrorTrial`), owning the seeded crew deal (Setup Crew half rounded up max 3, rest Dance Crew, 1s reveal) and `toJSON`/`fromJSON` saving and restoring `#lobby` and crew deal state (not wired into `Round.LEVELS` yet). Add `Tests/check_mirror_lobby.js` (testing `MirrorLobby` directly and through `MirrorTrial`) and register it in `tools/baseline.js`.

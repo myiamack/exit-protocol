@@ -22,6 +22,7 @@ const TESTS = [
   "check_split_brief",
   "check_split_timing",
   "check_split_bots",
+  "check_mirror_data",
 ];
 
 function runTest(name) {
