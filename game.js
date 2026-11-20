@@ -229,7 +229,6 @@ function newSession(){
 /* Round progress comes from Game, not from screen flags. */
 const floorOpen=()=>!!G&&G.step==="openFloor";
 const trialDone=()=>!!G&&G.didRun("runTrial");
-const sopDone=trialDone;
 const accDone=()=>!!G&&G.didRun("endGlitchReport");
 const gwClosed=()=>!!G&&G.didRun("lockIn");
 const roundDone=()=>!!G&&G.didRun("finishRound");
@@ -266,7 +265,6 @@ const T=()=>TYPES[S.type];
 const isBonus=k=>!!S.type&&T().ct.isBonus(k);
 const maxOf=k=>S.type?T().ct.max(k):EP.CharacterType.MAX;
 const spendLeft=()=>EP.Player.spendLeft(S.spend);
-const total=()=>ME.total();
 const fmt=x=>Math.floor(Math.max(0,x)/60)+":"+String(Math.max(0,x)%60).padStart(2,"0");
 function cleanName(v){return v.replace(/[^A-Za-z0-9 ]/g,"").replace(/\s{2,}/g," ").replace(/^\s+/,"").slice(0,16)}
 const status=()=>ME?ME.flag():"OK";
@@ -485,7 +483,7 @@ ${sabotageAlertHTML()}
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Score: 1 point per step in the right place, +1 for leaving out the step that doesn't belong (0 to 7). The top half of teams win.</p>
 <div class="sop"><div><span class="label">Available steps</span><div class="pile">${sopPile().map((t,i)=>`<button class="scard" data-pile="${i}" ${trialDone()?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
 <div><span class="label">Team SOP</span><div class="built">${built.map((t,i)=>`<button class="scard ${trialDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${trialDone()?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${trialDone()?`<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}. Score ${shownScore(rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
+${trialDone()?trialResultHTML(EP.Trial.SopTrial.MAX_SCORE,rank,`${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.`)
 :`<div class="row"><button class="btn green" id="check" ${built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`;
   const bind=()=>{
     const b=()=>G.sopBoard(MYTEAM);   /* any teammate edits the shared board in Game */
@@ -654,6 +652,7 @@ const END_SCREENS={
   6:()=>nextLevelCard(6,"Nov 30 – Dec 1 · Final Performance Review · Trial cost 0"),
   7:()=>finalResultsScreen(),
 };
+function pointBuyHTML(){return `<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
 V[9]=()=>{
   if(G&&G.over)return END_SCREENS[7]();
   const left=placeLeft();const t=T();const got=roundDone()?ME.placedThisRound:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
@@ -662,7 +661,7 @@ V[9]=()=>{
     <div class="result"><b>${ME.isStuck()?"You are Stuck and watch the final review.":`You have ${ME.earned} final point${ME.earned===1?"":"s"} to place.`}</b><span class="hint">Graduate with ${EP.Player.GRAD_TOTAL}+ total points, every attribute ${EP.Player.GRAD_MIN}+, and not Stuck (or a completed secret path).</span></div>
     ${ME.isStuck()||ME.earned===0?"":`<div class="row" style="justify-content:space-between"><h3>Place your final points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
     <p class="hint">Graduation ends when the 60-second timer runs out or when you lock in your final points. Unplaced points go in automatically.</p>
-    <div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
+    ${pointBuyHTML()}`}
     <div class="cols"><div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>
     <div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">${ME.idle?"Idle at results counts as Contract renewed unless a secret path is complete.":"Be active when results lock in to graduate."}</span></div>
     <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div></div>`;
@@ -673,7 +672,7 @@ ${!roundDone()&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out
 ${roundDone()?"":ME.isStuck()?`<p class="hint">You are Stuck this round and have no points to place. Press Lock in points to continue.</p>`:`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
 <p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?(nx.cost?` Level ${nx.n} costs ${nx.cost}.`:` Level ${nx.n} has no trial cost.`):""}</p>
 <p class="hint">Stats Update ends on its own when the timer at the top runs out. It started when the gift window closed. Points you have not placed go in automatically, the same way bots place theirs.</p>
-<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
+${pointBuyHTML()}`}
 <div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means one of your attributes, even with the hearts that could cover it, could not pay a cost of ${EP.Player.AT_RISK_COST}. This ${EP.Player.AT_RISK_COST} is a fixed safety check for every level. It is not the next trial's cost.</span></div>
 <div class="panel"><span class="label">Your abilities · only you see these</span>${ME.abilityLines().map(l=>`<span class="hint">${esc(l.text)}</span>`).join("")}</div>
 <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div></div>
@@ -732,7 +731,6 @@ function vnBox(who,role,portrait,line,i,n,extra=""){return `<div class="vn"><div
 function roleBrief(){const rb=ROLE_BRIEF[S.type],d=DIALOGS[rb.lead],t=T();
   const dossier=`<div class="dossier"><span><b>Strengths</b>${rb.face}</span><span><b>Weakness</b>${rb.weak}</span><span><b>Gifts</b>${giftCostText(t.ct)}</span><span><b>Secret path</b>${t.path}</span><span class="w"><b>Watch for</b>${rb.watch}</span></div>`;
   return vnBox(d.who,t.n+" briefing",`<div class="vnportrait">${d.draw("talk")}</div>`,rb.lines[S.arrLine],S.arrLine,rb.lines.length,S.arrLine===rb.lines.length-1?dossier:"")}
-/* Skip intro: skips the elevator animation, all dialogue and the spawn, straight to the floor. */
 /* Skip intro skips the elevator and ADMIN_0 only. The work-style briefing is never skippable. */
 function skipArrival(){elevTimers.forEach(clearTimeout);elevTimers=[];S.doorsDone=true;S.arr="role";S.arrLine=0;render()}
 function arrivalAdvance(){
@@ -800,7 +798,6 @@ function bind(){
   if(S.step===4)on("#skipIntro",skipArrival);
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){
-    if(floorOpen())$$(".room.click").forEach(g=>g.onclick=()=>{S.room=g.dataset.room;render()});
     bindGifts(m=>{S.of.msg=m});bindIncoming();
     $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;render()});
   }
@@ -844,7 +841,7 @@ function applyOpenFloorEnd(){
   G.closeTimer();   // Open Floor ends early: bots sabotage (hook), then Open Floor > Trial
 }
 /* Level 1: Game scores the SOP board, then the trial ranks every team (bot teams get a random score). Top half win. */
-function checkSop(){if(sopDone())return;G.closeTimer();sopScored();render()}   /* Submit: the SOP timer ends early */
+function checkSop(){if(trialDone())return;G.closeTimer();sopScored();render()}   /* Submit: the SOP timer ends early */
 /* Available steps: the display order, minus the steps already on the board. */
 function sopPile(){const b=G.sopBoard(MYTEAM);return S.sop.pile.filter(t=>!b.includes(t))}
 function sopScored(){const r=(G.round.sopResults||{})[MYTEAM.id];if(r&&r.endlessOut)S.found.loop=1}   /* nothing placed: no LOOP */
@@ -880,5 +877,5 @@ addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==
   const b=$("#facBtn");b.hidden=!b.hidden;if(b.hidden){b.setAttribute("aria-pressed","false");$("#fac").hidden=true}});
 /* Attendance popup: screen code in attendance-view.js. The rules live in rules/Attendance.js and rules/Game.js.
    Input only counts once a round exists. Pausing is decided in rules/Game.js. */
-const ATT=AttendanceView.mount({game:()=>G,me:()=>ME,onChange:()=>render()});
+AttendanceView.mount({game:()=>G,me:()=>ME,onChange:()=>render()});
 render();

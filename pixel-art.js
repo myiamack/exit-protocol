@@ -47,11 +47,11 @@ function sprite(a,o={}){
   if(ex==="Lanyard"){set(5,13,ac);set(6,14,ac);set(10,13,ac);set(9,14,ac);R(7,15,2,2,"#fff")}
   /* neck + head */
   R(7,12,2,1,skd);
-  R(4,5,8,7,sk);R(5,4,6,1,sk);R(5,12-0,6,0,sk);if(a.body===1){set(4,11,null);set(11,11,null)}else{set(4,11,skd);set(11,11,skd)}R(5,11,6,1,sk);
+  R(4,5,8,7,sk);R(5,4,6,1,sk);if(a.body===1){set(4,11,null);set(11,11,null)}else{set(4,11,skd);set(11,11,skd)}R(5,11,6,1,sk);
   /* face */
   R(6,8,1,2,E);R(9,8,1,2,E);set(6,8,"#2a3240");set(9,8,"#2a3240");
   set(7,11,shade(sk,.7));set(8,11,shade(sk,.7));
-  if(a.blush!==false){set(5,10,shade(sk,.9).replace(/./,"#")&&"#e88a8a");set(10,10,"#e88a8a")}
+  if(a.blush!==false){set(5,10,"#e88a8a");set(10,10,"#e88a8a")}
   if(ex==="Glasses"){const fr="#2a3240";R(5,7,3,1,fr);R(8,7,3,1,fr);[5,7,8,10].forEach(x=>{set(x,8,fr)});set(6,8,"#cfe8ff");set(9,8,"#cfe8ff");set(6,9,E);set(9,9,E)}
   if(ex==="Lashes"){set(5,7,E);set(10,7,E);set(7,11,"#c0394d");set(8,11,"#c0394d")}
   if(ex==="Earrings"){set(3,10,"#f2b84b");set(12,10,"#f2b84b")}

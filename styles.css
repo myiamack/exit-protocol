@@ -73,7 +73,7 @@ body>.hud{margin-bottom:4px}
 @media (max-width:860px){.hud{grid-template-columns:repeat(3,minmax(0,1fr))}.side{grid-column:span 3}}
 @media (max-width:460px){.hud{grid-template-columns:repeat(2,minmax(0,1fr))}.side{grid-column:1/-1}}
 .flag{display:inline-block;font-family:var(--cond);font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:.85rem;padding:1px 10px;border-radius:8px;border:3px solid var(--edge);white-space:nowrap;color:var(--edge)}
-.flag.OK{background:var(--ok)}.flag.risk{background:var(--gold)}.flag.Glitching,.flag.Glitched{background:var(--pink);color:#fff}.flag.Stuck{background:var(--bad)}
+.flag.OK{background:var(--ok)}.flag.risk{background:var(--gold)}.flag.Glitching{background:var(--pink);color:#fff}.flag.Stuck{background:var(--bad)}
 /* Progress labels: plain text, not buttons. */
 .steps{display:flex;gap:2px 0;flex-wrap:wrap;list-style:none;margin:0;padding:0;justify-content:center;cursor:default;user-select:none}
 .steps li{font-family:var(--cond);font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:.78rem;color:var(--muted)}
@@ -139,10 +139,6 @@ body>.hud{margin-bottom:4px}
 @keyframes blink{50%{opacity:.15}}
 .mapwrap{overflow-x:auto;border-radius:14px}
 .mapwrap svg{display:block;width:100%;min-width:560px;height:auto}
-.room{cursor:default}
-.room.click{cursor:pointer}
-.room.click:hover .floor{filter:brightness(1.12)}
-.room.here .floor{filter:brightness(1.15)}
 
 /* badge card (my account) */
 .badgecard{justify-self:center;width:min(560px,100%);background:#e9edf2;color:#141922;border:4px solid var(--edge);border-radius:22px;padding:16px;display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;position:relative;overflow:hidden}
@@ -195,7 +191,6 @@ body>.hud{margin-bottom:4px}
 .levels th{font-family:var(--cond);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .levels td.n{font-family:var(--px)}
 .tw{overflow-x:auto}
-ol.flow{margin:0;padding-left:20px;display:grid;gap:4px}
 .types{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
 .type{text-align:left;border:4px solid var(--edge);border-radius:16px;padding:14px;display:grid;gap:8px;align-content:start;background:#1d232e;box-shadow:inset 0 0 0 3px var(--frame3)}
 .type[aria-pressed="true"][data-type="coop"]{background:var(--blue2)}
@@ -213,8 +208,6 @@ ol.flow{margin:0;padding-left:20px;display:grid;gap:4px}
 .step .val{font-family:var(--px);font-weight:700;min-width:2em;text-align:center;font-size:1.1rem}
 .fin{font-family:var(--mono);font-size:.85rem;color:var(--muted);min-width:5em;text-align:right}
 .counter{font-family:var(--px);font-weight:700;font-size:1.2rem}
-.dash{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}
-@media (max-width:860px){.dash{grid-template-columns:1fr}}
 .idline{font-family:var(--code);font-size:1.15rem;color:var(--muted);background:none;border:0;padding:0;text-align:left}
 .idline .flick{animation:flick 6s infinite steps(1)}.idline.found{color:var(--pink)}
 @keyframes flick{0%,88%{opacity:1}89%{opacity:.15}91%{opacity:1}92%{opacity:.3}93%{opacity:1}}
@@ -237,7 +230,6 @@ ol.flow{margin:0;padding-left:20px;display:grid;gap:4px}
 .clue{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:baseline;border-top:2px dashed var(--frame3);padding-top:6px;color:var(--ink)}
 .shake{animation:shake .5s 2}
 @keyframes shake{0%,100%{transform:none}25%{transform:translateX(-3px) skewX(-2deg)}75%{transform:translateX(3px) skewX(2deg)}}
-.popup{background:var(--sky);color:var(--edge);border:4px solid var(--edge);border-radius:14px;padding:12px;display:grid;gap:8px}
 .locked{background:#1d232e;border:3px dashed var(--muted);border-radius:14px;padding:12px 16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
 .okmsg{color:var(--ok);font-size:.95rem}
 .meeting{background:var(--red);color:#fff;border:4px solid var(--edge);border-radius:16px;padding:10px 16px;font-family:var(--cond);font-weight:800;font-size:1.8rem;letter-spacing:.1em;text-transform:uppercase;text-align:center}
