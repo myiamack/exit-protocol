@@ -65,12 +65,12 @@ const MirrorData = {
     lobbyTicks: 120,      // lobby doors-open countdown duration in 250ms ticks
     revealSeconds: 1,     // CREW LOCKED reveal pause duration in seconds
     revealTicks: 4,       // CREW LOCKED reveal pause duration in 250ms ticks
-    showtimeSeconds: 75,  // showtime timer duration in seconds (also denominator for base attention and Hannah's baseBoost)
+    showtimeSeconds: 75,  // showtime timer duration in seconds (also denominator for base attention)
   },
 
   scoring: {
     attentionMin: 0,      // minimum audience attention (0 ends the trial with score 0)
-    attentionMax: 100,    // maximum/full audience attention (also top percentage in Hannah's baseBoost: 100 - secondsLeft / 75 * 100)
+    attentionMax: 100,    // maximum/full audience attention
     maxScore: 7,          // maximum Level 3 base trial score (0 to 7)
     maxSetupCrew: 3,      // maximum active players dealt to Setup Crew
   },

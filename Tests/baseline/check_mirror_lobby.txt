@@ -1,0 +1,31 @@
+-- 1. Construction, exports, and Round.LEVELS guard
+PASS  MirrorLobby and MirrorTrial reject missing rng
+PASS  MirrorTrial keeps #lobby private and is exported through Trial and MirrorParts
+PASS  Round.LEVELS[2] stays auto until Step 5 while Trial.forRound supports mirror
+-- 2. MirrorLobby direct: active-only, connect/miss, speed cap, bot times, closeDoors
+PASS  MirrorLobby excludes Stuck and Idle players and includes active players only
+PASS  MirrorLobby miss raises tile speed by +2 up to cap 16 with valid glitchReason  -> speeds=[7,9,11,13,15,16,16,16,16]
+PASS  MirrorLobby connect succeeds once and rejects duplicate connect or post-connect miss
+PASS  MirrorLobby bot connect times are integers 3..15s, human is null, and same seed repeats  -> distinct=13
+PASS  MirrorLobby closeDoors fails incomplete/empty teams, passes full teams, blocks late actions, and is idempotent
+-- 3. MirrorTrial coordinator: lobby pass-throughs, closeDoors, and crew deal
+PASS  MirrorTrial excludes Stuck/Idle in lobby and forwards bot connect times
+PASS  MirrorTrial miss forwards speed-up up to cap
+PASS  MirrorTrial closeDoors fails team with missing player (no crew) and deals passing team
+-- 4. Crew deal sizes (1 to 5 active players) and seeded shuffle
+PASS  Crew deal for 1 active players -> 1 setup / 0 dance
+PASS  Crew deal for 2 active players -> 1 setup / 1 dance
+PASS  Crew deal for 3 active players -> 2 setup / 1 dance
+PASS  Crew deal for 4 active players -> 2 setup / 2 dance
+PASS  Crew deal for 5 active players -> 3 setup / 2 dance
+PASS  All 1..5 active player crew splits pass
+PASS  Same seed gives identical crew deal and different seeds produce varied deals  -> distinct=20
+-- 5. Save and load (MirrorLobby direct and MirrorTrial / Trial.fromJSON)
+PASS  MirrorLobby.toJSON produces plain JSON-safe data  -> plain
+PASS  MirrorLobby.fromJSON restores identical lobby state and continues identically
+PASS  MirrorTrial.toJSON returns plain JSON-safe data  -> plain
+PASS  Trial.fromJSON rebuilds identical mid-lobby MirrorTrial state
+PASS  Original and loaded MirrorTrial stay identical after subsequent miss and closeDoors
+PASS  Post-closeDoors MirrorTrial.fromJSON restores crews, failed teams, phase, and blocks late joins
+
+24 passed, 0 failed.

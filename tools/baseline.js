@@ -23,6 +23,7 @@ const TESTS = [
   "check_split_timing",
   "check_split_bots",
   "check_mirror_data",
+  "check_mirror_lobby",
 ];
 
 function runTest(name) {

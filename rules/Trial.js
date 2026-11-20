@@ -4,10 +4,13 @@
    Subclasses only decide the order:
      SopTrial        Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
      SplitBriefTrial Level 2     Split Brief score (0 to 5) + influence, ties by post-twist lock-in order then random
-     AutoTrial       Levels 3-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
+     MirrorTrial     Level 3     Presentation Day coordinator (lobby, setup crew, dance crew), attention score 0 to 7 + influence
+     AutoTrial       Level 4     random whole number 0 to 7 + influence (placeholder until those mini-games exist)
    Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
      JudgedTrial     Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
    Rule code only. No screen code. Works in the browser and in Node. */
+import { MirrorData } from "./mirrorData.js";
+import { MirrorParts } from "./MirrorParts.js";
 import { Scenarios } from "./scenarios.js";
 import { Vote } from "./Vote.js";
 
@@ -85,6 +88,7 @@ class Trial {
   static forRound(round, rng) {
     if (round.trialKind === "sop") return new SopTrial(rng);
     if (round.trialKind === "splitBrief") return new SplitBriefTrial(rng);
+    if (round.trialKind === "mirror") return new MirrorTrial(rng);
     if (round.trialKind === "judged") return new JudgedTrial(rng, round.n);
     return new AutoTrial(rng);
   }
@@ -103,6 +107,8 @@ class Trial {
       t.scores = new Map(data.scores.map(([id, s]) => [teamById.get(id), s]));
     } else if (data.kind === "splitBrief") {
       t = SplitBriefTrial.fromJSON(data, { rng, teams, byId });
+    } else if (data.kind === "mirror") {
+      t = MirrorTrial.fromJSON(data, { rng, teams, byId });
     } else if (data.kind === "judged") {
       t = new JudgedTrial(rng, data.level);
       t.prompt = data.prompt;
@@ -501,6 +507,135 @@ class SplitBriefTrial extends Trial {
   }
 }
 
+const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
+
+/* Level 3: The Mirror: Presentation Day. Coordinates #lobby (and later #setup, #dance).
+   Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
+class MirrorTrial extends Trial {
+  #lobby;
+  #teams = [];
+  #teamIds = [];
+  #phase = "idle";         // "idle" | "lobby" | "reveal" | "failed"
+  #failedTeams = new Set();
+  #crews = new Map();      // teamId -> { setupIds: [], danceIds: [] }
+
+  constructor(rng) {
+    if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
+    super(rng);
+    this.#lobby = new MirrorParts.MirrorLobby(rng);
+  }
+
+  get kind() { return "mirror"; }
+  get phase() { return this.#phase; }
+  get lobbyStarted() { return this.#lobby.started; }
+  get lobbyClosed() { return this.#lobby.closed; }
+
+  /* Setup Crew gets half of connected active players rounded up, capped at 3. */
+  static setupCrewSize(activeCount) {
+    if (activeCount <= 0) return 0;
+    return Math.min(MirrorData.scoring.maxSetupCrew, Math.ceil(activeCount / 2));
+  }
+
+  #shuffle(list) {
+    const out = list.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  startLobby(teams) {
+    if (this.#lobby.started) throw new Error("Mirror lobby already started.");
+    this.#teams = teams.slice();
+    this.#teamIds = this.#teams.map(t => t.id);
+    this.#phase = "lobby";
+    return this.#lobby.start(this.#teams);
+  }
+
+  connect(playerId) { return this.#lobby.connect(playerId); }
+  miss(playerId) { return this.#lobby.miss(playerId); }
+  lobbyState() { return this.#lobby.state(); }
+  lobbyTeamState(teamOrId) { return this.#lobby.teamState(teamOrId); }
+  lobbyPlayerState(playerOrId) { return this.#lobby.playerState(playerOrId); }
+  botConnectTimes(teamOrId = null) { return this.#lobby.botConnectTimes(teamOrId); }
+  botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
+  allConnected() { return this.#lobby.allConnected(); }
+
+  /* Close lobby doors, fail incomplete teams, and deal Setup vs Dance crews for passing teams. */
+  closeDoors() {
+    const res = this.#lobby.closeDoors();
+    if (res.alreadyClosed) return { ...res, phase: this.#phase, crews: this.allCrews() };
+    for (const teamId of res.failedTeams) this.#failedTeams.add(teamId);
+    for (const teamId of res.passedTeams) {
+      const pool = this.#shuffle(this.#lobby.connectedIds(teamId));
+      const setupCount = MirrorTrial.setupCrewSize(pool.length);
+      this.#crews.set(teamId, { setupIds: pool.slice(0, setupCount), danceIds: pool.slice(setupCount) });
+    }
+    this.#phase = res.passedTeams.length > 0 ? "reveal" : "failed";
+    return { ...res, phase: this.#phase, crews: this.allCrews() };
+  }
+
+  isTeamFailed(teamOrId) { return this.#failedTeams.has(mirrorIdOf(teamOrId)); }
+  failedTeamIds() { return [...this.#failedTeams]; }
+
+  crewFor(teamOrId) {
+    const d = this.#crews.get(mirrorIdOf(teamOrId));
+    return d ? { setupIds: d.setupIds.slice(), danceIds: d.danceIds.slice() } : null;
+  }
+
+  allCrews() {
+    return [...this.#crews].map(([teamId, d]) => ({
+      teamId,
+      setupIds: d.setupIds.slice(),
+      danceIds: d.danceIds.slice(),
+    }));
+  }
+
+  roleOf(playerOrId) {
+    const pid = mirrorIdOf(playerOrId);
+    for (const deal of this.#crews.values()) {
+      if (deal.setupIds.includes(pid)) return "setup";
+      if (deal.danceIds.includes(pid)) return "dance";
+    }
+    return null;
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      phase: this.#phase,
+      teamIds: this.#teamIds.slice(),
+      lobby: this.#lobby.toJSON(),
+      failedTeams: [...this.#failedTeams],
+      crews: [...this.#crews].map(([teamId, deal]) => [
+        teamId,
+        { setupIds: deal.setupIds.slice(), danceIds: deal.danceIds.slice() },
+      ]),
+    };
+  }
+
+  static fromJSON(data, { rng, teams = [] } = {}) {
+    if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
+    const teamById = new Map(teams.map(t => [t.id, t]));
+    const t = new MirrorTrial(rng);
+    t.#phase = data.phase || "idle";
+    t.#teamIds = (data.teamIds || []).slice();
+    t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
+    if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng });
+    t.#failedTeams = new Set(data.failedTeams || []);
+    t.#crews = new Map((data.crews || []).map(([teamId, deal]) => [
+      teamId,
+      {
+        setupIds: (deal.setupIds || []).slice(),
+        danceIds: (deal.danceIds || []).slice(),
+      },
+    ]));
+    t.ranking = data.ranking ? data.ranking.map(r => ({ ...r, team: teamById.get(r.team) })) : null;
+    return t;
+  }
+}
+
 /* Levels 5-6 prompts. Fixed, reviewed list (placeholders; the team may change them). */
 const PROMPTS = {
   5: [
@@ -660,6 +795,7 @@ JudgedTrial.BOT_ANSWER = "Bot answer";
 Trial.SopTrial = SopTrial;
 Trial.AutoTrial = AutoTrial;
 Trial.SplitBriefTrial = SplitBriefTrial;
+Trial.MirrorTrial = MirrorTrial;
 Trial.JudgedTrial = JudgedTrial;
 
 export { Trial };

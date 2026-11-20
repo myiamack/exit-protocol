@@ -18,6 +18,7 @@ export { Round } from "./Round.js";
 export { Vote } from "./Vote.js";
 export { Scenarios } from "./scenarios.js";
 export { MirrorData } from "./mirrorData.js";
+export { MirrorParts } from "./MirrorParts.js";
 export { Trial } from "./Trial.js";
 export { Attendance } from "./Attendance.js";
 export { Timer } from "./Timer.js";
