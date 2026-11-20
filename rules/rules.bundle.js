@@ -1055,7 +1055,7 @@ const Round = (() => {
 // Package A order. Trial activities stay in their original levels.
 const LEVELS = [
   { n: 1, name: "Boot Up",    trialName: "SOP mini-game",                attr: "grit",       cost: 2, judged: false, trialKind: "sop" },
-  { n: 2, name: "Sprint 1",   trialName: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "auto" },
+  { n: 2, name: "Sprint 1",   trialName: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "splitBrief" },
   { n: 3, name: "The Mirror", trialName: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false, trialKind: "auto" },
   { n: 4, name: "Geek Week",  trialName: "Testing challenge",            attr: "initiative", cost: 4, judged: false, trialKind: "auto" },
   { n: 5, name: "Sprint 2",   trialName: "Fix the broken team",          attr: "composure",  cost: 4, judged: true,  trialKind: "judged" },
@@ -1310,10 +1310,11 @@ const Trial = (() => {
    Every trial takes the round and the teams and returns a ranked list (best first).
    Winners = half the teams, rounded up: 4 teams -> 2, 5 teams -> 3, 7 teams -> 4.
    Subclasses only decide the order:
-     SopTrial    Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
-     AutoTrial   Levels 2-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
+     SopTrial        Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
+     SplitBriefTrial Level 2     Split Brief score (0 to 5) + influence, ties by lock-in order then random
+     AutoTrial       Levels 3-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
    Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
-     JudgedTrial Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
+     JudgedTrial     Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
    Rule code only. No screen code. Works in the browser and in Node. */
 
 
@@ -1389,6 +1390,7 @@ class Trial {
   /* The right trial for a round's level. */
   static forRound(round, rng) {
     if (round.trialKind === "sop") return new SopTrial(rng);
+    if (round.trialKind === "splitBrief") return new SplitBriefTrial(rng);
     if (round.trialKind === "judged") return new JudgedTrial(rng, round.n);
     return new AutoTrial(rng);
   }
@@ -2296,6 +2298,7 @@ class Game {
         if (this.hooks.onStart) this.hooks.onStart(this, name);
       },
       onClose: name => {
+        if (name === "splitBrief") this._checkTwist(this.now());
         if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
         this._closeTimerPhase(name);
       },
@@ -3050,7 +3053,8 @@ const Bots = {
   allocate(p, n, final) { return Economy.allocate(p, n, final); },
 
   /* Level 2 (Split Brief): bots post accurate card notes in 0-30s and twist note within 10s of twist,
-     keeping 1 note in reserve until the twist fires. Bots never edit the board or lock in. */
+     keeping 1 note in reserve until the twist fires. After the twist fires, any bot (ghosted or not)
+     may use its reserved note, still capped at MAX_NOTES (3) per player. Bots never edit the board or lock in. */
   splitBrief(game, now = game.now()) {
     if (game.step !== "trial" || game.didRun("runTrial")) return;
     const trial = game.round && game.round.trial;
@@ -3059,44 +3063,53 @@ const Bots = {
     if (startAt == null) return;
     const sig = splitDealSignature(game, trial);
     const twistAt = trial.twistDeadline != null ? trial.twistDeadline : startAt + Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+    const reserveCount = Trial.SplitBriefTrial.MAX_NOTES - 1;
 
     for (const team of game.teams) {
       const posted = new Set(trial.notesFor(team).map(n => n.posterId + "\n" + n.text));
-      for (const p of team.members) {
-        if (!p.isBot || !p.isActive()) continue;
+      const events = [];
+
+      team.members.forEach((p, memberIndex) => {
+        if (!p.isBot || !p.isActive()) return;
         const twist = trial.twistFor(p);
-        const cap = trial.twistFired ? Trial.SplitBriefTrial.MAX_NOTES : Trial.SplitBriefTrial.MAX_NOTES - 1;
-        let used = Trial.SplitBriefTrial.MAX_NOTES - trial.notesLeft(p);
+        const twistAtNote = trial.twistFired && twist
+          ? twistAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|twist") % (SPLIT_TWIST_WINDOW_MS + 1))
+          : null;
 
-        // Post twist note if this bot holds the twist and its scheduled time has arrived.
-        if (trial.twistFired && twist && !posted.has(p.id + "\n" + twist.botNote)) {
-          const offset = hashInt(sig + "|" + game.level + "|" + p.id + "|twist") % (SPLIT_TWIST_WINDOW_MS + 1);
-          if (now >= twistAt + offset && used < Trial.SplitBriefTrial.MAX_NOTES) {
-            const res = trial.postNote(p, twist.botNote);
-            if (res.ok) {
-              posted.add(p.id + "\n" + twist.botNote);
-              used += 1;
-            }
-          }
+        if (twistAtNote != null && !posted.has(p.id + "\n" + twist.botNote)) {
+          events.push({ p, memberIndex, at: twistAtNote, kindOrder: 0, cardIndex: -1, text: twist.botNote, isTwist: true });
         }
 
-        // Before twist: keep 1 note in reserve. After twist: only bots without the twist may use the spare note.
-        const cardCap = trial.twistFired && twist ? Trial.SplitBriefTrial.MAX_NOTES - 1 : cap;
-        const cards = trial.cardsFor(p).map(c => ({
+        const cards = trial.cardsFor(p).map((c, cardIndex) => ({
           card: c,
+          cardIndex,
           at: startAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|" + c.id) % (SPLIT_CARD_WINDOW_MS + 1)),
-        })).sort((a, b) => a.at - b.at);
+        })).sort((a, b) => a.at - b.at || a.cardIndex - b.cardIndex);
 
-        for (const item of cards) {
-          if (used >= cardCap) break;
-          if (now < item.at) continue;
-          if (posted.has(p.id + "\n" + item.card.botNote)) continue;
-          const res = trial.postNote(p, item.card.botNote);
-          if (res.ok) {
-            posted.add(p.id + "\n" + item.card.botNote);
-            used += 1;
+        cards.forEach((item, rank) => {
+          if (posted.has(p.id + "\n" + item.card.botNote)) return;
+          let postAt = item.at;
+          if (rank >= reserveCount) {
+            if (!trial.twistFired) return;
+            postAt = Math.max(postAt, twistAtNote != null ? twistAtNote : twistAt);
           }
+          events.push({ p, memberIndex, at: postAt, kindOrder: 1, cardIndex: item.cardIndex, text: item.card.botNote, isTwist: false });
+        });
+      });
+
+      events.sort((a, b) => a.at - b.at || a.kindOrder - b.kindOrder || a.memberIndex - b.memberIndex || a.cardIndex - b.cardIndex);
+
+      for (const ev of events) {
+        if (now < ev.at) continue;
+        if (posted.has(ev.p.id + "\n" + ev.text)) continue;
+        if (trial.notesLeft(ev.p) <= 0) continue;
+        if (!ev.isTwist) {
+          const twist = trial.twistFor(ev.p);
+          const needsTwistSlot = !trial.twistFired || (twist && !posted.has(ev.p.id + "\n" + twist.botNote));
+          if (needsTwistSlot && trial.notesLeft(ev.p) <= 1) continue;
         }
+        const res = trial.postNote(ev.p, ev.text);
+        if (res.ok) posted.add(ev.p.id + "\n" + ev.text);
       }
     }
   },
@@ -3114,7 +3127,8 @@ const Bots = {
       else if (name === "splitBrief") Bots.splitBrief(game, game.now());
     },
     onStart(game, name) {
-      if (name === "giftWindow") Bots.gifts(game, game.rng);
+      if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
     },

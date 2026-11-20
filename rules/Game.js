@@ -106,6 +106,7 @@ class Game {
         if (this.hooks.onStart) this.hooks.onStart(this, name);
       },
       onClose: name => {
+        if (name === "splitBrief") this._checkTwist(this.now());
         if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
         this._closeTimerPhase(name);
       },

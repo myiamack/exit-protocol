@@ -148,12 +148,15 @@ console.log("-- 3. Bot holding 3 cards: 2 before twist, 1 spare; twist holder us
     const bot3 = teams[0].members.find(p => p.isBot && trial.cardsFor(p).length === 3);
     for (let s = 1; s <= 89; s++) { T.now += 1000; g.tick(T.now); }
     const beforeTwist = trial.notesFor(teams[0]).filter(n => n.posterId === bot3.id);
+    const beforeLeft = trial.notesLeft(bot3);
     for (let s = 90; s <= 100; s++) { T.now += 1000; g.tick(T.now); }
     const afterTwist = trial.notesFor(teams[0]).filter(n => n.posterId === bot3.id);
     const cardTexts = new Set(trial.cardsFor(bot3).map(c => c.botNote));
     expect(
       "3-card bot without twist uses its spare note for its 3rd card",
-      beforeTwist.length === 2 && afterTwist.length === 3 && trial.notesLeft(bot3) === 0 && afterTwist.every(n => cardTexts.has(n.text))
+      beforeTwist.length === 2 && beforeLeft === 1 && trial.twistFor(bot3) === null &&
+        afterTwist.length === 3 && new Set(afterTwist.map(n => n.text)).size === 3 &&
+        trial.notesLeft(bot3) === 0 && afterTwist.every(n => cardTexts.has(n.text))
     );
   }
 }

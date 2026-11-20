@@ -74,6 +74,20 @@ function act(g, T, d) {
       if (r < 0.6) return "submit " + g.closeTimer(T.now);
       return "wait";
     }
+    if (t instanceof Trial.SplitBriefTrial && !g.didRun("runTrial")) {
+      if (r < 0.25) {
+        const ids = t.scenario.tasks.map(x => x.id);
+        const n = Math.floor(d() * 3);
+        const pool = ids.slice();
+        const board = [];
+        while (board.length < n && pool.length) board.push(pool.splice(Math.floor(d() * pool.length), 1)[0]);
+        return "splitBoard " + t.setBoard(h, board).ok;
+      }
+      if (r < 0.4) return "splitNote " + t.postNote(h, "Note " + Math.floor(d() * 100)).ok;
+      if (r < 0.48) return "splitLock " + t.lockIn(h).ok;
+      if (r < 0.52) return "close " + g.closeTimer(T.now);
+      return "wait";
+    }
     if (t instanceof Trial.JudgedTrial && !g.didRun("runTrial")) {
       if (!t.writing) { g.startWriting(); Bots.submit(g); return "startWriting"; }
       if (t.writing === "open") {
@@ -192,8 +206,7 @@ ok("both copies hold the same state after every action", sameEveryStep, firstDif
 ok("final endings match the game that never reloaded", sameEndings);
 const ALL_STEPS = ["intermission", "briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate", "graduation"];
 ok("saved and loaded at every round step", ALL_STEPS.every(s => stepsSaved.has(s)), [...stepsSaved].join(", "));
-const hasSplitBrief = EP.Round.LEVELS.some(l => l.trialKind === "splitBrief");
-const ALL_TIMERS = Object.keys(Game.TIMER_SECONDS).filter(k => k !== "splitBrief" || hasSplitBrief);
+const ALL_TIMERS = Object.keys(Game.TIMER_SECONDS);
 ok("saved and loaded while every timer was running", ALL_TIMERS.every(s => timersSaved.has(s)), [...timersSaved].join(", "));
 
 /* ----- 2. passed deadlines ----- */

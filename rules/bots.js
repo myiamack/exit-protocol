@@ -187,7 +187,8 @@ const Bots = {
   allocate(p, n, final) { return Economy.allocate(p, n, final); },
 
   /* Level 2 (Split Brief): bots post accurate card notes in 0-30s and twist note within 10s of twist,
-     keeping 1 note in reserve until the twist fires. Bots never edit the board or lock in. */
+     keeping 1 note in reserve until the twist fires. After the twist fires, any bot (ghosted or not)
+     may use its reserved note, still capped at MAX_NOTES (3) per player. Bots never edit the board or lock in. */
   splitBrief(game, now = game.now()) {
     if (game.step !== "trial" || game.didRun("runTrial")) return;
     const trial = game.round && game.round.trial;
@@ -196,44 +197,53 @@ const Bots = {
     if (startAt == null) return;
     const sig = splitDealSignature(game, trial);
     const twistAt = trial.twistDeadline != null ? trial.twistDeadline : startAt + Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+    const reserveCount = Trial.SplitBriefTrial.MAX_NOTES - 1;
 
     for (const team of game.teams) {
       const posted = new Set(trial.notesFor(team).map(n => n.posterId + "\n" + n.text));
-      for (const p of team.members) {
-        if (!p.isBot || !p.isActive()) continue;
+      const events = [];
+
+      team.members.forEach((p, memberIndex) => {
+        if (!p.isBot || !p.isActive()) return;
         const twist = trial.twistFor(p);
-        const cap = trial.twistFired ? Trial.SplitBriefTrial.MAX_NOTES : Trial.SplitBriefTrial.MAX_NOTES - 1;
-        let used = Trial.SplitBriefTrial.MAX_NOTES - trial.notesLeft(p);
+        const twistAtNote = trial.twistFired && twist
+          ? twistAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|twist") % (SPLIT_TWIST_WINDOW_MS + 1))
+          : null;
 
-        // Post twist note if this bot holds the twist and its scheduled time has arrived.
-        if (trial.twistFired && twist && !posted.has(p.id + "\n" + twist.botNote)) {
-          const offset = hashInt(sig + "|" + game.level + "|" + p.id + "|twist") % (SPLIT_TWIST_WINDOW_MS + 1);
-          if (now >= twistAt + offset && used < Trial.SplitBriefTrial.MAX_NOTES) {
-            const res = trial.postNote(p, twist.botNote);
-            if (res.ok) {
-              posted.add(p.id + "\n" + twist.botNote);
-              used += 1;
-            }
-          }
+        if (twistAtNote != null && !posted.has(p.id + "\n" + twist.botNote)) {
+          events.push({ p, memberIndex, at: twistAtNote, kindOrder: 0, cardIndex: -1, text: twist.botNote, isTwist: true });
         }
 
-        // Before twist: keep 1 note in reserve. After twist: only bots without the twist may use the spare note.
-        const cardCap = trial.twistFired && twist ? Trial.SplitBriefTrial.MAX_NOTES - 1 : cap;
-        const cards = trial.cardsFor(p).map(c => ({
+        const cards = trial.cardsFor(p).map((c, cardIndex) => ({
           card: c,
+          cardIndex,
           at: startAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|" + c.id) % (SPLIT_CARD_WINDOW_MS + 1)),
-        })).sort((a, b) => a.at - b.at);
+        })).sort((a, b) => a.at - b.at || a.cardIndex - b.cardIndex);
 
-        for (const item of cards) {
-          if (used >= cardCap) break;
-          if (now < item.at) continue;
-          if (posted.has(p.id + "\n" + item.card.botNote)) continue;
-          const res = trial.postNote(p, item.card.botNote);
-          if (res.ok) {
-            posted.add(p.id + "\n" + item.card.botNote);
-            used += 1;
+        cards.forEach((item, rank) => {
+          if (posted.has(p.id + "\n" + item.card.botNote)) return;
+          let postAt = item.at;
+          if (rank >= reserveCount) {
+            if (!trial.twistFired) return;
+            postAt = Math.max(postAt, twistAtNote != null ? twistAtNote : twistAt);
           }
+          events.push({ p, memberIndex, at: postAt, kindOrder: 1, cardIndex: item.cardIndex, text: item.card.botNote, isTwist: false });
+        });
+      });
+
+      events.sort((a, b) => a.at - b.at || a.kindOrder - b.kindOrder || a.memberIndex - b.memberIndex || a.cardIndex - b.cardIndex);
+
+      for (const ev of events) {
+        if (now < ev.at) continue;
+        if (posted.has(ev.p.id + "\n" + ev.text)) continue;
+        if (trial.notesLeft(ev.p) <= 0) continue;
+        if (!ev.isTwist) {
+          const twist = trial.twistFor(ev.p);
+          const needsTwistSlot = !trial.twistFired || (twist && !posted.has(ev.p.id + "\n" + twist.botNote));
+          if (needsTwistSlot && trial.notesLeft(ev.p) <= 1) continue;
         }
+        const res = trial.postNote(ev.p, ev.text);
+        if (res.ok) posted.add(ev.p.id + "\n" + ev.text);
       }
     }
   },
@@ -251,7 +261,8 @@ const Bots = {
       else if (name === "splitBrief") Bots.splitBrief(game, game.now());
     },
     onStart(game, name) {
-      if (name === "giftWindow") Bots.gifts(game, game.rng);
+      if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
     },

@@ -2,10 +2,11 @@
    Every trial takes the round and the teams and returns a ranked list (best first).
    Winners = half the teams, rounded up: 4 teams -> 2, 5 teams -> 3, 7 teams -> 4.
    Subclasses only decide the order:
-     SopTrial    Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
-     AutoTrial   Levels 2-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
+     SopTrial        Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
+     SplitBriefTrial Level 2     Split Brief score (0 to 5) + influence, ties by lock-in order then random
+     AutoTrial       Levels 3-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
    Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
-     JudgedTrial Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
+     JudgedTrial     Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
    Rule code only. No screen code. Works in the browser and in Node. */
 import { Scenarios } from "./scenarios.js";
 import { Vote } from "./Vote.js";
@@ -83,6 +84,7 @@ class Trial {
   /* The right trial for a round's level. */
   static forRound(round, rng) {
     if (round.trialKind === "sop") return new SopTrial(rng);
+    if (round.trialKind === "splitBrief") return new SplitBriefTrial(rng);
     if (round.trialKind === "judged") return new JudgedTrial(rng, round.n);
     return new AutoTrial(rng);
   }

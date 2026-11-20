@@ -44,10 +44,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (21 modules) and `npm test` (12/12 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`; 13/13 assertions in `check_split_bots.js`).
 - **Open issues:** None.
 
-### Step 5: Wire into Game (Effort: Medium) — TODO
+### Step 5: Wire into Game (Effort: Medium) — DONE
 - **Goal:** Level 2 uses `SplitBriefTrial` instead of `AutoTrial`. Run fixed-seed tests, explain the baseline change, then save the new baseline (`npm run baseline`).
 - **Done when:** All rule tests pass and the new baseline is explained and saved.
 - **Tests:** `npm run build`, `npm test` (after `npm run baseline`).
+- **Files changed:** `rules/bots.js`, `rules/Round.js`, `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `Tests/check_split_bots.js`, `Tests/check_save.js`, `Tests/baseline/check_rules.txt`, `Tests/baseline/check_steps.txt`, `Tests/baseline/check_teams.txt`, `Tests/baseline/check_balance.txt`, `Tests/baseline/check_cheese.txt`, `Tests/baseline/check_save.txt`, `docs/level2-progress.md`.
+- **Test results:** Step 0.5 fixes passed `npm run build` (21 modules) and `npm test` (12/12 checks, zero baseline changes). After wiring Level 2: Level 1 end-state snapshots (seeds 1, 2, 3, 7, 11) matched identically, pre-baseline diffs verified Level 2+ changes only, new baselines saved (`npm run baseline`), `npm test` passed 12/12 (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save` [5769 saves, 54 deadline cases, `splitBrief` timer covered], `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`), and a fixed-seed full 7-level bot game (seed 42) run twice matched identically.
+- **Open issues:** In `check_cheese`, the 16-player Contrarian switcher diff shifted from `+2.7 ok` to `+3.5 CHEESE?` due to Level 2 RNG/score range (`0-5` vs `0-7`) variance around the `3.0` threshold (`CLAUDE.md` notes the switcher edge is accepted). Screen and `game.js` changes remain deferred to Step 6.
 
 ### Step 6a: Browser continues past Level 1 (Effort: Medium) — TODO
 - **Goal:** Add per-level briefing, host script (`FAC`), and ghost/tea hint table; update `V[9]` to continue to Level 2; add a placeholder trial screen for non-SOP trials; remove the Level-1-only blockers listed in `docs/game-report.md` section 5.
