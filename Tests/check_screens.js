@@ -84,7 +84,107 @@ async function level1(trialWait) {
   next(); await sleep(50);   // > stats update
   for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(5); }
   next(); await sleep(50);   // lock in
-  check("points locked", /Level 2 locked/.test($("#navNext").textContent), $("#navNext").textContent);
+  check("points locked, Level 2 unlocked", /Start Level 2/.test($("#navNext").textContent) && !$("#navNext").disabled, $("#navNext").textContent);
+}
+
+/* Full 7-level run: checks per-level briefings, Level 2 hints, trialKind screens (sop, splitBrief, auto, judged),
+   continuing past Level 1 through Level 7 Graduation, and reaching the Final Results screen with zero errors. */
+async function fullSevenLevelGame() {
+  w.eval('endSession(); S = fresh(); S.email = "tester@icstars.org"; S.code = "CYCLE60"; S.name = "Runner7"; S.step = 3; S.maxStep = 3; render();');
+  await sleep(50);
+  await creation("coop");
+  check("full game starts at Lobby ready for Level 1", /Start Level 1/.test($("#navNext").textContent));
+  next(); await sleep(30); // -> Level 1 Briefing
+
+  const seenBriefings = [];
+  let level1HintsOk = false;
+  let level2HintsOk = false;
+
+  for (let lv = 1; lv <= 7; lv++) {
+    const levelState = w.eval(`({ level: G.level, step: S.step, header: BRIEFINGS[${lv}].header, title: BRIEFINGS[${lv}].title })`);
+    const stageText = $("#stage").textContent;
+    const hasBriefing = levelState.level === lv && levelState.step === 5 &&
+      stageText.includes(levelState.header) && stageText.includes(levelState.title);
+    check("Level " + lv + " shows its own briefing", hasBriefing, levelState.title);
+    if (hasBriefing) seenBriefings.push(levelState.title);
+
+    if (lv === 1) {
+      level1HintsOk = w.eval('ghostHint("ATTEMPT_01") === LEVEL_HINTS[1].ghosts["ATTEMPT_01"] && teaHint() === LEVEL_HINTS[1].tea');
+      check("Level 1 keeps original ghost and tea hints", level1HintsOk);
+    } else if (lv === 2) {
+      level2HintsOk = w.eval(
+        'ghostHint("ATTEMPT_01") === "We locked our plan in early. Then the client changed everything." && ' +
+        'ghostHint("NULL") === "Not every note is true. Check who wrote it." && ' +
+        'ghostHint("USER_???") === "The news comes halfway through. Only one of you hears it first." && ' +
+        'teaHint().startsWith("On my first sprint, we committed to a plan on day one.")'
+      );
+      check("Level 2 switches to Level 2 ghost and tea hints", level2HintsOk);
+    }
+
+    next(); await sleep(30); // -> Open Floor (1-6) or Graduation (7)
+
+    if (lv === 7) {
+      check("Level 7 reaches Graduation screen", w.eval('S.step === 9 && G.step === "graduation"') && $("#stage").textContent.includes("Graduation check"));
+      for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
+      next(); await sleep(30); // Lock in final points -> Final Results
+      const fin = w.eval('({ over: G.over, ending: ME.ending(), players: G.players.length, teams: G.teams.map(t => t.name) })');
+      const finalText = $("#stage").textContent;
+      check(
+        "Final results screen renders endings and team standings",
+        fin.over === true && fin.players === 16 &&
+          finalText.includes(fin.ending) &&
+          fin.teams.every(name => finalText.includes(name)) &&
+          !!$("#replay") && !!$("#restart") && $("#navNext").disabled,
+        fin.ending
+      );
+      break;
+    }
+
+    next(); await sleep(30); // Open Floor -> Trial
+    const kind = w.eval("R().trialKind");
+    if (kind === "sop") {
+      for (let i = 0; i < 6; i++) { const c = $("[data-pile]"); if (c) { c.click(); await sleep(2); } }
+      $("#check").click(); await sleep(30);
+    } else if (kind === "splitBrief") {
+      const hasPlaceholder = $("#stage").textContent.includes("Split Brief screen comes in Step 6b") && !!$("#splitTmr");
+      check("Level 2 renders Split Brief placeholder with timer", hasPlaceholder);
+      const splitStats = w.eval(
+        '(() => { const startMs = G.timer.deadline - 180000; ' +
+        'G.tick(startMs + 25000); G.tick(startMs + 95000); ' +
+        'const closed = G.tick(G.timer.deadline); afterClose(closed); ' +
+        'return { twistFired: G.round.trial.twistFired, notes: G.round.trial.notesFor(MYTEAM).length, done: G.didRun("runTrial") }; })()'
+      );
+      await sleep(20);
+      check("Level 2 Split Brief bots post notes, twist fires, and timer closes trial", splitStats.done && splitStats.twistFired && splitStats.notes > 0, "notes=" + splitStats.notes);
+    } else if (kind === "auto") {
+      check("Level " + lv + " renders AutoTrial placeholder", !!$("#runAuto"));
+      $("#runAuto").click(); await sleep(20);
+    } else if (kind === "judged") {
+      if ($("#subDraft")) {
+        $("#subDraft").value = "Level " + lv + " team submission.";
+        $("#subDraft").dispatchEvent(new w.Event("input", { bubbles: true }));
+        $("#subBtn").click(); await sleep(20);
+      }
+      const picks = [];
+      for (const sel of $$("[data-vpick]")) {
+        const opt = [...sel.options].find(o => o.value && !picks.includes(o.value));
+        if (opt) { sel.value = opt.value; picks.push(opt.value); sel.dispatchEvent(new w.Event("change", { bubbles: true })); }
+      }
+      $("#castVote").click(); await sleep(20);
+    }
+
+    check("Level " + lv + " (" + kind + ") trial completes and enables All-hands", !$("#navNext").disabled);
+    next(); await sleep(30); // -> Glitch Report
+    $("#skipAcc").click(); await sleep(20); // -> Gift Window
+    w.eval('if (G.timer && G.timer.name === "giftWindow") afterClose(G.tick(G.timer.deadline));');
+    await sleep(20); // Gift Window closed, Stats Update button enabled
+    next(); await sleep(30); // -> Stats Update
+    for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
+    next(); await sleep(30); // Lock in points -> roundDone
+    check("Level " + lv + " unlocks Level " + (lv + 1), new RegExp("Start Level " + (lv + 1)).test($("#navNext").textContent) && !$("#navNext").disabled);
+    next(); await sleep(30); // -> Level lv+1 Briefing
+  }
+  check("All 7 levels displayed unique briefings", new Set(seenBriefings).size === 7, seenBriefings.length + "/7");
 }
 
 /* Breakout Room USE label (map): it must say "Sabotage" only when a Sabotage button inside would work.
@@ -147,6 +247,8 @@ w.addEventListener("load", async () => {
     await creation("contra");
     log("run 3: Contrarian, Breakout Room label");
     await breakoutLabel();
+    log("run 4: full 7-level game");
+    await fullSevenLevelGame();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

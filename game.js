@@ -59,6 +59,151 @@ const FAC=[
   ["Win = 4 points, Loss = 2, glitched = 1. Bonuses: correct accusation +1, Skim, Cash Out. Players place points before the next trial is revealed. Hearts refill by 1."]];
 const MEMOS=[["From: Management","Performance reviews are mandatory. Exit is not guaranteed."],["From: IT","We are aware of a typo on the sign-in screen. It is not a typo."],["From: Facilities","The Kitchen coffee machine has been restocked. Again. And again. And again."]];
 
+/* Per-level briefing, ghost/tea hint, and host script tables (keyed by level 1 to 7). */
+const BRIEFINGS={
+  1:{
+    header:"System Briefing · Level 1",
+    title:"Boot Up: Team Week",
+    memo:"Your first client, a national medical supply company, has sent a Request for Proposal. Before Sprint 1 starts on Sep 8, your team must show it has the grit to see a task through: write a Standard Operating Procedure everyone can follow.",
+    phase:"Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge",
+    workshops:"LW2A Know Your Lens · LW2B Team Agreement",
+  },
+  2:{
+    header:"System Briefing · Level 2",
+    title:"Sprint 1: Back-Plan the Demo",
+    memo:"Medline wants a demo in 4 days. Your team has more work than time. Each of you holds part of the client brief. Share what you know, pick the 2 tasks that matter, and put them in order. Plans change. Stay alert.",
+    phase:"Weeks 2–4 (Sep 8 – Sep 25)",
+    workshops:"LW3A Perception vs. Intent · LW3B Roles + Handoff · BW3B Prioritize Under Pressure · W3A 14-Week Budget · BW4A Credibility in Writing · BW4B Tell the Story · LW4A Act on Purpose Under Pressure · W4A Emotional Patterns Map",
+  },
+  3:{
+    header:"System Briefing · Level 3",
+    title:"The Mirror: Q&A Gauntlet",
+    memo:"Time to present to Medline. They will test what your team actually understands about the problem, with no tablets to hide behind. Stay sharp and answer as one team.",
+    phase:"Week 5 (Oct 1): Medline presentation and Q&A feedback",
+    workshops:"Q&A prep · Presentation review",
+  },
+  4:{
+    header:"System Briefing · Level 4",
+    title:"Geek Week: Testing Challenge",
+    memo:"Sprint 2 begins with a full testing push and artifact catch-up. Bugs do not fix themselves. Step up, test every piece, and close the gaps before the deadline.",
+    phase:"Week 6 (Oct 5 – Oct 9): Testing and artifact catch-up",
+    workshops:"LW6A Adaptability · LW6B Team Inclusion Audit · BW6B Organize for Outcomes · W6A Reframing for Growth",
+  },
+  5:{
+    header:"System Briefing · Level 5",
+    title:"Sprint 2: Fix the Broken Team",
+    memo:"Communication gaps and file-version chaos are slowing the build. Write your response to the sprint crisis, then vote on the strongest answers from other teams.",
+    phase:"Weeks 6–9 (Oct 5 – Oct 30): Resolution Plan and Signal build",
+    workshops:"BW7B Verbal Presence · LW7B Self-Initiated Contribution · BW8A Workflows That Work",
+  },
+  6:{
+    header:"System Briefing · Level 6",
+    title:"Sprint 3: Final Build and Dream Speech",
+    memo:"Delivery is here. Finish the build, prepare your hand-off, and share your final response. Other teams will rank the strongest answers.",
+    phase:"Weeks 10–13 (Nov 2 – Nov 27): Finish, polish, test, hand-off",
+    workshops:"Dream Speeches · Digital Portfolio · Career Roadmap",
+  },
+  7:{
+    header:"System Briefing · Level 7",
+    title:"Graduation: Final Performance Review",
+    memo:"Week 14. Floor 60 reaches its final review. Place your final 3 points and face the exit check: 24 or more total points, every attribute at least 2, and not Stuck. A completed secret path also counts as a win.",
+    phase:"Week 14 (Nov 30 – Dec 1): Dry run and final Medline presentation",
+    workshops:"Final Performance Review",
+  },
+};
+const LEVEL_HINTS={
+  1:{
+    ghosts:{
+      "USER_???":"Did you read your badge? Read it again.",
+      "ATTEMPT_01":"The coffee step that never ends... leave it out.",
+      "NULL":"Someone on Team Wren keeps slipping into the Breakout Room.",
+    },
+    tea:"When I wrote my first SOP, I put in a step that never ended. A good procedure has no step that sends you in circles. If a step never ends, it doesn't belong.",
+  },
+  2:{
+    ghosts:{
+      "ATTEMPT_01":"We locked our plan in early. Then the client changed everything.",
+      "NULL":"Not every note is true. Check who wrote it.",
+      "USER_???":"The news comes halfway through. Only one of you hears it first.",
+    },
+    tea:"On my first sprint, we committed to a plan on day one. Halfway through, our vendor went down and the plan was dead. Now I wait for the news before I commit. And whoever hears it first tells everyone.",
+  },
+  3:{
+    ghosts:{
+      "USER_???":"Read the room, not your script.",
+      "ATTEMPT_01":"The Mirror shows what you skipped in Week 2.",
+      "NULL":"Watch who asks the hard follow-up.",
+    },
+    tea:"When we presented halfway through Cycle 60, reading off a tablet hid nothing. Know the problem in your own words before you walk in.",
+  },
+  4:{
+    ghosts:{
+      "USER_???":"Half-built tests break when nobody is looking.",
+      "ATTEMPT_01":"Every bug left in Week 6 comes back twice as loud in Sprint 2.",
+      "NULL":"Initiative costs more than you think.",
+    },
+    tea:"In Geek Week we thought catching up later would work. Waiting until Monday only stacked the work higher.",
+  },
+  5:{
+    ghosts:{
+      "USER_???":"Other teams are reading what you write. Say what you would actually do.",
+      "ATTEMPT_01":"Composure drops fast when two sprints collide.",
+      "NULL":"You cannot vote for your own team. Earn theirs.",
+    },
+    tea:"When a sprint stalls over version chaos, the person who stays calm and owns the next step moves the whole room.",
+  },
+  6:{
+    ghosts:{
+      "USER_???":"One floor left. Check your numbers before the final bell.",
+      "ATTEMPT_01":"Five points is a steep price if your Composure is thin.",
+      "NULL":"Every round counts toward who leaves Floor 60.",
+    },
+    tea:"At hand-off, the client only keeps what works cleanly. Cut the noise and ship what stands on its own.",
+  },
+  7:{
+    ghosts:{
+      "USER_???":"Every attribute at 2 or higher. Total 24. Do the math.",
+      "ATTEMPT_01":"The elevator remembers everyone who stayed.",
+      "NULL":"Even if the numbers miss, a second path still opens the door.",
+    },
+    tea:"There is no trick left on Floor 7. Either the record holds together or the contract renews.",
+  },
+};
+const FAC_BY_LEVEL={
+  1:{
+    5:FAC[5],
+    7:FAC[7],
+  },
+  2:{
+    5:["Reveal: Sprint 1 tests Collaboration. Every player pays 3 Collaboration after the trial."],
+    7:["Teams play Split Brief (Collaboration, cost 3). Each player gets private brief cards and can share up to 3 team notes (80 characters max).","Teams pick 2 tasks in order on the board. Halfway through the 180-second timer (at 90s), one active player per team gets a twist card.","Post-twist scoring is out of 5. Ties after influence break to the earliest Lock In after the twist fired, then random. Top half win."],
+  },
+  3:{
+    5:["Reveal: The Mirror tests Focus. Every player pays 3 Focus after the trial."],
+    7:["Placeholder AutoTrial (Focus, cost 3). Teams run the trial for a random 0 to 7 score plus light stat influence. Top half win."],
+  },
+  4:{
+    5:["Reveal: Geek Week tests Initiative. Every player pays 4 Initiative after the trial."],
+    7:["Placeholder AutoTrial (Initiative, cost 4). Teams run the trial for a random 0 to 7 score plus light stat influence. Top half win."],
+  },
+  5:{
+    5:["Reveal: Sprint 2 tests Composure. Every player pays 4 Composure after the trial."],
+    7:["Judged trial (Composure, cost 4). Players write an answer (3-minute timer, 300 characters max), then rank top 3 submissions from other teams. Top half win."],
+  },
+  6:{
+    5:["Reveal: Sprint 3 tests Composure. Every player pays 5 Composure after the trial."],
+    7:["Judged trial (Composure, cost 5). Players write an answer (3-minute timer, 300 characters max), then rank top 3 submissions from other teams. Top half win."],
+  },
+  7:{
+    5:["Final review: no trial cost. Players go straight to Graduation to place their final 3 points."],
+    9:["Graduation check: 24+ total points, every attribute 2+, not Stuck, or a completed secret path. Lock in final points or wait out the 60-second timer to see endings."],
+  },
+};
+const currentLevel=()=>G&&G.round?G.round.n:1;
+function ghostHint(name){const h=LEVEL_HINTS[currentLevel()]||LEVEL_HINTS[1];return (h.ghosts&&h.ghosts[name])||LEVEL_HINTS[1].ghosts[name]||"";}
+function teaHint(){const h=LEVEL_HINTS[currentLevel()]||LEVEL_HINTS[1];return h.tea||LEVEL_HINTS[1].tea;}
+function facLines(step,level){const byLv=FAC_BY_LEVEL[level];return (byLv&&byLv[step])||FAC[step]||[];}
+
 /* ---------- state ---------- */
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
@@ -66,6 +211,7 @@ const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
   of:{msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
   sop:{pile:[],inTime:true},/* pile: display order only. The board itself is in Game (G.sopBoard). */
+  trialUI:{draft:"",msg:"",picks:["","",""]},
   pay:null,acc:{target:"",result:null},gw:{received:[],sent:[]},   /* countdowns: Game deadlines */
   });
 let S=fresh();
@@ -82,7 +228,8 @@ function newSession(){
 }
 /* Round progress comes from Game, not from screen flags. */
 const floorOpen=()=>!!G&&G.step==="openFloor";
-const sopDone=()=>!!G&&G.didRun("runTrial");
+const trialDone=()=>!!G&&G.didRun("runTrial");
+const sopDone=trialDone;
 const accDone=()=>!!G&&G.didRun("endGlitchReport");
 const gwClosed=()=>!!G&&G.didRun("lockIn");
 const roundDone=()=>!!G&&G.didRun("finishRound");
@@ -94,7 +241,19 @@ const nameKey=em=>String(em||"").trim().toLowerCase();
 function savedName(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}}
 function saveName(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}}
 function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
+function resetRoundUI(){
+  S.panel=false;S.of={msg:""};S.sop={pile:[],inTime:true};
+  S.trialUI={draft:"",msg:"",picks:["","",""]};
+  S.pay=null;S.acc={target:"",result:null};S.gw={received:[],sent:[]};
+}
 function startLevel(){if(!G.round){if(G.timer)G.closeTimer();else G.startNextRound()}S.prog.level=Math.max(S.prog.level,G.level);go(5)}
+function startNextLevel(){
+  if(!G||!roundDone()||G.level>=7)return;
+  resetRoundUI();
+  G.startNextRound();
+  S.prog.level=Math.max(S.prog.level,G.level);
+  go(5);
+}
 const R=()=>G&&G.round?G.round:new EP.Round(1);
 
 /* ---------- helpers ---------- */
@@ -115,32 +274,42 @@ const flag=s=>`<span class="flag ${s==="At risk"?"risk":s}">${s}</span>`;
 const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3.2 12A5.3 5.3 0 0 1 12 4.6 5.3 5.3 0 0 1 20.8 12Z" fill="${on?"#e0394d":"#3a1520"}" stroke="#0b0e13" stroke-width="2.4" stroke-linejoin="round"/>${on?'<path d="M7 8.5a2.5 2.5 0 0 1 3-1.5" stroke="#ffb3bd" stroke-width="1.8" fill="none" stroke-linecap="round"/>':""}</svg>`;
 /* Timers live in Game (Part 13): each timed step has a deadline. The countdown reads it.
    One page clock asks Game to close any timer that ran out (G.tick), then follows on screen. */
-function drawTimer(){const e=$("#tmr");if(!e)return;const s=G?G.secondsLeft():null;e.textContent=fmt(s==null?0:s);e.classList.toggle("low",s!=null&&s<=10)}
+function drawTimer(){
+  const s=G?G.secondsLeft():null,txt=fmt(s==null?0:s),low=s!=null&&s<=10;
+  const e=$("#tmr");if(e){e.textContent=txt;e.classList.toggle("low",low)}
+  const st=$("#splitTmr");if(st){st.textContent=txt;st.classList.toggle("low",low)}
+  const sn=$("#splitNotesCount");if(sn&&G&&G.round&&G.round.trial instanceof EP.Trial.SplitBriefTrial)sn.textContent=String(G.round.trial.notesFor(MYTEAM).length);
+}
 function afterClose(closed){
   for(const n of closed){
     if(n==="intermission"){S.prog.level=Math.max(S.prog.level,G.level);if(S.step===4){go(5);continue}}
     else if(n==="openFloor"){if(S.step===6){go(7);continue}}
     else if(n==="sop"){S.sop.inTime=false;sopScored()}
+    else if(n==="writing"){S.trialUI.msg=""}
     else if(n==="glitchReport"){S.acc.target="";S.acc.result=null}   /* time up: Skip */
-    else if(n==="statsUpdate")S.prog.done=Math.max(S.prog.done,G.level);
+    else if(n==="statsUpdate"||n==="graduation")S.prog.done=Math.max(S.prog.done,G.level);
   }
   render()}
 setInterval(()=>{if(!G)return;const closed=G.tick();if(closed.length)afterClose(closed);else drawTimer()},250);
 
 /* ---------- navigation ---------- */
-function canBack(){if(S.step===0)return false;if(S.maxStep>=5&&S.step<=4)return false;return true}
+function canBack(){if(S.step===0)return false;if(S.maxStep>=5&&S.step<=4)return false;if(G&&G.over)return false;if(S.step===5&&G&&G.level>1)return false;return true}
 function fwd(){
   switch(S.step){
     case 0:return{label:"Clock in ▶",ok:true,cls:"red"};
     case 1:return{label:"Play ▶",ok:true,cls:"red"};
     case 2:return{label:"Save look ▶",ok:S.draft.trim().length>=2,cls:"green"};
     case 3:return{label:"Confirm stats ▶",ok:!!S.type&&spendLeft()===0,cls:"red"};
-    case 4:return S.arrived?{label:"Start Level 1 ▶",ok:true,cls:"red"}:{label:S.arr==="elev"?"Skip intro ▶":"Continue ▶",ok:S.arr!=="spawn",cls:"blue"};
-    case 5:return{label:"Open the floor ▶",ok:true,cls:"red"};
+    case 4:return S.arrived?{label:`Start Level ${(G?G.level:0)+1} ▶`,ok:true,cls:"red"}:{label:S.arr==="elev"?"Skip intro ▶":"Continue ▶",ok:S.arr!=="spawn",cls:"blue"};
+    case 5:return{label:R().isFinal?"Go to Graduation ▶":"Open the floor ▶",ok:true,cls:"red"};
     case 6:return{label:"Ready for trial ▶",ok:true,cls:"red"};
-    case 7:return{label:"All-hands ▶",ok:sopDone(),cls:"red"};
+    case 7:return{label:"All-hands ▶",ok:trialDone(),cls:"red"};
     case 8:return{label:"Stats Update ▶",ok:gwClosed(),cls:"red"};
-    case 9:return{label:roundDone()?`Level ${R().n+1} locked`:"Lock in points",ok:!roundDone()&&placeLeft()===0,cls:roundDone()?"soft":"green"};
+    case 9:
+      if(G&&G.over)return{label:"Game complete",ok:false,cls:"soft"};
+      if(R().isFinal){const ok=ME.isStuck()||placeLeft()===0;return{label:ME.isStuck()||ME.earned===0?"See final results ▶":"Lock in final points ▶",ok,cls:"green"}}
+      if(roundDone()){const nx=EP.Round.LEVELS[R().n]||null;return{label:`Start Level ${nx?nx.n:R().n+1} ▶`,ok:true,cls:"red"}}
+      return{label:"Lock in points",ok:placeLeft()===0,cls:"green"};
   }
 }
 function goForward(){
@@ -151,10 +320,10 @@ function goForward(){
     case 2:S.name=S.draft.trim();if(S.wardFrom==="badge"){S.menu="badge";go(1)}else go(3);return;
     case 3:if(S.maxStep<5)newSession();go(4);return;
     case 4:if(!S.arrived){if(S.arr==="elev")skipArrival();else arrivalAdvance();return}startLevel();return;
-    case 5:if(G.step==="briefing")G.advance();go(6);return;   /* Briefing > Open Floor (Game resumes Attendance) */
+    case 5:if(G.step==="briefing")G.advance();go(R().isFinal?9:6);return;   /* Briefing > Open Floor or Graduation */
     case 6:applyOpenFloorEnd();go(7);return;
     case 7:payCost();go(8);return;
-    case 9:lockPoints();return;
+    case 9:if(G&&G.over)return;if(!R().isFinal&&roundDone())startNextLevel();else lockPoints();return;
     default:go(S.step+1);
   }
 }
@@ -163,7 +332,9 @@ function updateNav(){
   b.hidden=S.step===0;b.disabled=!canBack();
   b.textContent=S.step===1?"◀ Sign out":"◀ Back";
   n.textContent=f.label;n.disabled=!f.ok;n.className="btn "+f.cls;
-  $("#navMid").textContent=f.ok||S.step===9?STEPS[S.step]:({2:"Type a name to continue",3:"Pick a style and place all 15 points",7:"Submit your SOP first",8:"Finish the accusation and gift window"}[S.step]||STEPS[S.step]);
+  const stepText=S.step===9&&R().isFinal?(G&&G.over?"Final Results":"Graduation"):STEPS[S.step];
+  const wait7=(currentTrialView&&currentTrialView.waitHint)||"Finish the trial first";
+  $("#navMid").textContent=f.ok||S.step===9?stepText:({2:"Type a name to continue",3:"Pick a style and place all 15 points",7:wait7,8:"Finish the accusation and gift window"}[S.step]||stepText);
 }
 
 /* ---------- chrome ---------- */
@@ -179,12 +350,13 @@ function chrome(){
   $("#where").textContent=inGame?`Level ${R().n} · ${R().name}`:STEPS[S.step];
   $("#stage").classList.toggle("boxed",S.step>=3);
   $("#steps").hidden=S.step<=1||(S.step===4&&!S.arrived);
-  $("#steps").innerHTML=STEPS.map((t,i)=>`<li class="${i===S.step?"on":i<S.step?"done":""}">${t}</li>`).join("");
-  $("#fac").innerHTML=`<span class="label">Host script · ${STEPS[S.step]}</span><ul>${FAC[S.step].map(l=>`<li>${esc(l)}</li>`).join("")}</ul>`;
-  const bl=S.step===8?(!accDone()?"Glitch Report":!gwClosed()?"Gift Window":null):S.step===9?(roundDone()?null:"Stats Update"):BANNER[S.step];
+  const stepLabel=S.step===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):STEPS[S.step];
+  $("#steps").innerHTML=STEPS.map((t,i)=>`<li class="${i===S.step?"on":i<S.step?"done":""}">${i===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):t}</li>`).join("");
+  $("#fac").innerHTML=`<span class="label">Host script · ${stepLabel}</span><ul>${facLines(S.step,R().n).map(l=>`<li>${esc(l)}</li>`).join("")}</ul>`;
+  const bl=S.step===7?(G&&G.timer?"The Trial":null):S.step===8?(!accDone()?"Glitch Report":!gwClosed()?"Gift Window":null):S.step===9?(R().isFinal?(G&&G.over?null:"Graduation"):(roundDone()?null:"Stats Update")):BANNER[S.step];
   const cin=S.step===4&&!S.arrived;
-  const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&sopDone())&&!(S.step===6&&!floorOpen());
-  $("#banner").hidden=!showB;if(showB)$("#bannerT").textContent=bl;
+  const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&trialDone())&&!(S.step===6&&!floorOpen());
+  $("#banner").hidden=!showB;if(showB){$("#bannerT").textContent=bl;drawTimer()}
   const h=$("#hud");
   if(!ME||S.step<4||cin){h.hidden=true}else{h.hidden=false;
   h.innerHTML=A.map(a=>{const v=ME.attrs[a.k];return `<div class="attr ${isBonus(a.k)?"bonus":""}"><div class="top"><span>${a.n}</span><span class="v ${v<0?"neg":""}">${v}/${maxOf(a.k)}</span></div><span class="trk"><i style="width:${Math.max(0,v)/maxOf(a.k)*100}%"></i></span></div>`}).join("")+
@@ -286,38 +458,136 @@ ${worldHTML("lobby")}
   <div class="panel"><span class="label">Secret path · ${t.path} <span class="tag s">${t.n}</span></span><p>${t.pathDesc}</p><span class="hint">Progress ${ME.pathProgress} / ${t.goal}. Only you can see this.</span></div>
   ${G&&G.level===7?`<div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>`:""}
 </div>`};
-/* Trial scores on screen: whole numbers, 0 to 7. The rules keep the exact value for ranking. */
-const shownScore=x=>Math.min(EP.Trial.MAX_BASE,Math.max(0,Math.round(x)));
+/* Trial scores on screen: whole numbers, 0 to max. The rules keep the exact value for ranking. */
+const shownScore=(x,max=EP.Trial.MAX_BASE)=>Math.min(max,Math.max(0,Math.round(x)));
 function gradChecks(){const c=ME.gradChecks(),GT=EP.Player.GRAD_TOTAL,GM=EP.Player.GRAD_MIN;
   return `<div class="check"><span class="${c.totalOk?"y":"x"}">${c.totalOk?"✓":"✗"}</span><span>Total points ${c.total} (need ${GT}+)</span></div><div class="check"><span class="${c.lowestOk?"y":"x"}">${c.lowestOk?"✓":"✗"}</span><span>Lowest attribute ${c.lowest} (need ${GM}+)</span></div><div class="check"><span class="${c.glitchesOk?"y":"x"}">${c.glitchesOk?"✓":"✗"}</span><span>Glitches ${c.glitches} (stuck at ${EP.Player.STUCK_AT})</span></div>`}
 
-V[5]=()=>`<div><span class="chip r">System Briefing · Level 1</span><h2 style="margin-top:8px">Boot Up: Team Week</h2></div>
-<div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, Team Kestrel</p><p>Your first client, a national medical supply company, has sent a Request for Proposal. Before Sprint 1 starts on Sep 8, your team must show it has the grit to see a task through: write a Standard Operating Procedure everyone can follow.</p></div>
-<div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>${AN[R().attr]}</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>${R().cost} points</h3></div><div class="panel"><span class="label">Your ${AN[R().attr]}</span><h3>${ME.attrs[R().attr]}${isBonus(R().attr)?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${ME.coversFromPoints(R().attr,R().cost)?"You can cover this.":"You'll need hearts to cover this."}</span></div></div>
-<div class="cols"><div class="panel"><span class="label">Real phase</span><span>Weeks 1–2: Team Week, teams formed, Medline RFP, SOP challenge</span></div><div class="panel"><span class="label">Workshops</span><span>LW2A Know Your Lens · LW2B Team Agreement</span></div></div>`;
+V[5]=()=>{const b=BRIEFINGS[R().n]||BRIEFINGS[1];return `<div><span class="chip r">${esc(b.header)}</span><h2 style="margin-top:8px">${esc(b.title)}</h2></div>
+<div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, ${esc(MYTEAM?MYTEAM.name:"Team Kestrel")}</p><p>${esc(b.memo)}</p></div>
+${R().attr?`<div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>${AN[R().attr]}</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>${R().cost} points</h3></div><div class="panel"><span class="label">Your ${AN[R().attr]}</span><h3>${ME.attrs[R().attr]}${isBonus(R().attr)?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${ME.coversFromPoints(R().attr,R().cost)?"You can cover this.":"You'll need hearts to cover this."}</span></div></div>`
+:`<div class="cols"><div class="panel"><span class="label">This review checks</span><h3>All 5 attributes</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>0 points</h3></div><div class="panel"><span class="label">Final points</span><h3>+${EP.Game.POINTS.final} points</h3><span class="hint">${ME.isStuck()?"You are Stuck (spectator).":ME.graduates()?"You currently meet the graduation numbers.":"Place your final points on the next screen."}</span></div></div>`}
+<div class="cols"><div class="panel"><span class="label">Real phase</span><span>${esc(b.phase)}</span></div><div class="panel"><span class="label">Workshops</span><span>${esc(b.workshops)}</span></div></div>`};
 
 V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${!floorOpen()?"Open Floor is over. Press Ready for trial to continue.":"Kitchen = gift a teammate · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
 ${worldHTML("floor")}`;
 
-V[7]=()=>{const s=S.sop,built=G.sopBoard(MYTEAM),res=(G.round.sopResults||{})[MYTEAM.id]||{right:0,endlessOut:false},rank=G.round.trial.ranking||[];const hit=G.round.drainOn(ME);return `<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
-${hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[R().attr]} −${hit}. Remember this at the all-hands.</div>`:""}
+function sabotageAlertHTML(){const hit=G.round.drainOn(ME);return hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[R().attr]} −${hit}. Remember this at the all-hands.</div>`:""}
+function trialResultHTML(maxScore,rank,note){
+  const mine=rank.find(x=>x.team===MYTEAM);
+  return `<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}. Score ${shownScore(mine?mine.score:0,maxScore)} of ${maxScore}.</b>${note?`<span class="hint">${note}</span>`:""}<span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score,maxScore)})`).join(" · ")}. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`;
+}
+function trialSopScreen(){
+  if(!S.sop.pile.length)S.sop.pile=shuffle([...SOP,DECOY]);
+  const s=S.sop,built=G.sopBoard(MYTEAM),res=(G.round.sopResults||{})[MYTEAM.id]||{right:0,endlessOut:false},rank=G.round.trial.ranking||[];
+  const html=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
+${sabotageAlertHTML()}
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Score: 1 point per step in the right place, +1 for leaving out the step that doesn't belong (0 to 7). The top half of teams win.</p>
-<div class="sop"><div><span class="label">Available steps</span><div class="pile">${sopPile().map((t,i)=>`<button class="scard" data-pile="${i}" ${sopDone()?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
-<div><span class="label">Team SOP</span><div class="built">${built.map((t,i)=>`<button class="scard ${sopDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${sopDone()?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${sopDone()?`<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}. Score ${shownScore(rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
-:`<div class="row"><button class="btn green" id="check" ${built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`};
+<div class="sop"><div><span class="label">Available steps</span><div class="pile">${sopPile().map((t,i)=>`<button class="scard" data-pile="${i}" ${trialDone()?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
+<div><span class="label">Team SOP</span><div class="built">${built.map((t,i)=>`<button class="scard ${trialDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${trialDone()?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
+${trialDone()?`<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}. Score ${shownScore(rank.find(x=>x.team===MYTEAM).score)} of ${EP.Trial.SopTrial.MAX_SCORE}.</b><span class="hint">${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${s.inTime?"":", time ran out"}. Your team's ${AN[R().attr]} can move the score a little.</span><span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.team.name)} (${shownScore(x.score)})`).join(" · ")}. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`
+:`<div class="row"><button class="btn green" id="check" ${built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`;
+  const bind=()=>{
+    const b=()=>G.sopBoard(MYTEAM);   /* any teammate edits the shared board in Game */
+    $$("[data-pile]").forEach(btn=>sopPress(btn,()=>{const t=sopPile()[+btn.dataset.pile];if(G.setSopBoard(ME,[...b(),t]).ok)render()}));
+    $$("[data-built]").forEach(btn=>sopPress(btn,()=>{const t=b()[+btn.dataset.built];if(G.setSopBoard(ME,b().filter(x=>x!==t)).ok){s.pile=[...s.pile.filter(x=>x!==t),t];render()}}));
+    on("#check",checkSop);on("#reset",()=>{if(G.setSopBoard(ME,[]).ok){s.pile=shuffle([...SOP,DECOY]);render()}});
+  };
+  return {html,bind,waitHint:"Submit your SOP first"};
+}
+function trialSplitBriefScreen(){
+  const trial=G.round.trial,rank=trial.ranking||[],notesCount=trial.notesFor(MYTEAM).length;
+  const html=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Split Brief</h2></div>
+${sabotageAlertHTML()}
+${trialDone()?trialResultHTML(EP.Trial.SplitBriefTrial.MAX_SCORE,rank,"Split Brief placeholder score (full UI comes in Step 6b).")
+:`<div class="panel"><span class="label">Level 2 Trial</span><h3>Split Brief screen comes in Step 6b</h3>
+<div class="row" style="justify-content:space-between"><span>Time remaining</span><span class="counter" id="splitTmr">${fmt(G.secondsLeft()||0)}</span></div>
+<p class="hint">The rules timer closes this trial automatically when time runs out. Bots still post notes in the background (<span id="splitNotesCount">${notesCount}</span> team note${notesCount===1?"":"s"} posted so far).</p></div>`}`;
+  return {html,bind:null,waitHint:"Wait for the Split Brief timer to finish"};
+}
+function trialAutoScreen(){
+  const rank=G.round.trial.ranking||[];
+  const html=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>
+${sabotageAlertHTML()}
+${trialDone()?trialResultHTML(EP.Trial.MAX_BASE,rank,"AutoTrial placeholder: random 0 to 7 score plus light stat influence.")
+:`<div class="panel"><span class="label">Placeholder trial</span><p>For now, ${esc(R().trialName)} ranks teams in random order (0 to 7) plus light ${AN[R().attr]} influence. Top half win.</p><div class="row"><button class="btn green" id="runAuto">Run trial</button></div></div>`}`;
+  const bind=()=>{on("#runAuto",()=>{if(!trialDone()){G.runTrial();render()}})};
+  return {html,bind,waitHint:"Run the trial first"};
+}
+function trialJudgedScreen(){
+  const JT=EP.Trial.JudgedTrial,jt=G.round.trial;
+  if(jt.writing===null){G.startWriting();EP.Bots.submit(G)}
+  if(jt.writing==="closed"&&!jt.vote&&!trialDone())G.startVote();
+  const hdr=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>${sabotageAlertHTML()}`;
+  if(trialDone()){
+    const rank=jt.ranking||[];
+    const html=`${hdr}<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}.</b><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>1st places</th><th>Result</th></tr></thead><tbody>${rank.map(r=>`<tr><td class="n">${r.place}</td><td>${esc(r.team.name)}${r.team===MYTEAM?" (you)":""}</td><td class="n">${r.score.toFixed(3)}</td><td class="n">${r.firsts}</td><td>${r.won?"Win":"Loss"}</td></tr>`).join("")}</tbody></table><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`;
+    return {html,bind:null,waitHint:"Cast your vote first"};
+  }
+  if(jt.writing==="open"){
+    const mine=jt.submissions.get(ME),n=S.trialUI.draft.trim().length,max=JT.MAX_CHARS;
+    const active=G.players.filter(p=>p.isActive()),done=active.filter(p=>jt.submissions.has(p)).length;
+    const html=`${hdr}<div class="panel"><span class="label">Prompt</span><p>${esc(jt.prompt.text)}</p></div>
+${mine?`<div class="panel"><span class="label">Submitted</span><p>${esc(mine)}</p><span class="hint">Waiting for the other players. Writing closes early when everyone active submits.</span></div>`
+:`<div class="panel"><label class="label" for="subDraft">Your answer (max ${max} characters)</label><textarea id="subDraft" maxlength="${max}" placeholder="Write your answer...">${esc(S.trialUI.draft)}</textarea><div class="row" style="justify-content:space-between"><span class="counter" id="subCnt">${n} / ${max}</span><button class="btn green" id="subBtn" ${n&&n<=max?"":"disabled"}>Submit answer</button></div>${S.trialUI.msg?`<div class="err">${esc(S.trialUI.msg)}</div>`:""}</div>`}
+<span class="hint">${done} of ${active.length} active players have submitted.</span>`;
+    const bind=()=>{
+      const d=$("#subDraft");
+      if(d)d.addEventListener("input",()=>{S.trialUI.draft=d.value;const c=G.typeSubmission(ME,d.value);const cnt=$("#subCnt");if(cnt){cnt.textContent=c.length+" / "+max;cnt.style.color=c.tooLong?"var(--bad)":""}const btn=$("#subBtn");if(btn)btn.disabled=!c.length||c.tooLong});
+      on("#subBtn",()=>{const r=G.submit(ME,S.trialUI.draft);if(!r.ok){S.trialUI.msg=r.reason;render();return}S.trialUI.msg="";if(r.closed&&!jt.vote)G.startVote();render()});
+    };
+    return {html,bind,waitHint:"Submit your answer first"};
+  }
+  const v=jt.vote,choices=v.choicesFor(ME),slots=v.slotsFor(ME),can=!ME.isStuck()&&slots>0;
+  const subs=G.teams.flatMap(t=>t.members.filter(p=>jt.submissions.has(p)).map(p=>({p,t})));
+  const opts=`<option value="">Choose...</option>`+choices.map(p=>`<option value="${p.id}">${esc(p.name)} · ${esc(G.teamOf(p).name)}</option>`).join("");
+  const labels=["1st (3 points)","2nd (2 points)","3rd (1 point)"].slice(0,slots);
+  const html=`${hdr}<div class="panel"><span class="label">Prompt</span><p>${esc(jt.prompt.text)}</p></div>
+<div class="cols">${subs.map(({p,t})=>`<div class="panel"><span class="label">${esc(p.name)} · ${esc(t.name)}${t===MYTEAM?" · your team":""}</span><p>${esc(jt.submissions.get(p))}</p></div>`).join("")}</div>
+${can?`<div class="panel"><span class="label">Rank the top ${slots} from other teams</span>${labels.map((lb,i)=>`<div class="field"><label for="vote${i}">${lb}</label><select id="vote${i}" data-vpick="${i}">${opts}</select></div>`).join("")}${S.trialUI.msg?`<div class="err">${esc(S.trialUI.msg)}</div>`:""}<div class="row"><button class="btn red" id="castVote">Cast vote ▶</button></div></div>`
+:`<div class="panel"><p>${ME.isStuck()?"You are Stuck and cannot vote.":"No eligible submissions from other teams to rank."}</p><div class="row"><button class="btn red" id="castVote">See vote result ▶</button></div></div>`}`;
+  const bind=()=>{
+    $$("[data-vpick]").forEach(sel=>{const idx=+sel.dataset.vpick;if(S.trialUI.picks[idx])sel.value=S.trialUI.picks[idx];sel.onchange=()=>{S.trialUI.picks[idx]=sel.value}});
+    on("#castVote",()=>{
+      if(can){
+        const ids=Array.from({length:slots},(_,i)=>($("#vote"+i)||{}).value||"");
+        S.trialUI.picks=ids;
+        if(ids.some(x=>!x)){S.trialUI.msg="Choose a player for every place.";render();return}
+        G.activity(ME);
+        const r=v.cast(ME,ids.map(id=>G.players.find(p=>String(p.id)===id)));
+        if(!r.ok){S.trialUI.msg=r.reason;render();return}
+      }
+      S.trialUI.msg="";EP.Bots.vote(G,v,G.rng);G.runTrial();render();
+    });
+  };
+  return {html,bind,waitHint:"Cast your vote first"};
+}
+/* Trial screen lookup keyed by Round.trialKind.
+   To add a new trial kind (such as a Level 3 mini-game): write one screen function that returns
+   { html, bind, waitHint } and add one entry below matching that level's trialKind. */
+const TRIAL_SCREENS={
+  sop:trialSopScreen,
+  splitBrief:trialSplitBriefScreen,
+  auto:trialAutoScreen,
+  judged:trialJudgedScreen,
+};
+let currentTrialView=null;
+function trialView(){const fn=TRIAL_SCREENS[R().trialKind]||trialAutoScreen;return fn();}
+V[7]=()=>currentTrialView?currentTrialView.html:"";
 
 V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">All-hands meeting</div>
 <div class="report shake"><span class="h">&gt; GLITCH REPORT: irregularities detected in your environment</span>
-<span>&gt; trial: Team Kestrel ${MYTEAM.won?"WIN":"LOSS"} · cost paid: ${AN[k]} −${R().cost}</span>
+<span>&gt; trial: ${esc(MYTEAM.name)} ${MYTEAM.won?"WIN":"LOSS"} · cost paid: ${p?`${AN[k]} −${R().cost}`:"none (Stuck)"}</span>
 ${G.round.drainOn(ME)?`<span>&gt; sabotage before the trial: ${AN[k]} −${G.round.drainOn(ME)}</span>`:""}
-<span>&gt; your ${AN[k]} at the trial: ${p.before} → ${p.after}${p.heartsUsed?` (hearts used: ${p.heartsUsed}, ${ME.rate(k)} per point)`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>
+${p?`<span>&gt; your ${AN[k]} at the trial: ${p.before} → ${p.after}${p.heartsUsed?` (hearts used: ${p.heartsUsed}, ${ME.rate(k)} per point)`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>`
+:`<span>&gt; you are Stuck and paid no trial cost this round.</span>`}
 ${CLUES.map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
 <span>&gt; please continue working normally.</span></div>
 ${accDone()?caughtNotices():""}
 ${accDone()&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. This round does not count toward Exploit. You cannot sabotage on any team next round, or ever again while on this team.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
 <div class="panel"><span class="label">Accusation · one per player · teammates only</span>
 ${accDone()?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.correctAccusation)?` ${T().path} complete.`:""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. ${a.safe?`Your Focus kept it from costing you anything.`:`You lost 1 point from your highest attribute.`}`:"You skipped your accusation."}</p>`
+:ME.isStuck()?`<p>You are Stuck and cannot accuse.</p><div class="row"><button class="btn soft sm" id="skipAcc">Skip</button></div>`
 :`<p><b>Suspect a teammate? Accuse or Skip.</b></p><div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Correct: +1 point. Wrong: you lose 1 point from your highest attribute.</span><span class="hint">The Glitch Report ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.glitchReport} seconds. No answer counts as Skip.</span>`}</div>
 ${accDone()?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${gwClosed()?flag(status()):`<span class="hearts">${Array.from({length:EP.Hearts.CAP},(_,i)=>HEART(i<ME.hearts.count)).join("")}</span>`}</div>
   ${incomingGifts()}
@@ -357,19 +627,57 @@ function bindIncoming(){$$("[data-ans]").forEach(b=>b.onclick=()=>{const gft=G.r
 /* All-hands: as soon as accusations resolve, announce any teammate caught sabotaging. (If you were caught, your own notice shows instead.) */
 function caughtNotices(){return G.round.caughtOn(MYTEAM,ME).map(q=>`<div class="toast"><b>&gt; CAUGHT:</b> ${esc(q.name)} was caught sabotaging. They cannot sabotage this team again.</div>`).join("")}
 function placeLeft(){return ME?ME.placeLeft(ME.draft):0}
-V[9]=()=>{const left=placeLeft();const t=T();const got=roundDone()?ME.placedThisRound:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
+function nextLevelCard(level,detail){
+  const nx=EP.Round.LEVELS[level]||null;
+  return `<div class="locked" style="border-style:solid;border-color:var(--ok)"><div><span class="label">Next · Level ${nx?nx.n:""}</span><h3>${nx?esc(nx.name):""}</h3><span class="hint">${esc(detail)}</span></div><span class="tag" style="background:var(--ok)">READY</span></div>
+  <div class="row"><button class="btn red" id="nextLevel">Start Level ${nx?nx.n:""} ▶</button><button class="btn blue" id="replay">Replay Level ${level}</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
+}
+function finalResultsScreen(){
+  const res=G.results(),mine=res.find(r=>r.player===ME),t=T();
+  const teams=[...G.teams].sort((a,b)=>b.trialWins-a.trialWins);
+  return `<div><span class="chip ${mine.wins?"g":"r"}">Game over · Performance Review</span><h2 style="margin-top:8px">${mine.wins?"You exited Floor 60":"Contract renewed"}</h2><p class="hint" style="margin-top:6px">Result: <b>${esc(mine.ending)}</b></p></div>
+  <div class="cols">
+    <div class="panel"><span class="label">Your outcome</span><p><b>${esc(mine.ending)}</b></p><span class="hint">Hearts: ${ME.hearts.count}/${EP.Hearts.CAP} · Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}</span>${flag(status())}${gradChecks()}</div>
+    <div class="panel"><span class="label">Your 5 attributes</span>${A.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}/${maxOf(a.k)}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
+    <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div>
+  </div>
+  <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${teams.map((tm,i)=>`<tr><td class="n">${i+1}</td><td>${esc(tm.name)}${tm===MYTEAM?" (you)":""}</td><td class="n">${tm.trialWins} / 6</td></tr>`).join("")}</tbody></table></div>
+  <div class="panel tw"><span class="label">Cohort endings</span><table class="levels"><thead><tr><th>Intern</th><th>Team</th><th>Outcome</th></tr></thead><tbody>${res.map(r=>`<tr><td>${esc(r.player.name)}${r.player===ME?" (you)":""}</td><td>${esc(G.teamOf(r.player).name)}</td><td>${esc(r.ending)}</td></tr>`).join("")}</tbody></table></div>
+  <div class="row"><button class="btn blue" id="replay">Play again</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
+}
+const END_SCREENS={
+  1:()=>nextLevelCard(1,"Sep 8–25 · Trial cost 3 · Attribute revealed at the briefing"),
+  2:()=>nextLevelCard(2,"Oct 1 · Trial cost 3 · Attribute revealed at the briefing"),
+  3:()=>nextLevelCard(3,"Oct 5–9 · Trial cost 4 · Attribute revealed at the briefing"),
+  4:()=>nextLevelCard(4,"Oct 5–30 · Trial cost 4 · Attribute revealed at the briefing"),
+  5:()=>nextLevelCard(5,"Nov 2–27 · Trial cost 5 · Attribute revealed at the briefing"),
+  6:()=>nextLevelCard(6,"Nov 30 – Dec 1 · Final Performance Review · Trial cost 0"),
+  7:()=>finalResultsScreen(),
+};
+V[9]=()=>{
+  if(G&&G.over)return END_SCREENS[7]();
+  const left=placeLeft();const t=T();const got=roundDone()?ME.placedThisRound:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
+  if(R().isFinal){
+    return `<div><span class="chip g">Graduation</span><h2 style="margin-top:8px">Final Performance Review, ${esc(S.name)}</h2></div>
+    <div class="result"><b>${ME.isStuck()?"You are Stuck and watch the final review.":`You have ${ME.earned} final point${ME.earned===1?"":"s"} to place.`}</b><span class="hint">Graduate with ${EP.Player.GRAD_TOTAL}+ total points, every attribute ${EP.Player.GRAD_MIN}+, and not Stuck (or a completed secret path).</span></div>
+    ${ME.isStuck()||ME.earned===0?"":`<div class="row" style="justify-content:space-between"><h3>Place your final points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
+    <p class="hint">Graduation ends when the 60-second timer runs out or when you lock in your final points. Unplaced points go in automatically.</p>
+    <div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
+    <div class="cols"><div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>
+    <div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">${ME.idle?"Idle at results counts as Contract renewed unless a secret path is complete.":"Be active when results lock in to graduate."}</span></div>
+    <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div></div>`;
+  }
 return `<div><span class="chip g">Stats Update</span><h2 style="margin-top:8px">Level ${R().n} complete, ${esc(S.name)}</h2></div>
 <div class="result"><b>You earned ${got} point${got===1?"":"s"}.</b><span class="hint">${[...((G.round.earnings||{})[ME.id]||[]),...(ME.cashedOutThisRound?["Cash Out: +1"]:[])].map(esc).join(" · ")}</span></div>
 ${!roundDone()&&ME.canCashOut()?`<div class="panel"><span class="label">Cash Out · once per game</span><p>Spend 2 hearts for +1 point. Only works with full hearts.</p><button class="btn green sm" id="cashOut">Cash Out</button></div>`:""}
-${roundDone()?"":`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
-<p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?` Level ${nx.n} costs ${nx.cost}.`:""}</p>
+${roundDone()?"":ME.isStuck()?`<p class="hint">You are Stuck this round and have no points to place. Press Lock in points to continue.</p>`:`<div class="row" style="justify-content:space-between"><h3>Place your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} left</span></div>
+<p class="hint">Place them now. The next trial's attribute stays hidden until the next briefing.${nx?(nx.cost?` Level ${nx.n} costs ${nx.cost}.`:` Level ${nx.n} has no trial cost.`):""}</p>
 <p class="hint">Stats Update ends on its own when the timer at the top runs out. It started when the gift window closed. Points you have not placed go in automatically, the same way bots place theirs.</p>
 <div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
 <div class="cols"><div class="panel"><span class="label">Status</span>${flag(status())}<span class="hint">At risk means one of your attributes, even with the hearts that could cover it, could not pay a cost of ${EP.Player.AT_RISK_COST}. This ${EP.Player.AT_RISK_COST} is a fixed safety check for every level. It is not the next trial's cost.</span></div>
 <div class="panel"><span class="label">Your abilities · only you see these</span>${ME.abilityLines().map(l=>`<span class="hint">${esc(l.text)}</span>`).join("")}</div>
-${R().n===7?`<div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>`:""}
 <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div></div>
-${roundDone()?`<div class="locked"><div><span class="label">Next · Level ${nx?nx.n:""}</span><h3>${nx?nx.name:""}</h3><span class="hint">Sep 8–25 · Trial cost ${nx?nx.cost:""} · Attribute revealed at the briefing</span></div><span class="tag m">LOCKED</span></div><div class="row"><button class="btn blue" id="replay">Replay Level 1</button><button class="btn soft" id="restart">Back to sign-in</button></div>`:""}`};
+${roundDone()?(END_SCREENS[R().n]||END_SCREENS[1])():""}`};
 
 /* ================= ARRIVAL (elevator → ADMIN_0 → role lead → spawn) ================= */
 function adminFig(){return `<g transform="translate(440 210)">
@@ -443,8 +751,9 @@ addEventListener("keydown",e=>{if(e.key!=="Escape"&&e.key!=="Esc")return;const w
 
 /* ---------- render + bind ---------- */
 function render(){
-  if(S.step===7&&!S.sop.pile.length)S.sop.pile=shuffle([...SOP,DECOY]);
-  stopWorld();chrome();$("#stage").innerHTML=V[S.step]();bind();BOARD.refresh();
+  stopWorld();
+  currentTrialView=S.step===7?trialView():null;
+  chrome();$("#stage").innerHTML=V[S.step]();bind();BOARD.refresh();
   document.body.classList.toggle("mapscreen",!!$("#world"));
   /* Map screens: the name bar and stat bar get their own rows above the scroll area, so nothing scrolls under them. */
   {const top=$("#topbar"),hud=$("#hud"),wrap=$(".wrap");if($("#world")){if(hud.parentNode!==document.body){document.body.insertBefore(top,wrap);document.body.insertBefore(hud,wrap)}}
@@ -495,12 +804,7 @@ function bind(){
     bindGifts(m=>{S.of.msg=m});bindIncoming();
     $$("[data-sab]").forEach(b=>b.onclick=()=>{const r=G.sabotage(ME,MATE(b.dataset.sab));S.of.msg=r.ok?`You drained ${r.target.name} by ${r.drain}. They won't know it was you.`:r.reason;render()});
   }
-  if(S.step===7){
-    const s=S.sop,built=()=>G.sopBoard(MYTEAM);   /* any teammate edits the shared board in Game */
-    $$("[data-pile]").forEach(b=>sopPress(b,()=>{const t=sopPile()[+b.dataset.pile];if(G.setSopBoard(ME,[...built(),t]).ok)render()}));
-    $$("[data-built]").forEach(b=>sopPress(b,()=>{const t=built()[+b.dataset.built];if(G.setSopBoard(ME,built().filter(x=>x!==t)).ok){s.pile=[...s.pile.filter(x=>x!==t),t];render()}}));
-    on("#check",checkSop);on("#reset",()=>{if(G.setSopBoard(ME,[]).ok){s.pile=shuffle([...SOP,DECOY]);render()}});
-  }
+  if(S.step===7&&currentTrialView&&currentTrialView.bind)currentTrialView.bind();
   if(S.step===8){
     on("#accuse",()=>{const v=$("#accSel").value;if(!v)return;const r=G.accuse(ME,MATE(v));if(!r.ok)return;S.acc.target=v;S.acc.result=r.correct;S.acc.safe=!!r.safe;endAccusations()});
     on("#skipAcc",()=>{S.acc.target="";S.acc.result=null;endAccusations()});
@@ -510,6 +814,7 @@ function bind(){
     $$("[data-pinc]").forEach(b=>b.onclick=()=>{if(G.draftPoint(ME,b.dataset.pinc,1).ok)render()});
     $$("[data-pdec]").forEach(b=>b.onclick=()=>{if(G.draftPoint(ME,b.dataset.pdec,-1).ok)render()});
     on("#cashOut",()=>{if(G.cashOut(ME).ok)render()});
+    on("#nextLevel",startNextLevel);
     on("#replay",()=>{const keep={email:S.email,code:S.code,av:S.av,name:S.name,prog:{...S.prog},visited:{...S.visited}};/* rooms stay revealed on the Office Map *//* anomalies and the Glitch Report start over at 0 of 3 */endSession();S=fresh();Object.assign(S,keep);S.step=3;S.maxStep=3;render()});
     on("#restart",signOut);
   }
@@ -520,9 +825,20 @@ let sopDownAt=-1e9;
 function sopPress(b,fn){
   b.onpointerdown=e=>{if(e.pointerType==="touch"||e.button!==0||b.disabled)return;e.preventDefault();sopDownAt=performance.now();fn()};
   b.onclick=e=>{if(e.detail>0&&performance.now()-sopDownAt<1000)return;fn()}}
-/* Lock in: Game places your draft, then Stats Update ends early (everyone else already placed).
+/* Lock in: Game places your draft, then Stats Update or Graduation ends early (everyone else already placed).
    If the timer runs out first, Game keeps your picks and places the rest by the bot rule. */
-function lockPoints(){if(!G.lockPoints(ME).ok)return;S.prog.done=Math.max(S.prog.done,R().n);G.closeTimer();render()}
+function lockPoints(){
+  if(G.step==="graduation"){
+    if(!ME.isStuck()&&ME.earned>0&&!G.lockPoints(ME).ok)return;
+    S.prog.done=Math.max(S.prog.done,R().n);
+    if(G.timer)G.closeTimer();else{G.placeAllRemaining();G.results()}
+    render();return;
+  }
+  if(!ME.isStuck()&&!G.lockPoints(ME).ok)return;
+  S.prog.done=Math.max(S.prog.done,R().n);
+  if(G.timer)G.closeTimer();else{G.placeAllRemaining();G.finishRound()}
+  render();
+}
 function applyOpenFloorEnd(){
   if(!floorOpen())return;
   G.closeTimer();   // Open Floor ends early: bots sabotage (hook), then Open Floor > Trial
@@ -551,7 +867,7 @@ const curUri=x=>`url("data:image/svg+xml,${encodeURIComponent(x)}") 4 2`;
 document.documentElement.style.setProperty("--cur-red",curUri(curRed));document.documentElement.style.setProperty("--cur-gl",curUri(curGl));
 document.addEventListener("pointerdown",()=>{if(!document.body.classList.contains("menucur"))return;document.body.classList.add("curgl");setTimeout(()=>document.body.classList.remove("curgl"),220)});
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("button");if(b&&document.body.classList.contains("menucur")){b.classList.add("btngl");setTimeout(()=>b.classList.remove("btngl"),220)}});
-$("#navBack").onclick=()=>{if(!canBack())return;if(S.step===1&&S.menu!=="map"){S.menu="map";render();return}if(S.step===1){signOut();return}go(S.step-1)};
+$("#navBack").onclick=()=>{if(!canBack())return;if(S.step===1&&S.menu!=="map"){S.menu="map";render();return}if(S.step===1){signOut();return}if(S.step===9&&R().isFinal){go(5);return}go(S.step-1)};
 $("#navNext").onclick=goForward;
 /* Progress board: read-only, open at any time in the game. Data comes only from Game.board(). */
 const BOARD=BoardView.mount(()=>G?G.board():null);
