@@ -21,6 +21,7 @@ const TESTS = [
   "check_scenarios",
   "check_split_brief",
   "check_split_timing",
+  "check_split_bots",
 ];
 
 function runTest(name) {

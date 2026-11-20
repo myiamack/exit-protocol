@@ -36,10 +36,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (21 modules) and `npm test` (11/11 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`; 19/19 assertions in `check_split_timing.js`).
 - **Open issues:** None.
 
-### Step 4: Bots (Effort: Medium) — TODO
+### Step 4: Bots (Effort: Medium) — DONE
 - **Goal:** Connect bots via `Game` hooks only (no `Game`-to-`Bots` link): post card notes at random times in the first 30s, post twist note within 10s, never edit the board or lock in.
 - **Done when:** Bot behavior tests verify timing, note accuracy, and 3-note cap.
 - **Tests:** `npm run build`, `npm test`.
+- **Files changed:** `rules/Game.js`, `rules/bots.js`, `rules/rules.bundle.js`, `Tests/check_split_bots.js`, `Tests/baseline/check_split_bots.txt`, `tools/baseline.js`, `docs/level2-progress.md`.
+- **Test results:** `npm run build` (21 modules) and `npm test` (12/12 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`; 13/13 assertions in `check_split_bots.js`).
+- **Open issues:** None.
 
 ### Step 5: Wire into Game (Effort: Medium) — TODO
 - **Goal:** Level 2 uses `SplitBriefTrial` instead of `AutoTrial`. Run fixed-seed tests, explain the baseline change, then save the new baseline (`npm run baseline`).

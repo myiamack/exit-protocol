@@ -2267,7 +2267,7 @@ class Game {
   /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }.
      clock: returns the time in ms. Times Attendance and the step timers. Tests pass a fake one.
      rng: the game's random numbers. Use Rng.seeded(seed) if the game will be saved (toJSON).
-     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName) }.
+     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName), onTick(game, now) }.
        The prototype passes Bots.hooks so bots act at the same moments as before. Base44 passes none. */
   constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now(), hooks = {} }) {
     this.teams = teams;
@@ -2351,6 +2351,7 @@ class Game {
     this._checkTwist(now);
     const closed = this._timer.tick(now);
     this._checkTwist(now);
+    if (this.hooks.onTick) this.hooks.onTick(this, now);
     return closed;
   }
   closeTimer(now) { return this._timer.close(now); }
@@ -2873,6 +2874,39 @@ const Bots = (() => {
 
 const KEYS = () => Player.KEYS;
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
+const SPLIT_CARD_WINDOW_MS = 30000;
+const SPLIT_TWIST_WINDOW_MS = 10000;
+
+/* Deterministic 32-bit FNV-1a + Murmur3 mix for bot note timing (no Math.random, no Rng draws). */
+function hashInt(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+function splitDealSignature(game, trial) {
+  return game.teams
+    .map(t => t.members.map(m => m.id + ":" + trial.cardsFor(m).map(c => c.id).join(",")).join(";"))
+    .join("|");
+}
+
+function splitTrialStart(game, trial) {
+  if (game.timer && game.timer.name === "splitBrief") {
+    return game.timer.deadline - Trial.SplitBriefTrial.TRIAL_SECONDS * 1000;
+  }
+  if (trial.twistDeadline != null) {
+    return trial.twistDeadline - Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+  }
+  return null;
+}
 
 const Bots = {
   SETTINGS: { sabotageRate: 0.5, victimAccuses: 0.9, otherAccuses: 0.25, idleAccuses: 0.05,
@@ -3015,19 +3049,77 @@ const Bots = {
   /* Typical placement: every other point to the lowest bonus attribute, else the lowest open one. */
   allocate(p, n, final) { return Economy.allocate(p, n, final); },
 
+  /* Level 2 (Split Brief): bots post accurate card notes in 0-30s and twist note within 10s of twist,
+     keeping 1 note in reserve until the twist fires. Bots never edit the board or lock in. */
+  splitBrief(game, now = game.now()) {
+    if (game.step !== "trial" || game.didRun("runTrial")) return;
+    const trial = game.round && game.round.trial;
+    if (!(trial instanceof Trial.SplitBriefTrial) || !trial.dealt || trial.ranking) return;
+    const startAt = splitTrialStart(game, trial);
+    if (startAt == null) return;
+    const sig = splitDealSignature(game, trial);
+    const twistAt = trial.twistDeadline != null ? trial.twistDeadline : startAt + Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+
+    for (const team of game.teams) {
+      const posted = new Set(trial.notesFor(team).map(n => n.posterId + "\n" + n.text));
+      for (const p of team.members) {
+        if (!p.isBot || !p.isActive()) continue;
+        const twist = trial.twistFor(p);
+        const cap = trial.twistFired ? Trial.SplitBriefTrial.MAX_NOTES : Trial.SplitBriefTrial.MAX_NOTES - 1;
+        let used = Trial.SplitBriefTrial.MAX_NOTES - trial.notesLeft(p);
+
+        // Post twist note if this bot holds the twist and its scheduled time has arrived.
+        if (trial.twistFired && twist && !posted.has(p.id + "\n" + twist.botNote)) {
+          const offset = hashInt(sig + "|" + game.level + "|" + p.id + "|twist") % (SPLIT_TWIST_WINDOW_MS + 1);
+          if (now >= twistAt + offset && used < Trial.SplitBriefTrial.MAX_NOTES) {
+            const res = trial.postNote(p, twist.botNote);
+            if (res.ok) {
+              posted.add(p.id + "\n" + twist.botNote);
+              used += 1;
+            }
+          }
+        }
+
+        // Before twist: keep 1 note in reserve. After twist: only bots without the twist may use the spare note.
+        const cardCap = trial.twistFired && twist ? Trial.SplitBriefTrial.MAX_NOTES - 1 : cap;
+        const cards = trial.cardsFor(p).map(c => ({
+          card: c,
+          at: startAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|" + c.id) % (SPLIT_CARD_WINDOW_MS + 1)),
+        })).sort((a, b) => a.at - b.at);
+
+        for (const item of cards) {
+          if (used >= cardCap) break;
+          if (now < item.at) continue;
+          if (posted.has(p.id + "\n" + item.card.botNote)) continue;
+          const res = trial.postNote(p, item.card.botNote);
+          if (res.ok) {
+            posted.add(p.id + "\n" + item.card.botNote);
+            used += 1;
+          }
+        }
+      }
+    }
+  },
+
   /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
-     beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends.
+     beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends;
+       Split Brief bots post any due notes before the trial closes.
      onStart: bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     onTick: Split Brief bots post scheduled card and twist notes as time advances.
      Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
   hooks: {
     beforeClose(game, name) {
       if (name === "openFloor") Bots.openFloor(game, game.rng);
       else if (name === "glitchReport") Bots.accusations(game, game.rng);
+      else if (name === "splitBrief") Bots.splitBrief(game, game.now());
     },
     onStart(game, name) {
       if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
+    },
+    onTick(game, now) {
+      Bots.splitBrief(game, now);
     },
   },
 

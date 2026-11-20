@@ -77,7 +77,7 @@ class Game {
   /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }.
      clock: returns the time in ms. Times Attendance and the step timers. Tests pass a fake one.
      rng: the game's random numbers. Use Rng.seeded(seed) if the game will be saved (toJSON).
-     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName) }.
+     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName), onTick(game, now) }.
        The prototype passes Bots.hooks so bots act at the same moments as before. Base44 passes none. */
   constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now(), hooks = {} }) {
     this.teams = teams;
@@ -161,6 +161,7 @@ class Game {
     this._checkTwist(now);
     const closed = this._timer.tick(now);
     this._checkTwist(now);
+    if (this.hooks.onTick) this.hooks.onTick(this, now);
     return closed;
   }
   closeTimer(now) { return this._timer.close(now); }
