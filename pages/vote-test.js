@@ -18,7 +18,7 @@
   /* Attendance check on the submission and Vote screens. Rules in rules/Attendance.js and rules/Game.js;
      the popup is shared screen code (attendance-view.js). Game pauses it in briefings and intermissions. */
   AttendanceView.mount({ game: () => G, me: () => ME, onChange: () => render() });
-  const S = { screen: "setup", name: "You", type: "coop", host: false, draft: "", msg: "", result: null };
+  const S = { screen: "setup", name: "You", type: "coop", host: false, draft: "", msg: "", picks: ["", "", ""] };
 
   /* ----- game setup: 16 players, 4 teams of 4 (8 Cooperative, 5 Independent, 3 Contrarian) ----- */
   function newGame() {
@@ -61,12 +61,12 @@
   function startJudgedLevel() {
     G.startNextRound(); G.advance();
     EP.Bots.openFloor(G, RNG); G.advance();
-    S.draft = ""; S.msg = ""; S.result = null;
+    S.draft = ""; S.msg = ""; S.picks = ["", "", ""];
     if (G.host) { S.screen = "prompt"; render(); }
     else { G.startWriting(); startWritingScreen(); }   // no host: the engine picks at random
   }
   function startWritingScreen() {
-    S.screen = "write";
+    S.screen = "trial";
     EP.Bots.submit(G);   // bots submit "Bot answer" right away
     render();
     if (G.round.trial.writing !== "open") { toVote(); return; }   // e.g. you are Stuck: everyone active already submitted
@@ -80,13 +80,7 @@
     }, 1000);
   }
   function stopTimer() { clearInterval(timer); timer = null; }
-  function toVote() { stopTimer(); G.startVote(); S.screen = "vote"; S.msg = ""; render(); }
-  function finishVote() {
-    EP.Bots.vote(G, G.round.trial.vote, RNG);
-    S.result = G.runTrial();
-    S.screen = "result";
-    render();
-  }
+  function toVote() { stopTimer(); if (!G.round.trial.vote && !G.didRun("runTrial")) G.startVote(); S.msg = ""; render(); }
 
   /* ----- screens ----- */
   const V = {};
@@ -110,45 +104,24 @@
       <div class="row"><button class="btn red" id="usePrompt">Use this prompt ▶</button></div>`;
   };
 
-  V.write = () => {
-    const jt = G.round.trial, mine = jt.submissions.get(ME), n = S.draft.trim().length, max = JT.MAX_CHARS;
-    const active = G.players.filter(p => !p.isStuck()), done = active.filter(p => jt.submissions.has(p)).length;
-    return `<div class="row" style="justify-content:space-between"><div><span class="chip r">The Trial · Level ${G.level} · ${esc(G.round.name)}</span><h2 style="margin-top:8px">Write your answer</h2></div>
-      <span class="tmr ${(G.secondsLeft() || 0) <= 10 ? "low" : ""}" id="tmr">${fmt(G.secondsLeft() || 0)}</span></div>
-      <div class="panel"><span class="label">Prompt${jt.prompt.custom ? " · custom" : ""}</span><p class="prompt">${esc(jt.prompt.text)}</p></div>
-      ${ME.isStuck() ? `<div class="panel"><p>You are Stuck. You watch this round.</p></div>` :
-        mine ? `<div class="panel"><span class="label">Submitted</span><p class="txt">${esc(mine)}</p><span class="hint">Waiting for the others. Writing closes early when every active player has submitted.</span></div>` :
-        `<div class="panel"><label class="label" for="draft">Your submission · signed with your name</label>
-          <textarea id="draft" maxlength="${max}" placeholder="Up to ${max} characters">${esc(S.draft)}</textarea>
-          <div class="row" style="justify-content:space-between"><span class="counter" id="cnt">${n} / ${max}</span><button class="btn green" id="submit" ${n ? "" : "disabled"}>Submit</button></div>
-          ${S.msg ? `<div class="err">${esc(S.msg)}</div>` : ""}</div>`}
-      <span class="hint">${done} of ${active.length} active players have submitted.</span>
-      <div class="row"><button class="btn soft sm" id="endNow">Test: end the timer now</button></div>`;
-  };
-
-  V.vote = () => {
-    const jt = G.round.trial, v = jt.vote, mine = myTeam();
-    const choices = v.choicesFor(ME), slots = v.slotsFor(ME), can = !ME.isStuck();
-    const subs = G.teams.flatMap(t => t.members.filter(p => jt.submissions.has(p)).map(p => ({ p, t })));
-    const opts = `<option value="">Choose</option>` + choices.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(G.teamOf(p).name)}</option>`).join("");
-    const ranks = ["1st (3 points)", "2nd (2 points)", "3rd (1 point)"].slice(0, slots);
-    return `<div><span class="chip r">The Vote · Level ${G.level} · ${esc(G.round.name)}</span><h2 style="margin-top:8px">Rank the top ${slots} from other teams</h2>
-      <p class="hint" style="margin-top:6px">Prompt: ${esc(jt.prompt.text)}</p></div>
-      <div class="subs">${subs.map(({ p, t }) => `<div class="sub ${t === mine ? "own" : ""}"><span class="label">${esc(p.name)} · ${esc(t.name)}${t === mine ? " · your team, cannot rank" : ""}</span><span class="txt">${esc(jt.submissions.get(p))}</span></div>`).join("")}</div>
-      ${G.players.some(p => !p.isStuck() && !jt.submissions.has(p)) ? `<span class="hint">Players with no submission are not listed. They cannot be ranked, but they still vote.</span>` : ""}
-      ${can ? `<div class="panel">${ranks.map((r, i) => `<div class="field"><label for="rk${i}">${r}</label><select id="rk${i}">${opts}</select></div>`).join("")}
-        ${S.msg ? `<div class="err">${esc(S.msg)}</div>` : ""}
-        <div class="row"><button class="btn red" id="cast">Cast vote ▶</button></div></div>` :
-        `<div class="panel"><p>You are Stuck and cannot vote.</p><div class="row"><button class="btn red" id="cast">Continue ▶</button></div></div>`}`;
-  };
-
-  V.result = () => {
-    const won = myTeam().won;
-    return `<div><span class="chip g">Vote result · Level ${G.level}</span><h2 style="margin-top:8px">${won ? "Your team won" : "Your team lost"}</h2></div>
-      <div class="panel"><table><tr><th>Place</th><th>Team</th><th>Vote points</th><th>Score</th><th>1st places</th><th></th></tr>
-      ${S.result.map(r => `<tr><td>${r.place}</td><td>${esc(r.team.name)}${r.team === myTeam() ? " (you)" : ""}</td><td>${r.total.toFixed(1)}</td><td>${r.score.toFixed(3)}</td><td>${r.firsts}</td><td>${r.won ? "Win" : ""}</td></tr>`).join("")}</table>
-      <span class="hint">Score = vote points / (active players x players who could rank them). Top half win, rounded up.</span></div>
-      <div class="row"><button class="btn red" id="next">${G.level === 5 ? "Finish Level 5 and start Level 6 ▶" : "Finish Level 6 ▶"}</button></div>`;
+  let trialView = null;
+  V.trial = () => {
+    trialView = JudgedView.screen({
+      game: G, me: ME, team: myTeam(), state: S,
+      subsLayout: "subs", showVotePoints: true, onRender: render,
+      header: phase => phase === "write"
+        ? `<div class="row" style="justify-content:space-between"><div><span class="chip r">The Trial · Level ${G.level} · ${esc(G.round.name)}</span><h2 style="margin-top:8px">Write your answer</h2></div><span class="tmr ${(G.secondsLeft() || 0) <= 10 ? "low" : ""}" id="tmr">${fmt(G.secondsLeft() || 0)}</span></div>`
+        : phase === "vote"
+          ? `<div><span class="chip r">The Vote · Level ${G.level} · ${esc(G.round.name)}</span><h2 style="margin-top:8px">Rank the top ${G.round.trial.vote.slotsFor(ME)} from other teams</h2></div>`
+          : `<div><span class="chip g">Vote result · Level ${G.level}</span><h2 style="margin-top:8px">${myTeam().won ? "Your team won" : "Your team lost"}</h2></div>`,
+      writeFooter: () => `<div class="row"><button class="btn soft sm" id="endNow">Test: end the timer now</button></div>`,
+      costHint: () => "Score = vote points / (active players x players who could rank them). Top half win, rounded up.",
+      resultFooter: () => `<div class="row"><button class="btn red" id="next">${G.level === 5 ? "Finish Level 5 and start Level 6 ▶" : "Finish Level 6 ▶"}</button></div>`,
+      onEndNow: () => { G.closeWriting(); toVote(); },
+      onVoteDone: () => { stopTimer(); EP.Bots.vote(G, G.round.trial.vote, RNG); G.runTrial(); },
+      onResultNext: () => { finishRoundWithBots(); if (G.level === 5) startJudgedLevel(); else { S.screen = "done"; render(); } },
+    });
+    return trialView.html;
   };
 
   V.done = () => `<div><span class="chip g">Done</span><h2 style="margin-top:8px">Levels 5 and 6 complete</h2></div>
@@ -158,6 +131,7 @@
   function render() {
     $("#where").textContent = G && G.round ? "Level " + G.level + " · " + G.round.name : "";
     $("#boardBtn").hidden = !G;
+    trialView = null;
     $("#stage").innerHTML = V[S.screen]();
     bind();
     BOARD.refresh();
@@ -181,40 +155,7 @@
         S.msg = ""; G.startWriting(); startWritingScreen();
       });
     }
-    if (S.screen === "write") {
-      const d = $("#draft");
-      if (d) d.addEventListener("input", () => {
-        S.draft = d.value;
-        const c = G.typeSubmission(ME, d.value);   // typing counts as activity (Attendance check)
-        $("#cnt").textContent = c.length + " / " + JT.MAX_CHARS;
-        $("#cnt").classList.toggle("over", c.tooLong);
-        $("#submit").disabled = !c.length || c.tooLong;
-      });
-      on("#submit", () => {
-        const r = G.submit(ME, S.draft);
-        if (!r.ok) { S.msg = r.reason; render(); return; }
-        S.msg = "";
-        if (r.closed) toVote(); else render();
-      });
-      on("#endNow", () => { G.closeWriting(); toVote(); });
-    }
-    if (S.screen === "vote") {
-      on("#cast", () => {
-        if (!ME.isStuck()) {
-          const v = G.round.trial.vote, ids = $$("[id^=rk]").map(s => s.value);
-          if (ids.some(x => !x)) { S.msg = "Choose a player for every place."; render(); return; }
-          const r = v.cast(ME, ids.map(id => G.players.find(p => String(p.id) === id)));
-          if (!r.ok) { S.msg = r.reason; render(); return; }
-        }
-        finishVote();
-      });
-    }
-    if (S.screen === "result") {
-      on("#next", () => {
-        finishRoundWithBots();
-        if (G.level === 5) startJudgedLevel(); else { S.screen = "done"; render(); }
-      });
-    }
+    if (S.screen === "trial" && trialView && trialView.bind) trialView.bind($("#stage"));
     if (S.screen === "done") on("#again", () => { G = null; ME = null; S.screen = "setup"; render(); });
   }
 

@@ -225,6 +225,37 @@ async function breakoutLabel() {
   check("USE no longer says Sabotage when every sabotage is blocked", $("#usebtn").textContent !== "Sabotage", $("#usebtn").textContent);
 }
 
+async function voteTestPage() {
+  const vtDom = new JSDOM(fs.readFileSync(path.join(repo, "pages", "vote-test.html"), "utf8"), {
+    url: "file:///" + repo.replace(/\\/g, "/") + "/pages/vote-test.html",
+    runScripts: "dangerously", resources: "usable", pretendToBeVisual: true, virtualConsole: vc,
+    beforeParse(win) {
+      win.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+      win.HTMLElement.prototype.scrollTo = () => {};
+    },
+  });
+  const vw = vtDom.window, vd = vw.document;
+  const v$ = s => vd.querySelector(s), v$$ = s => [...vd.querySelectorAll(s)];
+  await new Promise(r => vw.addEventListener("load", r));
+  await sleep(100);
+  check("vote-test.html loads setup screen", !!v$("#go"));
+  v$("#go").click(); await sleep(50);
+  if (v$("#subDraft")) {
+    v$("#subDraft").value = "Vote test submission.";
+    v$("#subDraft").dispatchEvent(new vw.Event("input", { bubbles: true }));
+    v$("#subBtn").click(); await sleep(50);
+  }
+  const picks = [];
+  for (const sel of v$$("[data-vpick]")) {
+    const opt = [...sel.options].find(o => o.value && !picks.includes(o.value));
+    if (opt) { sel.value = opt.value; picks.push(opt.value); sel.dispatchEvent(new vw.Event("change", { bubbles: true })); }
+  }
+  check("vote-test.html reaches voting screen", !!v$("#castVote"));
+  v$("#castVote").click(); await sleep(50);
+  check("vote-test.html shows vote results", !!v$("#next") && vd.querySelectorAll("table.levels tbody tr").length === 4);
+  vtDom.window.close();
+}
+
 w.addEventListener("load", async () => {
   try {
     await sleep(300);
@@ -249,6 +280,8 @@ w.addEventListener("load", async () => {
     await breakoutLabel();
     log("run 4: full 7-level game");
     await fullSevenLevelGame();
+    log("run 5: pages/vote-test.html");
+    await voteTestPage();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

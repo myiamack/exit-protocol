@@ -513,52 +513,13 @@ ${trialDone()?trialResultHTML(EP.Trial.MAX_BASE,rank,"AutoTrial placeholder: ran
   return {html,bind,waitHint:"Run the trial first"};
 }
 function trialJudgedScreen(){
-  const JT=EP.Trial.JudgedTrial,jt=G.round.trial;
-  if(jt.writing===null){G.startWriting();EP.Bots.submit(G)}
-  if(jt.writing==="closed"&&!jt.vote&&!trialDone())G.startVote();
-  const hdr=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>${sabotageAlertHTML()}`;
-  if(trialDone()){
-    const rank=jt.ranking||[];
-    const html=`${hdr}<div class="result"><b style="color:${MYTEAM.won?"var(--ok)":"var(--bad)"}">Team ${MYTEAM.won?"WIN":"LOSS"}.</b><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>1st places</th><th>Result</th></tr></thead><tbody>${rank.map(r=>`<tr><td class="n">${r.place}</td><td>${esc(r.team.name)}${r.team===MYTEAM?" (you)":""}</td><td class="n">${r.score.toFixed(3)}</td><td class="n">${r.firsts}</td><td>${r.won?"Win":"Loss"}</td></tr>`).join("")}</tbody></table><span class="hint">Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.</span></div>`;
-    return {html,bind:null,waitHint:"Cast your vote first"};
-  }
-  if(jt.writing==="open"){
-    const mine=jt.submissions.get(ME),n=S.trialUI.draft.trim().length,max=JT.MAX_CHARS;
-    const active=G.players.filter(p=>p.isActive()),done=active.filter(p=>jt.submissions.has(p)).length;
-    const html=`${hdr}<div class="panel"><span class="label">Prompt</span><p>${esc(jt.prompt.text)}</p></div>
-${mine?`<div class="panel"><span class="label">Submitted</span><p>${esc(mine)}</p><span class="hint">Waiting for the other players. Writing closes early when everyone active submits.</span></div>`
-:`<div class="panel"><label class="label" for="subDraft">Your answer (max ${max} characters)</label><textarea id="subDraft" maxlength="${max}" placeholder="Write your answer...">${esc(S.trialUI.draft)}</textarea><div class="row" style="justify-content:space-between"><span class="counter" id="subCnt">${n} / ${max}</span><button class="btn green" id="subBtn" ${n&&n<=max?"":"disabled"}>Submit answer</button></div>${S.trialUI.msg?`<div class="err">${esc(S.trialUI.msg)}</div>`:""}</div>`}
-<span class="hint">${done} of ${active.length} active players have submitted.</span>`;
-    const bind=()=>{
-      const d=$("#subDraft");
-      if(d)d.addEventListener("input",()=>{S.trialUI.draft=d.value;const c=G.typeSubmission(ME,d.value);const cnt=$("#subCnt");if(cnt){cnt.textContent=c.length+" / "+max;cnt.style.color=c.tooLong?"var(--bad)":""}const btn=$("#subBtn");if(btn)btn.disabled=!c.length||c.tooLong});
-      on("#subBtn",()=>{const r=G.submit(ME,S.trialUI.draft);if(!r.ok){S.trialUI.msg=r.reason;render();return}S.trialUI.msg="";if(r.closed&&!jt.vote)G.startVote();render()});
-    };
-    return {html,bind,waitHint:"Submit your answer first"};
-  }
-  const v=jt.vote,choices=v.choicesFor(ME),slots=v.slotsFor(ME),can=!ME.isStuck()&&slots>0;
-  const subs=G.teams.flatMap(t=>t.members.filter(p=>jt.submissions.has(p)).map(p=>({p,t})));
-  const opts=`<option value="">Choose...</option>`+choices.map(p=>`<option value="${p.id}">${esc(p.name)} · ${esc(G.teamOf(p).name)}</option>`).join("");
-  const labels=["1st (3 points)","2nd (2 points)","3rd (1 point)"].slice(0,slots);
-  const html=`${hdr}<div class="panel"><span class="label">Prompt</span><p>${esc(jt.prompt.text)}</p></div>
-<div class="cols">${subs.map(({p,t})=>`<div class="panel"><span class="label">${esc(p.name)} · ${esc(t.name)}${t===MYTEAM?" · your team":""}</span><p>${esc(jt.submissions.get(p))}</p></div>`).join("")}</div>
-${can?`<div class="panel"><span class="label">Rank the top ${slots} from other teams</span>${labels.map((lb,i)=>`<div class="field"><label for="vote${i}">${lb}</label><select id="vote${i}" data-vpick="${i}">${opts}</select></div>`).join("")}${S.trialUI.msg?`<div class="err">${esc(S.trialUI.msg)}</div>`:""}<div class="row"><button class="btn red" id="castVote">Cast vote ▶</button></div></div>`
-:`<div class="panel"><p>${ME.isStuck()?"You are Stuck and cannot vote.":"No eligible submissions from other teams to rank."}</p><div class="row"><button class="btn red" id="castVote">See vote result ▶</button></div></div>`}`;
-  const bind=()=>{
-    $$("[data-vpick]").forEach(sel=>{const idx=+sel.dataset.vpick;if(S.trialUI.picks[idx])sel.value=S.trialUI.picks[idx];sel.onchange=()=>{S.trialUI.picks[idx]=sel.value}});
-    on("#castVote",()=>{
-      if(can){
-        const ids=Array.from({length:slots},(_,i)=>($("#vote"+i)||{}).value||"");
-        S.trialUI.picks=ids;
-        if(ids.some(x=>!x)){S.trialUI.msg="Choose a player for every place.";render();return}
-        G.activity(ME);
-        const r=v.cast(ME,ids.map(id=>G.players.find(p=>String(p.id)===id)));
-        if(!r.ok){S.trialUI.msg=r.reason;render();return}
-      }
-      S.trialUI.msg="";EP.Bots.vote(G,v,G.rng);G.runTrial();render();
-    });
-  };
-  return {html,bind,waitHint:"Cast your vote first"};
+  const view=JudgedView.screen({
+    game:G,me:ME,team:MYTEAM,state:S.trialUI,
+    header:()=>`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>${sabotageAlertHTML()}`,
+    costHint:()=>`Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.`,
+    onRender:render,
+  });
+  return {html:view.html,bind:view.bind?()=>view.bind(document):null,waitHint:view.waitHint};
 }
 /* Trial screen lookup keyed by Round.trialKind.
    To add a new trial kind (such as a Level 3 mini-game): write one screen function that returns
