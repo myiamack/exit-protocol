@@ -1,7 +1,7 @@
 # Level 3 Build Plan (The Mirror: Presentation Day)
 
-Designer credit: Hannah Ziegler (`cdf3eff` on `backup/Level3`, reference only via `git show cdf3eff:<path>`, never merge, rebase, or cherry-pick).
-Branch: `level3` (made from `level2-split-brief`). Note: the 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3` later.
+Designer credit: Hannah Ziegler (`cdf3eff` on `backup/Level3`, reference only via `git show cdf3eff:<path>` or `git show hz-level3:<path>`, same commit as `cdf3eff`; never merge, rebase, or cherry-pick).
+Branch: `level3-mirror` (made from `level2-split-brief`). Note: the 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3-mirror` later.
 
 After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only for steps that touch screen code (`game.js`, `mirror-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`). Update this file at the end of every step.
 
@@ -9,11 +9,11 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 
 ### Step 0: Setup & Docs (Effort: Low) - DONE
 - **Goal:** Write the approved Level 3 rules and exact copy into `CLAUDE.md`, create this build plan, point `AGENTS.md` to Level 3 docs, commit with `docs/level3-report.md`, and push to `origin` and `backup`. No game code, rules code, tests, or baseline changes.
-- **Done when:** `npm test` passes against the existing baseline, `git status` is clean, the commit exists on `level3`, and both pushes succeed.
+- **Done when:** `npm test` passes against the existing baseline, `git status` is clean, the commit exists on `level3-mirror`, and both pushes succeed.
 - **Tests:** `npm test`
 - **Files changed:** `CLAUDE.md`, `docs/level3-progress.md`, `AGENTS.md`, `docs/level3-report.md`.
 - **Test results:** `npm test` passed 12/12 checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`) against the unchanged baseline.
-- **Open issues:** The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3` later.
+- **Open issues:** The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3-mirror` later.
 
 ### Step 1: Level 3 data module (Effort: Low) - DONE
 - **Goal:** Create `rules/mirrorData.js` (exported via `rules/index.js`) holding plain Level 3 constants and content: 4 cable ports (`HDMI`, `USB-C`, `AirLink`, `VGA`) with no hardcoded team names, 6 deck files, 3 Medline Q&A items, setup split tables for 1/2/3 setup slots, Hannah's timing/penalty/boost numbers, and flavor lines, plus `Tests/check_mirror_data.js` registered in `tools/baseline.js`.

@@ -18,7 +18,8 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 ## Where the code lives
 
 - Repo: `C:\Users\shcop\projects\exit-protocol`
-- Branch: **level3** for Level 3 work (branched from **level2-split-brief**, where the 9 open Level 2 QA bugs stay until carried over). Never merge to main. Never push to main.
+- Branch: **level3-mirror** for Level 3 work (branched from **level2-split-brief**, where the 9 open Level 2 QA bugs stay until carried over). Never merge to main. Never push to main.
+- Never create a branch whose name differs from an existing branch only by upper or lower case. Windows treats them as the same name.
 - Word documents stay off GitHub.
 - Class diagram: docs/class-diagram.md (Mermaid, drawn by GitHub). Update it whenever a class in rules/ changes, in the same commit, and update the commit it says it was made from.
 - Balance simulation already in the repo: `Tests\v2_balance\sim_v2.py` (Python). It is the reference for checking our rules code.
@@ -498,14 +499,14 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 
 ## Level 3 work rules (for every agent)
 
-- Level 3 is built one step at a time from `docs/level3-progress.md` on branch `level3` (made from `level2-split-brief`). Do one step per task, then stop.
+- Level 3 is built one step at a time from `docs/level3-progress.md` on branch `level3-mirror` (made from `level2-split-brief`). Do one step per task, then stop.
 - At the start of every task, read `CLAUDE.md`, `docs/level3-progress.md`, and `docs/level3-report.md`.
-- Hannah Ziegler is the Level 3 designer. Her first version of Level 3 lives in commit `cdf3eff` on `backup/Level3`. Her code is a reference only: read it with `git show cdf3eff:<path>`. Never merge, rebase, or cherry-pick it.
+- Hannah Ziegler is the Level 3 designer. Her first version of Level 3 lives in commit `cdf3eff` on `backup/Level3`. Her code is a reference only: read it with `git show cdf3eff:<path>` or `git show hz-level3:<path>` (same commit as `cdf3eff`). Never merge, rebase, or cherry-pick it.
 - CLAUDE.md is the source of truth for rules. If code and CLAUDE.md disagree, stop and report it. Do not guess.
 - After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only when the step touches screen code (`game.js`, `mirror-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`).
 - Never save a new baseline unless the step says so. Explain any baseline change before saving.
-- At the end of every step: update `docs/level3-progress.md` (mark the step done, list files changed, test results, any open issues), commit on `level3`, and push to `origin` and `backup`.
-- The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3` later.
+- At the end of every step: update `docs/level3-progress.md` (mark the step done, list files changed, test results, any open issues), commit on `level3-mirror`, and push to `origin` and `backup`.
+- The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3-mirror` later.
 - Do not edit `docs/design/Mock_Interview*` (partner's file).
 
 ## Level 3 trial: The Mirror: Presentation Day
