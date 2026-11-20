@@ -454,7 +454,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - Scoring, against the post-twist answer key: +2 per correct task picked, +1 if both tasks are correct and in the correct order. Max 5. An empty board scores 0.
 - A team with only bots gets a random base score from 0 to 5 (same idea as Level 1).
 - Ranking: score after influence, then earliest Lock In after the twist fired (teams that locked in before the twist, or never locked in, have no lock-in time for this step and rank below teams that have one), then random using `game.rng`. Top half win (`Trial.winners`).
-- Bots: post an accurate pre-written note for each card they hold at a random time in the first 30 seconds. A bot holding the twist posts it as a note within 10 seconds. Bots never edit the board or lock in. Bot notes count toward the 3-note cap.
+- Bots: post an accurate pre-written note for each card they hold at a random time in the first 30 seconds, but keep 1 note in reserve until the Ghosted Teammate twist fires, then post it. A bot holding the twist posts it as a note within 10 seconds. Bots never edit the board or lock in. Bot notes count toward the 3-note cap.
 
 ### Scenario: Medline Sprint 1 Demo
 - **Tasks:**
