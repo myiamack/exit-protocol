@@ -18,10 +18,17 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 ## Where the code lives
 
 - Repo: `C:\Users\shcop\projects\exit-protocol`
-- Branch: **ben-ooad**. Never merge to main. Never push to main.
+- Branch: **level2-split-brief**. Never merge to main. Never push to main.
 - Word documents stay off GitHub.
 - Class diagram: docs/class-diagram.md (Mermaid, drawn by GitHub). Update it whenever a class in rules/ changes, in the same commit, and update the commit it says it was made from.
 - Balance simulation already in the repo: `Tests\v2_balance\sim_v2.py` (Python). It is the reference for checking our rules code.
+
+## Terminal (Windows PowerShell 5.1)
+- This terminal is Windows PowerShell 5.1. It does not support && between commands.
+- Run commands one at a time. Example: run npm run build, then npm test, then npm run test:screens as three separate commands.
+- If you must chain, use: npm run build; if ($LASTEXITCODE -eq 0) { npm test }
+- rg (ripgrep) is not installed. Use Select-String for text searches.
+- git grep and findstr return exit code 1 when nothing matches. That means "not found," not an error.
 
 ## Already done (do not redo)
 
