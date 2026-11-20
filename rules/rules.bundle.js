@@ -1311,7 +1311,7 @@ const Trial = (() => {
    Winners = half the teams, rounded up: 4 teams -> 2, 5 teams -> 3, 7 teams -> 4.
    Subclasses only decide the order:
      SopTrial        Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
-     SplitBriefTrial Level 2     Split Brief score (0 to 5) + influence, ties by lock-in order then random
+     SplitBriefTrial Level 2     Split Brief score (0 to 5) + influence, ties by post-twist lock-in order then random
      AutoTrial       Levels 3-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
    Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
      JudgedTrial     Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
@@ -1519,6 +1519,7 @@ class SplitBriefTrial extends Trial {
   #boards = new Map();       // Team -> string[] task ids
   #lockOrder = new Map();    // Team -> number
   #lockCounter = 0;
+  #lockedAfterTwist = new Set(); // Teams that locked in after the twist fired
   #twistHolders = new Map(); // Team -> Player
   #twistFired = false;
   #twistDeadline = null;
@@ -1654,7 +1655,9 @@ class SplitBriefTrial extends Trial {
     if (why) return { ok: false, reason: why };
     this.#lockCounter += 1;
     this.#lockOrder.set(team, this.#lockCounter);
-    const out = { ok: true, lockOrder: this.#lockCounter, board: this.boardFor(team) };
+    const afterTwist = this.#twistFired;
+    if (afterTwist) this.#lockedAfterTwist.add(team);
+    const out = { ok: true, lockOrder: this.#lockCounter, afterTwist, board: this.boardFor(team) };
     if (this.allLocked() && this.onAllLocked) {
       this.onAllLocked();
       out.closed = true;
@@ -1664,6 +1667,7 @@ class SplitBriefTrial extends Trial {
 
   isLocked(team) { return this.#lockOrder.has(team); }
   lockOrderOf(team) { return this.#lockOrder.get(team) || null; }
+  postTwistLockOrderOf(team) { return this.#lockedAfterTwist.has(team) ? this.#lockOrder.get(team) : null; }
   allLocked(teams = this.#teams) { return teams.length > 0 && teams.every(t => this.#lockOrder.has(t)); }
 
   /* Picks one random active player per team (including locked teams). Fires once only. */
@@ -1707,18 +1711,23 @@ class SplitBriefTrial extends Trial {
     return correct * 2 + (exactOrder ? 1 : 0);
   }
 
-  /* Rank by score after influence, then earlier lock order (unlocked after locked), then random. */
+  /* Rank by score after influence, then earliest post-twist lock-in (pre-twist and unlocked teams
+     have none and rank below), then random. */
   rank(round, teams) {
     const ranked = this.rankWithInfluence(
       round,
       teams,
       t => this.#baseScore(t),
       [
-        e => (this.#lockOrder.has(e.team) ? 1 : 0),
-        e => (this.#lockOrder.has(e.team) ? -this.#lockOrder.get(e.team) : 0),
+        e => (this.postTwistLockOrderOf(e.team) !== null ? 1 : 0),
+        e => (this.postTwistLockOrderOf(e.team) !== null ? -this.postTwistLockOrderOf(e.team) : 0),
       ]
     );
-    return ranked.map(e => ({ ...e, lockOrder: this.#lockOrder.get(e.team) || null }));
+    return ranked.map(e => ({
+      ...e,
+      lockOrder: this.#lockOrder.get(e.team) || null,
+      postTwistLockOrder: this.postTwistLockOrderOf(e.team),
+    }));
   }
 
   toJSON() {
@@ -1733,6 +1742,7 @@ class SplitBriefTrial extends Trial {
       boards: [...this.#boards].map(([t, ids]) => [t.id, ids.slice()]),
       lockOrder: [...this.#lockOrder].map(([t, n]) => [t.id, n]),
       lockCounter: this.#lockCounter,
+      lockedAfterTwist: [...this.#lockedAfterTwist].map(t => t.id),
       twistHolders: [...this.#twistHolders].map(([t, p]) => [t.id, p.id]),
       twistFired: this.#twistFired,
       twistDeadline: this.#twistDeadline,
@@ -1750,6 +1760,7 @@ class SplitBriefTrial extends Trial {
     t.#boards = new Map((data.boards || []).map(([id, ids]) => [teamById.get(id), ids.slice()]));
     t.#lockOrder = new Map((data.lockOrder || []).map(([id, n]) => [teamById.get(id), n]));
     t.#lockCounter = data.lockCounter || 0;
+    t.#lockedAfterTwist = new Set((data.lockedAfterTwist || []).map(id => teamById.get(id)).filter(Boolean));
     t.#twistHolders = new Map((data.twistHolders || []).map(([tId, pId]) => [teamById.get(tId), byId.get(pId)]));
     t.#twistFired = !!data.twistFired;
     t.#twistDeadline = data.twistDeadline ?? null;

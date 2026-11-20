@@ -269,14 +269,15 @@ console.log("-- 6. Ranking, bot-only teams, influence, and lock-order tiebreak")
     tr.deal([highCollab, lowCollab]);
     tr.setBoard(highCollab.members[0], ["D", "B"]);
     tr.setBoard(lowCollab.members[0], ["D", "B"]);
-    // lowCollab locks earlier, but highCollab has higher score after influence
+    tr.fireTwist();
+    // lowCollab locks earlier post-twist, but highCollab has higher score after influence
     tr.lockIn(lowCollab.members[0]);
     tr.lockIn(highCollab.members[0]);
     const res = tr.run(round, [highCollab, lowCollab]);
     expect("Higher score after influence beats earlier lock-in", res[0].team === highCollab && res[0].score > res[1].score);
   }
 
-  // Equal score after influence -> earlier lock-order wins every time
+  // Equal score after influence -> earlier post-twist lock-order wins every time
   {
     let lockWinsAll = true;
     for (let s = 1; s <= 25; s++) {
@@ -287,15 +288,49 @@ console.log("-- 6. Ranking, bot-only teams, influence, and lock-order tiebreak")
       tr.deal([tA, tB]);
       tr.setBoard(tA.members[0], ["D", "B"]);
       tr.setBoard(tB.members[0], ["D", "B"]);
-      tr.lockIn(tB.members[0]);   // tB locks first (lockOrder 1)
-      tr.lockIn(tA.members[0]);   // tA locks second (lockOrder 2)
+      tr.fireTwist();
+      tr.lockIn(tB.members[0]);   // tB locks first post-twist (lockOrder 1)
+      tr.lockIn(tA.members[0]);   // tA locks second post-twist (lockOrder 2)
       const res = tr.run(round, [tA, tB]);
-      if (res[0].team !== tB || res[0].lockOrder !== 1 || !tB.won || tA.won) { lockWinsAll = false; break; }
+      if (
+        res[0].team !== tB || res[0].lockOrder !== 1 || res[0].postTwistLockOrder !== 1
+        || res[1].postTwistLockOrder !== 2 || !tB.won || tA.won
+      ) {
+        lockWinsAll = false;
+        break;
+      }
     }
-    expect("Tie after influence breaks to earliest lock-in across 25 seeds", lockWinsAll);
+    expect("Tie after influence breaks to earliest post-twist lock-in across 25 seeds", lockWinsAll);
   }
 
-  // Locked team beats unlocked team on a tie
+  // (a) Post-twist Lock In beats pre-twist Lock In on a tie
+  {
+    let postBeatsPre = true;
+    for (let s = 1; s <= 25; s++) {
+      const tPre = makeTeam(0, 4, { humans: 1, collab: 4 });
+      const tPost = makeTeam(1, 4, { humans: 1, collab: 4 });
+      const round = makeRound2();
+      const tr = new SplitBriefTrial(Rng.seeded(s + 300), Scenarios.MEDLINE_SPRINT_1);
+      tr.deal([tPre, tPost]);
+      tr.setBoard(tPre.members[0], ["D", "B"]);
+      tr.setBoard(tPost.members[0], ["D", "B"]);
+      tr.lockIn(tPre.members[0]);   // pre-twist (lockOrder 1, no post-twist lock-in)
+      tr.fireTwist();
+      tr.lockIn(tPost.members[0]);  // post-twist (lockOrder 2, postTwistLockOrder 2)
+      const res = tr.run(round, [tPre, tPost]);
+      if (
+        res[0].team !== tPost || res[0].postTwistLockOrder !== 2
+        || res[1].team !== tPre || res[1].postTwistLockOrder !== null
+        || !tPost.won || tPre.won
+      ) {
+        postBeatsPre = false;
+        break;
+      }
+    }
+    expect("Post-twist Lock In beats pre-twist Lock In on a tie across 25 seeds", postBeatsPre);
+  }
+
+  // (b) Post-twist Lock In beats no Lock In on a tie
   {
     let lockedBeatsUnlocked = true;
     for (let s = 1; s <= 25; s++) {
@@ -306,12 +341,46 @@ console.log("-- 6. Ranking, bot-only teams, influence, and lock-order tiebreak")
       tr.deal([tA, tB]);
       tr.setBoard(tA.members[0], ["B", "D"]);
       tr.setBoard(tB.members[0], ["B", "D"]);
+      tr.fireTwist();
       tr.lockIn(tB.members[0]);   // tA stays unlocked
       const res = tr.run(round, [tA, tB]);
-      if (res[0].team !== tB || res[0].lockOrder !== 1 || res[1].lockOrder !== null) { lockedBeatsUnlocked = false; break; }
+      if (
+        res[0].team !== tB || res[0].lockOrder !== 1 || res[0].postTwistLockOrder !== 1
+        || res[1].lockOrder !== null || res[1].postTwistLockOrder !== null
+        || !tB.won || tA.won
+      ) {
+        lockedBeatsUnlocked = false;
+        break;
+      }
     }
-    expect("Locked team ranks ahead of unlocked team on a tie", lockedBeatsUnlocked);
+    expect("Post-twist Lock In beats no Lock In on a tie across 25 seeds", lockedBeatsUnlocked);
   }
+
+  // (c) Two pre-twist Lock In teams go to random (both orders possible across seeds)
+  {
+    let noPostOrder = true;
+    const winners = new Set();
+    for (let s = 1; s <= 25; s++) {
+      const tA = makeTeam(0, 4, { humans: 1, collab: 4 });
+      const tB = makeTeam(1, 4, { humans: 1, collab: 4 });
+      const round = makeRound2();
+      const tr = new SplitBriefTrial(Rng.seeded(s + 400), Scenarios.MEDLINE_SPRINT_1);
+      tr.deal([tA, tB]);
+      tr.setBoard(tA.members[0], ["C", "D"]);
+      tr.setBoard(tB.members[0], ["C", "D"]);
+      tr.lockIn(tB.members[0]);   // tB locks first pre-twist
+      tr.lockIn(tA.members[0]);   // tA locks second pre-twist
+      tr.fireTwist();
+      const res = tr.run(round, [tA, tB]);
+      if (res[0].postTwistLockOrder !== null || res[1].postTwistLockOrder !== null) {
+        noPostOrder = false;
+        break;
+      }
+      winners.add(res[0].team.id);
+    }
+    expect("Tie between two pre-twist Lock In teams falls back to Rng", noPostOrder && winners.size === 2, [...winners].sort().join(","));
+  }
+
   // Unlocked vs unlocked tiebreak uses Rng (both orders possible across seeds)
   {
     const winners = new Set();
@@ -366,6 +435,7 @@ console.log("-- 7. Save and load (toJSON / fromJSON)");
   const sameMidState = JSON.stringify(trB.toJSON()) === savedText
     && trB.notesLeft(p0B) === 2
     && trB.isLocked(teamsB[0])
+    && trB.postTwistLockOrderOf(teamsB[0]) === null
     && !trB.isLocked(teamsB[1])
     && trB.twistFired === true
     && JSON.stringify(trB.boardFor(teamsB[0])) === '["D","B"]'
@@ -375,12 +445,17 @@ console.log("-- 7. Save and load (toJSON / fromJSON)");
   // Locking team 1 after load continues lockOrder at 2 on both
   const lockA = trA.lockIn(teamsA[1].members[0]);
   const lockB = trB.lockIn(p1B);
-  expect("Lock order counter continues accurately after load", lockA.lockOrder === 2 && lockB.lockOrder === 2);
+  expect(
+    "Lock order counter continues accurately after load",
+    lockA.lockOrder === 2 && lockB.lockOrder === 2
+      && lockA.afterTwist === true && lockB.afterTwist === true
+      && trA.postTwistLockOrderOf(teamsA[1]) === 2 && trB.postTwistLockOrderOf(teamsB[1]) === 2
+  );
 
   // Running rank() on both with identical remaining RNG produces identical ranking
   const roundB = makeRound2();
-  const rankA = trA.run(roundA, teamsA).map(r => ({ id: r.team.id, place: r.place, won: r.won, score: r.score, lockOrder: r.lockOrder }));
-  const rankB = trB.run(roundB, teamsB).map(r => ({ id: r.team.id, place: r.place, won: r.won, score: r.score, lockOrder: r.lockOrder }));
+  const rankA = trA.run(roundA, teamsA).map(r => ({ id: r.team.id, place: r.place, won: r.won, score: r.score, lockOrder: r.lockOrder, postTwistLockOrder: r.postTwistLockOrder }));
+  const rankB = trB.run(roundB, teamsB).map(r => ({ id: r.team.id, place: r.place, won: r.won, score: r.score, lockOrder: r.lockOrder, postTwistLockOrder: r.postTwistLockOrder }));
   expect("Loaded trial produces the exact same ranking as original", JSON.stringify(rankA) === JSON.stringify(rankB));
 
   // Save and load after run() preserves ranking and closed state

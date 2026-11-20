@@ -43,8 +43,10 @@ PASS  Score ["A","C"] === 0  -> 0
 -- 6. Ranking, bot-only teams, influence, and lock-order tiebreak
 PASS  Bot-only team base score is integer 0 to 5 across seeds  -> 0,1,2,3,4,5
 PASS  Higher score after influence beats earlier lock-in
-PASS  Tie after influence breaks to earliest lock-in across 25 seeds
-PASS  Locked team ranks ahead of unlocked team on a tie
+PASS  Tie after influence breaks to earliest post-twist lock-in across 25 seeds
+PASS  Post-twist Lock In beats pre-twist Lock In on a tie across 25 seeds
+PASS  Post-twist Lock In beats no Lock In on a tie across 25 seeds
+PASS  Tie between two pre-twist Lock In teams falls back to Rng  -> 0,1
 PASS  Tie between unlocked teams falls back to Rng  -> 0,1
 -- 7. Save and load (toJSON / fromJSON)
 PASS  toJSON returns plain JSON-safe data  -> plain
@@ -53,4 +55,4 @@ PASS  Lock order counter continues accurately after load
 PASS  Loaded trial produces the exact same ranking as original
 PASS  Post-run save/load preserves ranking and blocks further edits/notes
 
-47 passed, 0 failed.
+49 passed, 0 failed.
