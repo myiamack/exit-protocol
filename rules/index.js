@@ -16,6 +16,7 @@ export { Accusation } from "./Accusation.js";
 export { Gift } from "./Gift.js";
 export { Round } from "./Round.js";
 export { Vote } from "./Vote.js";
+export { Scenarios } from "./scenarios.js";
 export { Trial } from "./Trial.js";
 export { Attendance } from "./Attendance.js";
 export { Timer } from "./Timer.js";

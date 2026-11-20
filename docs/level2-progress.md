@@ -12,10 +12,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` and `npm test` (8/8 checks passed against existing baseline).
 - **Open issues:** `docs/design/Mock_Interview_Question_Bank.md` has pre-existing uncommitted partner edits in the working tree (untouched).
 
-### Step 1: Scenario data (Effort: Low) — TODO
+### Step 1: Scenario data (Effort: Low) — DONE
 - **Goal:** Create one data file in `rules/` with the 5 cards, 4 tasks, twist card, pre/post answer keys, and bot notes, plus a data-shape test. No behavior change.
 - **Done when:** Data file exports clean plain data and the data-shape test + baseline tests pass.
 - **Tests:** `npm run build`, `npm test`, and the new data-shape test.
+- **Files changed:** `rules/scenarios.js`, `rules/index.js`, `rules/rules.bundle.js`, `Tests/check_scenarios.js`, `Tests/baseline/check_scenarios.txt`, `tools/baseline.js`, `docs/level2-progress.md`.
+- **Test results:** `npm run build` (21 modules) and `npm test` (9/9 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`; 9/9 assertions in `check_scenarios.js`).
+- **Open issues:** None.
 
 ### Step 2: SplitBriefTrial class (Effort: High) — TODO
 - **Goal:** New `Trial` subclass with round-robin dealing, private cards, team notes (80 chars, 3 per player, named), 2-slot board, final Lock In, twist card, scoring (0-5), bot-only random 0-5, ranking ties (score -> earliest lock-in -> random), and `toJSON`/`fromJSON`. Not wired into `Game` yet.
