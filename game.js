@@ -211,7 +211,7 @@ const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
   room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
   of:{msg:""},mmHidden:false,prog:{level:0,done:0},/* badge: highest level reached, levels completed */
   sop:{pile:[],inTime:true},/* pile: display order only. The board itself is in Game (G.sopBoard). */
-  trialUI:{draft:"",msg:"",picks:["","",""]},
+  trialUI:{draft:"",msg:"",picks:["","",""],noteDraft:"",confirmLock:false,twistDismissed:false},
   pay:null,acc:{target:"",result:null},gw:{received:[],sent:[]},   /* countdowns: Game deadlines */
   });
 let S=fresh();
@@ -242,7 +242,7 @@ function saveName(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name
 function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
 function resetRoundUI(){
   S.panel=false;S.of={msg:""};S.sop={pile:[],inTime:true};
-  S.trialUI={draft:"",msg:"",picks:["","",""]};
+  S.trialUI={draft:"",msg:"",picks:["","",""],noteDraft:"",confirmLock:false,twistDismissed:false};
   S.pay=null;S.acc={target:"",result:null};S.gw={received:[],sent:[]};
 }
 function startLevel(){if(!G.round){if(G.timer)G.closeTimer();else G.startNextRound()}S.prog.level=Math.max(S.prog.level,G.level);go(5)}
@@ -275,8 +275,7 @@ const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3
 function drawTimer(){
   const s=G?G.secondsLeft():null,txt=fmt(s==null?0:s),low=s!=null&&s<=10;
   const e=$("#tmr");if(e){e.textContent=txt;e.classList.toggle("low",low)}
-  const st=$("#splitTmr");if(st){st.textContent=txt;st.classList.toggle("low",low)}
-  const sn=$("#splitNotesCount");if(sn&&G&&G.round&&G.round.trial instanceof EP.Trial.SplitBriefTrial)sn.textContent=String(G.round.trial.notesFor(MYTEAM).length);
+  if(currentTrialView&&currentTrialView.tick)currentTrialView.tick(txt,low);
 }
 function afterClose(closed){
   for(const n of closed){
@@ -494,14 +493,13 @@ ${trialDone()?trialResultHTML(EP.Trial.SopTrial.MAX_SCORE,rank,`${res.right} of 
   return {html,bind,waitHint:"Submit your SOP first"};
 }
 function trialSplitBriefScreen(){
-  const trial=G.round.trial,rank=trial.ranking||[],notesCount=trial.notesFor(MYTEAM).length;
-  const html=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">Split Brief</h2></div>
-${sabotageAlertHTML()}
-${trialDone()?trialResultHTML(EP.Trial.SplitBriefTrial.MAX_SCORE,rank,"Split Brief placeholder score (full UI comes in Step 6b).")
-:`<div class="panel"><span class="label">Level 2 Trial</span><h3>Split Brief screen comes in Step 6b</h3>
-<div class="row" style="justify-content:space-between"><span>Time remaining</span><span class="counter" id="splitTmr">${fmt(G.secondsLeft()||0)}</span></div>
-<p class="hint">The rules timer closes this trial automatically when time runs out. Bots still post notes in the background (<span id="splitNotesCount">${notesCount}</span> team note${notesCount===1?"":"s"} posted so far).</p></div>`}`;
-  return {html,bind:null,waitHint:"Wait for the Split Brief timer to finish"};
+  const view=SplitBriefView.screen({
+    game:G,me:ME,team:MYTEAM,state:S.trialUI,
+    header:()=>`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>${sabotageAlertHTML()}`,
+    costHint:()=>`Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.`,
+    onRender:render,
+  });
+  return {html:view.html,bind:view.bind?()=>view.bind(document):null,tick:view.tick||null,waitHint:view.waitHint};
 }
 function trialAutoScreen(){
   const rank=G.round.trial.ranking||[];

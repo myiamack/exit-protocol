@@ -146,16 +146,88 @@ async function fullSevenLevelGame() {
       for (let i = 0; i < 6; i++) { const c = $("[data-pile]"); if (c) { c.click(); await sleep(2); } }
       $("#check").click(); await sleep(30);
     } else if (kind === "splitBrief") {
-      const hasPlaceholder = $("#stage").textContent.includes("Split Brief screen comes in Step 6b") && !!$("#splitTmr");
-      check("Level 2 renders Split Brief placeholder with timer", hasPlaceholder);
-      const splitStats = w.eval(
-        '(() => { const startMs = G.timer.deadline - 180000; ' +
-        'G.tick(startMs + 25000); G.tick(startMs + 95000); ' +
-        'const closed = G.tick(G.timer.deadline); afterClose(closed); ' +
-        'return { twistFired: G.round.trial.twistFired, notes: G.round.trial.notesFor(MYTEAM).length, done: G.didRun("runTrial") }; })()'
+      const hasUI = !!$("#splitTmr") && !!$("#splitCards") && !!$("#splitNotesFeed") && !!$("#splitNoteIn") && !!$("#splitBoard") && !!$("#splitLockBtn");
+      check("Level 2 renders Split Brief UI with timer, cards, notes, board, and Lock In", hasUI);
+      check("Split Brief starts with notes left: 3/3", ($("#splitNotesLeft") || {}).textContent === "notes left: 3/3");
+
+      // Post a note and verify counter drops
+      $("#splitNoteIn").value = "Test note 1";
+      $("#splitNoteIn").dispatchEvent(new w.Event("input", { bubbles: true }));
+      $("#splitPostNote").click(); await sleep(10);
+      check(
+        "Split Brief post note updates feed and drops counter to 2/3",
+        ($("#splitNotesLeft") || {}).textContent === "notes left: 2/3" && ($("#splitNotesFeed") || {}).textContent.includes("Test note 1"),
+        ($("#splitNotesLeft") || {}).textContent
       );
+
+      // Board add / up / down / remove
+      $('[data-sb-add="C"]').click(); await sleep(5);
+      $('[data-sb-add="D"]').click(); await sleep(5);
+      check("Split Brief board Add places C then D", w.eval('JSON.stringify(G.round.trial.boardFor(MYTEAM))') === '["C","D"]');
+      $('[data-sb-up="1"]').click(); await sleep(5);
+      check("Split Brief board Up moves D to slot 1", w.eval('JSON.stringify(G.round.trial.boardFor(MYTEAM))') === '["D","C"]');
+      $('[data-sb-down="0"]').click(); await sleep(5);
+      check("Split Brief board Down moves D back to slot 2", w.eval('JSON.stringify(G.round.trial.boardFor(MYTEAM))') === '["C","D"]');
+      $('[data-sb-rem="0"]').click(); await sleep(5);
+      check("Split Brief board Remove leaves D", w.eval('JSON.stringify(G.round.trial.boardFor(MYTEAM))') === '["D"]');
+      $('[data-sb-add="B"]').click(); await sleep(5);
+      check("Split Brief board Add sets D then B", w.eval('JSON.stringify(G.round.trial.boardFor(MYTEAM))') === '["D","B"]');
+
+      // Pre-twist Lock In shows warning and cancel keeps board unlocked
+      $("#splitLockBtn").click(); await sleep(10);
+      check(
+        "Pre-twist Lock In shows warning confirmation",
+        !!$("#splitLockConfirm") && $("#splitLockConfirm").textContent.includes("We locked our plan in early")
+      );
+      $("#splitLockNo").click(); await sleep(10);
+      check("Cancel pre-twist Lock In keeps board unlocked", !$("#splitLockConfirm") && !w.eval('G.round.trial.isLocked(MYTEAM)'));
+
+      // Advance past 25s (bot notes) and 90s (twist)
+      const twistInfo = w.eval(
+        '(() => { const startMs = G.timer.deadline - 180000; ' +
+        'G.tick(startMs + 25000); G.tick(startMs + 95000); drawTimer(); ' +
+        'const ghost = MYTEAM.members.find(p => G.round.trial.twistFor(p)); ' +
+        'const nonGhost = MYTEAM.members.find(p => !G.round.trial.twistFor(p)); ' +
+        'const gv = ghost ? SplitBriefView.screen({ game: G, me: ghost, team: MYTEAM, state: { noteDraft: "", msg: "", confirmLock: false, twistDismissed: false }, onRender: () => {} }) : null; ' +
+        'const ngv = nonGhost ? SplitBriefView.screen({ game: G, me: nonGhost, team: MYTEAM, state: { noteDraft: "", msg: "", confirmLock: false, twistDismissed: false }, onRender: () => {} }) : null; ' +
+        'return { fired: G.round.trial.twistFired, notes: G.round.trial.notesFor(MYTEAM).length, ' +
+        'ghostPopup: !!(gv && gv.html.includes("splitTwistOv") && gv.html.includes("Breaking news. Only you got this.")), ' +
+        'nonGhostQuiet: !!(ngv && !ngv.html.includes("splitTwistOv") && !ngv.html.includes("Breaking news")) }; })()'
+      );
+      await sleep(10);
+      check("Twist fires at 90s: ghosted player sees popup, teammates do not", twistInfo.fired && twistInfo.ghostPopup && twistInfo.nonGhostQuiet, "notes=" + twistInfo.notes);
+
+      // Reload mid-trial restores cards, notes, board, and twist state from save
+      const restored = w.eval(
+        '(() => { const saved = G.toJSON(); ' +
+        'G = EP.Game.fromJSON(saved, { hooks: EP.Bots.hooks }); ' +
+        'ME = G.players.find(p => p.id === ME.id); MYTEAM = G.teamOf(ME); ' +
+        'resetRoundUI(); render(); ' +
+        'return { cards: G.round.trial.cardsFor(ME).length, board: JSON.stringify(G.round.trial.boardFor(MYTEAM)), ' +
+        'notes: G.round.trial.notesFor(MYTEAM).length, twist: G.round.trial.twistFired }; })()'
+      );
+      await sleep(10);
+      check(
+        "Reload mid-trial restores cards, notes, board, and twist state",
+        restored.cards > 0 && restored.board === '["D","B"]' && restored.notes === twistInfo.notes && restored.twist &&
+          ($("#splitNotesLeft") || {}).textContent === "notes left: 2/3" &&
+          ($("#splitNotesFeed") || {}).textContent.includes("Test note 1") &&
+          ($("#splitBoard") || {}).textContent.includes("Build the dashboard")
+      );
+
+      // Post-twist Lock In freezes the board
+      if ($("#splitTwistOk")) { $("#splitTwistOk").click(); await sleep(5); }
+      $("#splitLockBtn").click(); await sleep(10);
+      const allBoardBtnsDisabled = $$("[data-sb-add], [data-sb-up], [data-sb-down], [data-sb-rem]").every(b => b.disabled);
+      check(
+        "Lock In freezes the board for the whole team",
+        w.eval('G.round.trial.isLocked(MYTEAM)') && !!$("#splitLockedMsg") && allBoardBtnsDisabled
+      );
+
+      // Close trial by timer and verify score/rank
+      const doneState = w.eval('(() => { const closed = G.tick(G.timer.deadline); afterClose(closed); return { done: G.didRun("runTrial"), hasTable: !!document.querySelector("table.levels") }; })()');
       await sleep(20);
-      check("Level 2 Split Brief bots post notes, twist fires, and timer closes trial", splitStats.done && splitStats.twistFired && splitStats.notes > 0, "notes=" + splitStats.notes);
+      check("Split Brief closes on timer and shows team score and rank", doneState.done && doneState.hasTable && !$("#navNext").disabled);
     } else if (kind === "auto") {
       check("Level " + lv + " renders AutoTrial placeholder", !!$("#runAuto"));
       $("#runAuto").click(); await sleep(20);
