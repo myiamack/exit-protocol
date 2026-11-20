@@ -121,6 +121,10 @@ async function fullSevenLevelGame() {
       level1HintsOk = w.eval('ghostHint("ATTEMPT_01") === LEVEL_HINTS[1].ghosts["ATTEMPT_01"] && teaHint() === LEVEL_HINTS[1].tea');
       check("Level 1 keeps original ghost and tea hints", level1HintsOk);
     } else if (lv === 2) {
+      check(
+        "Level 2 briefing shows exact header and title",
+        stageText.includes("System Briefing · Level 2") && stageText.includes("Sprint 1: Back-Plan the Demo")
+      );
       level2HintsOk = w.eval(
         'ghostHint("ATTEMPT_01") === "We locked our plan in early. Then the client changed everything." && ' +
         'ghostHint("NULL") === "Not every note is true. Check who wrote it." && ' +
@@ -159,15 +163,26 @@ async function fullSevenLevelGame() {
       check("Level 2 renders Split Brief UI with timer, cards, notes, board, and Lock In", hasUI);
       check("Split Brief starts with notes left: 3/3", ($("#splitNotesLeft") || {}).textContent === "notes left: 3/3");
 
-      // Post a note and verify counter drops
-      $("#splitNoteIn").value = "Test note 1";
-      $("#splitNoteIn").dispatchEvent(new w.Event("input", { bubbles: true }));
+      // Post 3 notes, verify counter 3 -> 2 -> 1 -> 0, poster name, Post button disabled & outside scrolling feed
+      check("Post button sits outside scrolling notes feed", !$("#splitNotesFeed").contains($("#splitPostNote")));
+      const expectedCounters = ["notes left: 2/3", "notes left: 1/3", "notes left: 0/3"];
+      let notesCapOk = true;
+      for (let ni = 0; ni < 3; ni++) {
+        $("#splitNoteIn").value = "Test note " + (ni + 1);
+        $("#splitNoteIn").dispatchEvent(new w.Event("input", { bubbles: true }));
+        $("#splitPostNote").click(); await sleep(10);
+        if (($("#splitNotesLeft") || {}).textContent !== expectedCounters[ni]) notesCapOk = false;
+      }
+      const feedText = ($("#splitNotesFeed") || {}).textContent || "";
+      const myName = w.eval("ME.name");
+      const hasAllNotesAndNames = [1, 2, 3].every(i => feedText.includes("Test note " + i)) && feedText.includes(myName + ":");
+      check("Split Brief notes counter goes 3, 2, 1, 0 and shows poster name", notesCapOk && hasAllNotesAndNames, ($("#splitNotesLeft") || {}).textContent);
+      const countBefore4th = w.eval("G.round.trial.notesFor(MYTEAM).length");
       $("#splitPostNote").click(); await sleep(10);
-      check(
-        "Split Brief post note updates feed and drops counter to 2/3",
-        ($("#splitNotesLeft") || {}).textContent === "notes left: 2/3" && ($("#splitNotesFeed") || {}).textContent.includes("Test note 1"),
-        ($("#splitNotesLeft") || {}).textContent
-      );
+      const fourthBlocked = $("#splitPostNote").disabled && $("#splitNoteIn").disabled &&
+        w.eval("G.round.trial.notesFor(MYTEAM).length") === countBefore4th &&
+        !w.eval('G.round.trial.postNote(ME, "Note 4").ok');
+      check("After 3 notes, Post button is disabled and 4th note is not added", fourthBlocked);
 
       // Board add / up / down / remove
       $('[data-sb-add="C"]').click(); await sleep(5);
@@ -196,41 +211,58 @@ async function fullSevenLevelGame() {
         '(() => { const startMs = G.timer.deadline - 180000; ' +
         'G.tick(startMs + 25000); G.tick(startMs + 95000); drawTimer(); ' +
         'const ghost = MYTEAM.members.find(p => G.round.trial.twistFor(p)); ' +
-        'const nonGhost = MYTEAM.members.find(p => !G.round.trial.twistFor(p)); ' +
-        'const gv = ghost ? SplitBriefView.screen({ game: G, me: ghost, team: MYTEAM, state: { noteDraft: "", msg: "", confirmLock: false, twistDismissed: false }, onRender: () => {} }) : null; ' +
-        'const ngv = nonGhost ? SplitBriefView.screen({ game: G, me: nonGhost, team: MYTEAM, state: { noteDraft: "", msg: "", confirmLock: false, twistDismissed: false }, onRender: () => {} }) : null; ' +
+        'const nonGhosts = MYTEAM.members.filter(p => p !== ghost); ' +
+        'const ghostState = { noteDraft: "", msg: "", confirmLock: false, twistDismissed: false }; ' +
+        'const gv = ghost ? SplitBriefView.screen({ game: G, me: ghost, team: MYTEAM, state: ghostState, onRender: () => {} }) : null; ' +
+        'const ngvs = nonGhosts.map(p => SplitBriefView.screen({ game: G, me: p, team: MYTEAM, state: { noteDraft: "", msg: "", confirmLock: false, twistDismissed: false }, onRender: () => {} })); ' +
+        'const refire1 = G.round.trial.fireTwist(); ' +
+        'G.tick(startMs + 115000); drawTimer(); ' +
+        'const ghostAfterTick = MYTEAM.members.find(p => G.round.trial.twistFor(p)); ' +
         'return { fired: G.round.trial.twistFired, notes: G.round.trial.notesFor(MYTEAM).length, ' +
+        'ghostId: ghost ? ghost.id : null, sameGhostAfterTick: ghostAfterTick === ghost, refire1, ' +
         'ghostPopup: !!(gv && gv.html.includes("splitTwistOv") && gv.html.includes("Breaking news. Only you got this.")), ' +
-        'nonGhostQuiet: !!(ngv && !ngv.html.includes("splitTwistOv") && !ngv.html.includes("Breaking news")) }; })()'
+        'allNonGhostsQuiet: ngvs.length > 0 && ngvs.every(v => !v.html.includes("splitTwistOv") && !v.html.includes("Breaking news")) }; })()'
       );
       await sleep(10);
-      check("Twist fires at 90s: ghosted player sees popup, teammates do not", twistInfo.fired && twistInfo.ghostPopup && twistInfo.nonGhostQuiet, "notes=" + twistInfo.notes);
+      check("Twist fires once at 90s: ghosted player only, not on later ticks", twistInfo.fired && twistInfo.ghostPopup && twistInfo.allNonGhostsQuiet && !twistInfo.refire1 && twistInfo.sameGhostAfterTick, "notes=" + twistInfo.notes);
 
-      // Reload mid-trial restores cards, notes, board, and twist state from save
+      // Reload mid-trial restores cards, notes, board, and twist state from save; twist does not re-fire
       const restored = w.eval(
         '(() => { const saved = G.toJSON(); ' +
         'G = EP.Game.fromJSON(saved, { hooks: EP.Bots.hooks }); ' +
         'ME = G.players.find(p => p.id === ME.id); MYTEAM = G.teamOf(ME); ' +
+        'const refireAfterLoad = G.round.trial.fireTwist(); ' +
+        'G.tick(G.timer.deadline - 50000); ' +
+        'const ghostAfterLoad = MYTEAM.members.find(p => G.round.trial.twistFor(p)); ' +
         'resetRoundUI(); render(); ' +
         'return { cards: G.round.trial.cardsFor(ME).length, board: JSON.stringify(G.round.trial.boardFor(MYTEAM)), ' +
-        'notes: G.round.trial.notesFor(MYTEAM).length, twist: G.round.trial.twistFired }; })()'
+        'notes: G.round.trial.notesFor(MYTEAM).length, twist: G.round.trial.twistFired, ' +
+        'refireAfterLoad, sameGhostAfterLoad: !!(ghostAfterLoad && ghostAfterLoad.id === ' + JSON.stringify(twistInfo.ghostId) + ') }; })()'
       );
       await sleep(10);
       check(
-        "Reload mid-trial restores cards, notes, board, and twist state",
+        "Reload mid-trial restores cards, notes, board, and twist does not re-fire",
         restored.cards > 0 && restored.board === '["D","B"]' && restored.notes === twistInfo.notes && restored.twist &&
-          ($("#splitNotesLeft") || {}).textContent === "notes left: 2/3" &&
+          !restored.refireAfterLoad && restored.sameGhostAfterLoad &&
+          ($("#splitNotesLeft") || {}).textContent === "notes left: 0/3" &&
           ($("#splitNotesFeed") || {}).textContent.includes("Test note 1") &&
           ($("#splitBoard") || {}).textContent.includes("Build the dashboard")
       );
 
-      // Post-twist Lock In freezes the board
+      // Post-twist Lock In freezes the board for the whole team
       if ($("#splitTwistOk")) { $("#splitTwistOk").click(); await sleep(5); }
       $("#splitLockBtn").click(); await sleep(10);
       const allBoardBtnsDisabled = $$("[data-sb-add], [data-sb-up], [data-sb-down], [data-sb-rem]").every(b => b.disabled);
+      const mateBlocked = w.eval(
+        '(() => { const mate = MYTEAM.members.find(p => p !== ME && p.isActive()); ' +
+        'if (!mate) return false; ' +
+        'const mv = SplitBriefView.screen({ game: G, me: mate, team: MYTEAM, state: { noteDraft: "", msg: "", confirmLock: false, twistDismissed: false }, onRender: () => {} }); ' +
+        'const setRes = G.round.trial.setBoard(mate, ["A"]); ' +
+        'return !setRes.ok && mv.html.includes("splitLockedMsg") && mv.html.includes("disabled"); })()'
+      );
       check(
         "Lock In freezes the board for the whole team",
-        w.eval('G.round.trial.isLocked(MYTEAM)') && !!$("#splitLockedMsg") && allBoardBtnsDisabled
+        w.eval('G.round.trial.isLocked(MYTEAM)') && !!$("#splitLockedMsg") && allBoardBtnsDisabled && mateBlocked
       );
 
       // Close trial by timer and verify score/rank
@@ -267,22 +299,30 @@ async function fullSevenLevelGame() {
     for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
     next(); await sleep(30); // Lock in points -> roundDone
     if (lv === 2) {
-      const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, hearts: ME.hearts.count, glitches: ME.glitches, status: ME.boardStatus() })');
+      const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, lv2Win: !!MYTEAM.won, lv1Win: (MYTEAM.trialWins - (MYTEAM.won ? 1 : 0)) > 0, hearts: ME.hearts.count, glitches: ME.glitches, status: ME.boardStatus(), sortedWins: [...G.teams].sort((a, b) => b.trialWins - a.trialWins).map(t => t.trialWins) })');
       const s1Text = $("#stage").textContent;
-      const statusOk = s1Text.includes(s1.status) && !/\bOK\b/.test(s1Text);
+      const statusOk = s1.status !== "OK" && s1Text.includes(s1.status) && !/\bOK\b/.test(s1Text);
       const attrPanel = $$("#stage .panel").find(p => p.textContent.includes("Your 5 attributes"));
       const attrText = attrPanel ? attrPanel.textContent : "";
       const attrIdx = ATTR_ORDER.map(n => attrText.indexOf(n));
       const attrOrderOk = attrIdx.every((p, i) => p >= 0 && (i === 0 || p > attrIdx[i - 1]));
+      const resultsPanel = $$("#stage .panel").find(p => p.textContent.includes("Your trial results"));
+      const resultsText = resultsPanel ? resultsPanel.textContent : "";
+      const resultsOk = resultsText.includes(s1.lv1Win ? "WIN" : "LOSS") && resultsText.includes(s1.lv2Win ? "WIN" : "LOSS");
+      const standingsWins = $$("#stage table.levels tbody tr").map(tr => parseInt(tr.children[2].textContent, 10));
+      const rankedOk = standingsWins.length === s1.teams.length &&
+        standingsWins.every((v, i) => i === 0 || v <= standingsWins[i - 1]) &&
+        JSON.stringify(standingsWins) === JSON.stringify(s1.sortedWins);
       const hasSprint1 = s1Text.includes("Sprint 1 Complete") &&
-        s1Text.includes("Level 1") && s1Text.includes("Level 2") &&
+        s1Text.includes("Level 1") && s1Text.includes("Level 2") && resultsOk &&
         s1Text.includes("Hearts: " + s1.hearts + "/3") &&
         s1Text.includes("Glitches: " + s1.glitches + "/2") &&
         statusOk && attrOrderOk &&
-        s1Text.includes(s1.myTeam) &&
-        s1.teams.every(name => s1Text.includes(name)) &&
+        s1Text.includes(s1.myTeam) && s1Text.includes(s1.wins + " / 2 trial wins") &&
+        s1.teams.every(name => s1Text.includes(name)) && rankedOk &&
         s1Text.includes("Level 3 locked") &&
-        !!$("#replay") && !!$("#restart") &&
+        !!$("#replay") && $("#replay").textContent.includes("Replay") &&
+        !!$("#restart") && $("#restart").textContent.includes("Back to sign-in") &&
         $("#navNext").disabled && /Level 3 locked/.test($("#navNext").textContent);
       check("Sprint 1 Complete screen appears after Level 2 Stats Update", hasSprint1);
       const leaksTypeOrPath = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i.test(s1Text);
@@ -375,6 +415,7 @@ async function voteTestPage() {
 
 w.addEventListener("load", async () => {
   try {
+    w.EP.Rng.randomSeed = () => 2026;
     await sleep(300);
     $("#em").value = "tester@icstars.org"; $("#jc").value = "CYCLE60"; next(); await sleep(50);
     next(); await sleep(50);

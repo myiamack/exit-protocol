@@ -274,7 +274,7 @@ Do these in order. Finish and test each before starting the next.
 5. **Add the vote screen** for levels 5 and 6.
 6. **Playtest checklist:** a short list of what I should watch for when I play.
 
-After each step: tell me what changed, then give me the exact git commands to commit it to the ben-ooad branch.
+After each step: tell me what changed, then give me the exact git commands to commit it to the level2-split-brief branch.
 
 ## Refactor queue (Parts 1 to 13, decided)
 

@@ -90,10 +90,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **6c-fix (status & attribute order) — DONE:** Updated `sprint1CompleteScreen()` in `game.js` to show `"Active"` instead of `"OK"` and list attributes in `Focus, Collaboration, Initiative, Grit, Composure` order, and updated `Tests/check_screens.js` to verify both; `npm run build`, `npm test` (12/12), and `npm run test:screens` (60/60, 0 console errors) all pass.
 - **6c-fix2 (boardStatus everywhere & one attribute order) — DONE:** Switched all screens, HUD, and map rosters (`game.js`, `world-map.js`) to `boardStatus()` and `"Active"`, unified `A`, `V[2]` overview, `sprint1CompleteScreen()`, and `CLAUDE.md` to `Focus, Collaboration, Initiative, Grit, Composure`, and updated `Tests/check_screens.js`; `npm run build` (21 modules), `npm test` (12/12), and `npm run test:screens` (66/66, 0 console errors) all pass.
 
-### Step 7: Screen tests (Effort: Low) — TODO
+### Step 7: Screen tests (Effort: Low) — DONE
 - **Goal:** Extend `Tests/check_screens.js` to cover Level 1 to Level 2 flow, twist popup, notes cap, and Sprint 1 Complete screen.
 - **Done when:** `npm run test:screens` passes all assertions with zero console errors.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`.
+- **New screen tests (`Tests/check_screens.js`):** Fixed seed via `EP.Rng`, Level 1 → Level 2 briefing ("System Briefing · Level 2" / "Sprint 1: Back-Plan the Demo") & Split Brief flow, Ghosted Teammate twist popup once per game (ghosted player only, not on later ticks or after save/load), 3-note cap (`3/3` → `0/3`, disabled Post button, 4th note blocked, poster name, Post button outside scrolling `#splitNotesFeed`), team-wide Lock In freeze, and Sprint 1 Complete screen (Level 1/2 win/loss, hearts, `x/2` glitches, `boardStatus()`, 5 attributes in order, team name & `x / 2` wins, ranked teams, Level 3 locked + Replay/Back to sign-in, no work style or secret path).
+- **Files changed:** `CLAUDE.md`, `Tests/check_screens.js`, `docs/level2-progress.md`.
+- **Test results:** `npm run build` (21 modules, `rules/rules.bundle.js` unchanged), `npm test` (12/12 checks passed against baseline), `npm run test:screens` (69 passed, 0 failed, 0 console errors).
+- **Open issues:** None.
 
 ### Step 8: Docs (Effort: Low) — TODO
 - **Goal:** Update `CLAUDE.md`, `docs/class-diagram.md`, `README.md`, and `docs/Game_Index.md` to match the final Level 2 code.
