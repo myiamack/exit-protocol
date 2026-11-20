@@ -70,7 +70,7 @@
 
     const tasksHTML = tasks.map(t => {
       const dis = locked || !canAct || board.includes(t.id) || board.length >= SBT.MAX_BOARD_TASKS;
-      return `<div class="sb-task"><span><b>${esc(t.id)}.</b> ${esc(t.name)} <span class="hint">(${t.days}d)</span></span><button type="button" class="btn blue sm" data-sb-add="${esc(t.id)}" ${dis ? "disabled" : ""}>Add</button></div>`;
+      return `<div class="sb-task"><span><b>${esc(t.id)}.</b> ${esc(t.name)} <span class="hint">(${t.days}d)</span></span><button type="button" class="btn blue sm" data-sb-add="${esc(t.id)}" aria-label="Add ${esc(t.id)}" ${dis ? "disabled" : ""}>Add</button></div>`;
     }).join("");
 
     const slotsHTML = board.length
@@ -115,6 +115,41 @@
       };
     };
 
+    const restoreFocus = (rootEl, f) => {
+      if (!f) return;
+      const pick = sels => {
+        for (const s of sels) {
+          const el = rootEl.querySelector(s);
+          if (el && !el.disabled) { el.focus(); return true; }
+        }
+        return false;
+      };
+      if (f.kind === "post") {
+        if (!pick(["#splitNoteIn", "#splitLockBtn", "[data-sb-add]:not(:disabled)", "[data-sb-rem]:not(:disabled)"])) return;
+        return;
+      }
+      if (f.kind === "add") {
+        const all = [...rootEl.querySelectorAll("[data-sb-add]")];
+        const idx = all.findIndex(b => b.dataset.sbAdd === f.id);
+        const ordered = idx >= 0 ? [...all.slice(idx), ...all.slice(0, idx).reverse()] : all;
+        const hit = ordered.find(b => !b.disabled);
+        if (hit) { hit.focus(); return; }
+        pick(["[data-sb-up]:not(:disabled)", "[data-sb-down]:not(:disabled)", "[data-sb-rem]:not(:disabled)", "#splitLockBtn"]);
+        return;
+      }
+      if (f.kind === "up") {
+        pick([`[data-sb-up="${f.index}"]`, `[data-sb-down="${f.index}"]`, `[data-sb-rem="${f.index}"]`, "[data-sb-add]:not(:disabled)"]);
+        return;
+      }
+      if (f.kind === "down") {
+        pick([`[data-sb-down="${f.index}"]`, `[data-sb-up="${f.index}"]`, `[data-sb-rem="${f.index}"]`, "[data-sb-add]:not(:disabled)"]);
+        return;
+      }
+      if (f.kind === "rem") {
+        pick([`[data-sb-rem="${f.index}"]`, `[data-sb-rem="${f.index - 1}"]`, "[data-sb-add]:not(:disabled)"]);
+      }
+    };
+
     const bind = rootEl => {
       mountedRoot = rootEl;
       const feed = rootEl.querySelector("#splitNotesFeed");
@@ -126,9 +161,10 @@
         if (!noteIn || noteIn.disabled) return;
         G.activity(ME);
         const r = trial.postNote(ME, noteIn.value);
-        if (!r.ok) { state.msg = r.reason; opts.onRender(); return; }
+        if (!r.ok) { state.msg = r.reason; state.sbFocus = { kind: "post" }; opts.onRender(); return; }
         state.noteDraft = "";
         state.msg = "";
+        state.sbFocus = { kind: "post" };
         opts.onRender();
       };
       if (noteIn) {
@@ -149,6 +185,7 @@
           const id = btn.dataset.sbAdd;
           const r = trial.setBoard(ME, [...trial.boardFor(MYTEAM), id]);
           state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "add", id };
           opts.onRender();
         };
       });
@@ -156,9 +193,11 @@
         btn.onclick = () => {
           G.activity(ME);
           const i = +btn.dataset.sbUp, b = trial.boardFor(MYTEAM);
-          if (i > 0 && i < b.length) [b[i - 1], b[i]] = [b[i], b[i - 1]];
+          const moved = i > 0 && i < b.length;
+          if (moved) [b[i - 1], b[i]] = [b[i], b[i - 1]];
           const r = trial.setBoard(ME, b);
           state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "up", index: moved && r.ok ? i - 1 : i };
           opts.onRender();
         };
       });
@@ -166,9 +205,11 @@
         btn.onclick = () => {
           G.activity(ME);
           const i = +btn.dataset.sbDown, b = trial.boardFor(MYTEAM);
-          if (i >= 0 && i < b.length - 1) [b[i], b[i + 1]] = [b[i + 1], b[i]];
+          const moved = i >= 0 && i < b.length - 1;
+          if (moved) [b[i], b[i + 1]] = [b[i + 1], b[i]];
           const r = trial.setBoard(ME, b);
           state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "down", index: moved && r.ok ? i + 1 : i };
           opts.onRender();
         };
       });
@@ -179,6 +220,7 @@
           b.splice(i, 1);
           const r = trial.setBoard(ME, b);
           state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "rem", index: i };
           opts.onRender();
         };
       });
@@ -202,6 +244,9 @@
       if (lockNo) lockNo.onclick = () => { state.confirmLock = false; opts.onRender(); };
 
       bindTwistOk(rootEl);
+      const pendingFocus = state.sbFocus;
+      state.sbFocus = null;
+      restoreFocus(rootEl, pendingFocus);
     };
 
     const tick = (txt, low) => {

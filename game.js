@@ -40,9 +40,9 @@ const OTHERS=[{t:"Team Wren",p:["Rook","Ivy","Sol","Kai"]},{t:"Team Finch",p:["T
 const SOP=EP.Trial.SopTrial.STEPS;   // the coffee SOP lives in the rules (Trial.SopTrial)
 const DECOY=EP.Trial.SopTrial.ENDLESS;
 const CLUES=[
-  {id:"L",kind:"ERROR",where:"Sign-in screen",found:"The title ends in a capital L. Systems don't make typos by accident.",hint:"Something on the very first screen was spelled wrong."},
-  {id:"id",kind:"WATCHER",where:"Your badge",found:"Your intern ID says ATTEMPT 02. You have been here before.",hint:"Your badge flickered. Did you read it closely?"},
-  {id:"loop",kind:"LOOP",where:"SOP trial",found:"One SOP step told you to repeat forever. You left it out.",hint:"One step in the procedure didn't belong."}];
+  {level:1,id:"L",kind:"ERROR",where:"Sign-in screen",found:"The title ends in a capital L. Systems don't make typos by accident.",hint:"Something on the very first screen was spelled wrong."},
+  {level:1,id:"id",kind:"WATCHER",where:"Your badge",found:"Your intern ID says ATTEMPT 02. You have been here before.",hint:"Your badge flickered. Did you read it closely?"},
+  {level:1,id:"loop",kind:"LOOP",where:"SOP trial",found:"One SOP step told you to repeat forever. You left it out.",hint:"One step in the procedure didn't belong."}];
 /* Anomalies: the 3 CLUES above are the only ones that count. Ghosts give hints only. */
 const anomaliesFound=()=>CLUES.filter(c=>S.found[c.id]).length;
 const STEPS=["Sign in","Menu","Wardrobe","Work style","Arrival","Briefing","Open Floor","Trial","Glitch Report","Stats Update"];
@@ -274,7 +274,7 @@ const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3
    One page clock asks Game to close any timer that ran out (G.tick), then follows on screen. */
 function drawTimer(){
   const s=G?G.secondsLeft():null,txt=fmt(s==null?0:s),low=s!=null&&s<=10;
-  const e=$("#tmr");if(e){e.textContent=txt;e.classList.toggle("low",low)}
+  for(const id of ["#tmr","#floorTmr","#gwTmr"]){const e=$(id);if(e){e.textContent=txt;e.classList.toggle("low",low)}}
   if(currentTrialView&&currentTrialView.tick)currentTrialView.tick(txt,low);
 }
 function afterClose(closed){
@@ -466,7 +466,7 @@ ${R().attr?`<div class="cols"><div class="panel"><span class="label">This trial 
 :`<div class="cols"><div class="panel"><span class="label">This review checks</span><h3>All 5 attributes</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>0 points</h3></div><div class="panel"><span class="label">Final points</span><h3>+${EP.Game.POINTS.final} points</h3><span class="hint">${ME.isStuck()?"You are Stuck (spectator).":ME.graduates()?"You currently meet the graduation numbers.":"Place your final points on the next screen."}</span></div></div>`}
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>${esc(b.phase)}</span></div><div class="panel"><span class="label">Workshops</span><span>${esc(b.workshops)}</span></div></div>`};
 
-V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div><span class="hint">${!floorOpen()?"Open Floor is over. Press Ready for trial to continue.":"Kitchen = gift a teammate · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
+V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span class="chip b">Open Floor</span><h2 style="margin-top:8px">Walk the office</h2></div>${floorOpen()?`<span class="counter" id="floorTmr">${fmt(G?G.secondsLeft()||0:0)}</span>`:""}<span class="hint">${!floorOpen()?"Open Floor is over. Press Ready for trial to continue.":"Kitchen = gift a teammate · Breakout Room = sabotage (Contrarians) · High Tea = network with a guest · Ghosts = whispers"}</span></div>
 ${worldHTML("floor")}`;
 
 function sabotageAlertHTML(){const hit=G.round.drainOn(ME);return hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[R().attr]} −${hit}. Remember this at the all-hands.</div>`:""}
@@ -538,7 +538,7 @@ V[8]=()=>{const p=S.pay,g=S.gw,a=S.acc,k=R().attr;return `<div class="meeting">A
 ${G.round.drainOn(ME)?`<span>&gt; sabotage before the trial: ${AN[k]} −${G.round.drainOn(ME)}</span>`:""}
 ${p?`<span>&gt; your ${AN[k]} at the trial: ${p.before} → ${p.after}${p.heartsUsed?` (hearts used: ${p.heartsUsed}, ${ME.rate(k)} per point)`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>`
 :`<span>&gt; you are Stuck and paid no trial cost this round.</span>`}
-${CLUES.map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
+${CLUES.filter(c=>c.level===R().n).map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
 <span>&gt; please continue working normally.</span></div>
 ${accDone()?caughtNotices():""}
 ${accDone()&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. This round does not count toward Exploit. You cannot sabotage on any team next round, or ever again while on this team.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
@@ -546,7 +546,7 @@ ${accDone()&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>
 ${accDone()?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.correctAccusation)?` ${T().path} complete.`:""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. ${a.safe?`Your Focus kept it from costing you anything.`:`You lost 1 point from your highest attribute.`}`:"You skipped your accusation."}</p>`
 :ME.isStuck()?`<p>You are Stuck and cannot accuse.</p><div class="row"><button class="btn soft sm" id="skipAcc">Skip</button></div>`
 :`<p><b>Suspect a teammate? Accuse or Skip.</b></p><div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option ${a.target===q.name?"selected":""}>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Correct: +1 point. Wrong: you lose 1 point from your highest attribute.</span><span class="hint">The Glitch Report ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.glitchReport} seconds. No answer counts as Skip.</span>`}</div>
-${accDone()?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${gwClosed()?flag(status()):`<span class="hearts">${Array.from({length:EP.Hearts.CAP},(_,i)=>HEART(i<ME.hearts.count)).join("")}</span>`}</div>
+${accDone()?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${gwClosed()?flag(status()):`<span class="row" style="gap:8px"><span class="counter" id="gwTmr">${fmt(G?G.secondsLeft()||0:0)}</span><span class="hearts">${Array.from({length:EP.Hearts.CAP},(_,i)=>HEART(i<ME.hearts.count)).join("")}</span></span>`}</div>
   ${incomingGifts()}
   ${!gwClosed()?giftRoster():""}
   ${g.sent.map(m=>`<span class="okmsg">${esc(m)}</span>`).join("")}
