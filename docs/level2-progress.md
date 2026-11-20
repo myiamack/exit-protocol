@@ -87,6 +87,7 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Files changed:** `game.js`, `Tests/check_screens.js`, `docs/level2-progress.md` (no `rules/` or `Tests/baseline/` files changed).
 - **Test results:** `npm run build` (21 modules, `rules/rules.bundle.js` unchanged), `npm test` (12/12 checks passed with zero baseline diffs), and `npm run test:screens` (60 passed, 0 failed, 0 console errors; includes Sprint 1 Complete screen appearance after Level 2 Stats Update and check that no work style or secret path text appears).
 - **Open issues:** None.
+- **6c-fix (status & attribute order) — DONE:** Updated `sprint1CompleteScreen()` in `game.js` to show `"Active"` instead of `"OK"` and list attributes in `Focus, Collaboration, Initiative, Grit, Composure` order, and updated `Tests/check_screens.js` to verify both; `npm run build`, `npm test` (12/12), and `npm run test:screens` (60/60, 0 console errors) all pass.
 
 ### Step 7: Screen tests (Effort: Low) — TODO
 - **Goal:** Extend `Tests/check_screens.js` to cover Level 1 to Level 2 flow, twist popup, notes cap, and Sprint 1 Complete screen.

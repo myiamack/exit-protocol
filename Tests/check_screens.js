@@ -258,12 +258,18 @@ async function fullSevenLevelGame() {
     for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
     next(); await sleep(30); // Lock in points -> roundDone
     if (lv === 2) {
-      const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, hearts: ME.hearts.count, glitches: ME.glitches })');
+      const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, hearts: ME.hearts.count, glitches: ME.glitches, status: ME.flag() })');
       const s1Text = $("#stage").textContent;
+      const statusOk = s1.status === "OK" ? (s1Text.includes("Active") && !/\bOK\b/.test(s1Text)) : s1Text.includes(s1.status);
+      const attrPanel = $$("#stage .panel").find(p => p.textContent.includes("Your 5 attributes"));
+      const attrText = attrPanel ? attrPanel.textContent : "";
+      const attrIdx = ["Focus", "Collaboration", "Initiative", "Grit", "Composure"].map(n => attrText.indexOf(n));
+      const attrOrderOk = attrIdx.every((p, i) => p >= 0 && (i === 0 || p > attrIdx[i - 1]));
       const hasSprint1 = s1Text.includes("Sprint 1 Complete") &&
         s1Text.includes("Level 1") && s1Text.includes("Level 2") &&
         s1Text.includes("Hearts: " + s1.hearts + "/3") &&
         s1Text.includes("Glitches: " + s1.glitches + "/2") &&
+        statusOk && attrOrderOk &&
         s1Text.includes(s1.myTeam) &&
         s1.teams.every(name => s1Text.includes(name)) &&
         s1Text.includes("Level 3 locked") &&

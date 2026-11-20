@@ -610,11 +610,13 @@ function sprint1CompleteScreen(){
   const lv2Win=!!MYTEAM.won;
   const lv1Win=MYTEAM.trialWins-(lv2Win?1:0)>0;
   const teams=[...G.teams].sort((a,b)=>b.trialWins-a.trialWins);
+  const st=status()==="OK"?"Active":status();
+  const attrs=["focus","collab","initiative","grit","composure"].map(k=>A.find(a=>a.k===k));
   return `<div><span class="chip g">Sprint 1 Complete</span><h2 style="margin-top:8px">Sprint 1 Complete, ${esc(S.name)}</h2></div>
   <div class="cols">
     <div class="panel"><span class="label">Your trial results</span><div class="row" style="justify-content:space-between"><span>Level 1 · Boot Up</span><b style="color:${lv1Win?"var(--ok)":"var(--bad)"}">${lv1Win?"WIN":"LOSS"}</b></div><div class="row" style="justify-content:space-between"><span>Level 2 · Sprint 1</span><b style="color:${lv2Win?"var(--ok)":"var(--bad)"}">${lv2Win?"WIN":"LOSS"}</b></div></div>
-    <div class="panel"><span class="label">Your status</span><span class="hint">Hearts: ${ME.hearts.count}/${EP.Hearts.CAP} · Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}</span>${flag(status())}</div>
-    <div class="panel"><span class="label">Your 5 attributes</span>${A.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
+    <div class="panel"><span class="label">Your status</span><span class="hint">Hearts: ${ME.hearts.count}/${EP.Hearts.CAP} · Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}</span>${flag(st)}</div>
+    <div class="panel"><span class="label">Your 5 attributes</span>${attrs.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
   </div>
   <div class="panel"><span class="label">Your team</span><p><b>${esc(MYTEAM.name)}</b> · ${MYTEAM.trialWins} / 2 trial wins</p></div>
   <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${teams.map((tm,i)=>`<tr><td class="n">${i+1}</td><td>${esc(tm.name)}${tm===MYTEAM?" (you)":""}</td><td class="n">${tm.trialWins} / 2</td></tr>`).join("")}</tbody></table></div>
