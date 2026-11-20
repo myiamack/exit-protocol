@@ -80,10 +80,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
   - **Test results:** `npm run build` (21 modules), `npm test` (12/12 checks passed), `npm run test:screens` (59 passed, 0 failed, 0 console errors).
 - **6b-fix (Check D) — DONE:** Changed `.sb-feed` in `styles.css` from `max-height:220px` to `height:220px` (keeping `overflow-y:auto`) so the Split Brief Post button stays fixed in place; `npm run build`, `npm test` (12/12), and `npm run test:screens` (59/59, 0 console errors) all pass.
 
-### Step 6c: Sprint 1 Complete screen (Effort: Medium) — TODO
+### Step 6c: Sprint 1 Complete screen (Effort: Medium) — DONE
 - **Goal:** Build the "Sprint 1 Complete" end screen after Level 2's Stats Update as specified in `CLAUDE.md`.
 - **Done when:** Screen shows Level 1 & 2 results, hearts, glitches, status, 5 attributes, team wins, ranked teams, and "Level 3 locked" with Replay/Sign-out (no work styles or secret path).
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`.
+- **Files changed:** `game.js`, `Tests/check_screens.js`, `docs/level2-progress.md` (no `rules/` or `Tests/baseline/` files changed).
+- **Test results:** `npm run build` (21 modules, `rules/rules.bundle.js` unchanged), `npm test` (12/12 checks passed with zero baseline diffs), and `npm run test:screens` (60 passed, 0 failed, 0 console errors; includes Sprint 1 Complete screen appearance after Level 2 Stats Update and check that no work style or secret path text appears).
+- **Open issues:** None.
 
 ### Step 7: Screen tests (Effort: Low) — TODO
 - **Goal:** Extend `Tests/check_screens.js` to cover Level 1 to Level 2 flow, twist popup, notes cap, and Sprint 1 Complete screen.

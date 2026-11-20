@@ -257,8 +257,26 @@ async function fullSevenLevelGame() {
     next(); await sleep(30); // -> Stats Update
     for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
     next(); await sleep(30); // Lock in points -> roundDone
-    check("Level " + lv + " unlocks Level " + (lv + 1), new RegExp("Start Level " + (lv + 1)).test($("#navNext").textContent) && !$("#navNext").disabled);
-    next(); await sleep(30); // -> Level lv+1 Briefing
+    if (lv === 2) {
+      const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, hearts: ME.hearts.count, glitches: ME.glitches })');
+      const s1Text = $("#stage").textContent;
+      const hasSprint1 = s1Text.includes("Sprint 1 Complete") &&
+        s1Text.includes("Level 1") && s1Text.includes("Level 2") &&
+        s1Text.includes("Hearts: " + s1.hearts + "/3") &&
+        s1Text.includes("Glitches: " + s1.glitches + "/2") &&
+        s1Text.includes(s1.myTeam) &&
+        s1.teams.every(name => s1Text.includes(name)) &&
+        s1Text.includes("Level 3 locked") &&
+        !!$("#replay") && !!$("#restart") &&
+        $("#navNext").disabled && /Level 3 locked/.test($("#navNext").textContent);
+      check("Sprint 1 Complete screen appears after Level 2 Stats Update", hasSprint1);
+      const leaksTypeOrPath = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i.test(s1Text);
+      check("Sprint 1 Complete screen hides work style and secret path", !leaksTypeOrPath, leaksTypeOrPath ? "leaked" : "clean");
+      w.eval("startNextLevel()"); await sleep(30); // -> Level 3 Briefing
+    } else {
+      check("Level " + lv + " unlocks Level " + (lv + 1), new RegExp("Start Level " + (lv + 1)).test($("#navNext").textContent) && !$("#navNext").disabled);
+      next(); await sleep(30); // -> Level lv+1 Briefing
+    }
   }
   check("All 7 levels displayed unique briefings", new Set(seenBriefings).size === 7, seenBriefings.length + "/7");
 }
