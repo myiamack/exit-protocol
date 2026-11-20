@@ -76,8 +76,8 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 
 - **6b-fix: Playtest fixes (before Step 6c) — DONE:**
   - **Fixes:** Added live Open Floor (`#floorTmr` in `V[6]`) and Gift Window (`#gwTmr` in `V[8]`) countdowns in `game.js` updated via `drawTimer()`, plus `.counter.low` in `styles.css` (kept `STEP_SECONDS.openFloor = 90` in `rules/Game.js`); tagged `CLUES` with `level: 1` and filtered `V[8]` by `R().n` so Level 2 All-Hands shows no Level 1 anomaly lines; added `aria-label="Add <ID>"` to Split Brief Add buttons and preserved keyboard focus across `onRender()` on Add/Up/Down/Remove/Post in `splitbrief-view.js`; widened `.namebar` (`380px`) and added `overflow-wrap:break-word` / `min-width:0` on `.namemsg` and `.panel` in `styles.css`; added `output.txt` to `.gitignore`.
-  - **Files changed:** `game.js`, `splitbrief-view.js`, `styles.css`, `.gitignore`, `docs/level2-progress.md` (no `rules/` or `Tests/baseline/` files changed).
-  - **Test results:** `npm run build` (21 modules), `npm test` (12/12 checks passed), `npm run test:screens` (58 passed, 0 failed, 0 console errors).
+  - **Files changed:** `game.js`, `splitbrief-view.js`, `styles.css`, `.gitignore`, `Tests/check_screens.js`, `docs/level2-progress.md` (no `rules/` or `Tests/baseline/` files changed).
+  - **Test results:** `npm run build` (21 modules), `npm test` (12/12 checks passed), `npm run test:screens` (59 passed, 0 failed, 0 console errors).
 
 ### Step 6c: Sprint 1 Complete screen (Effort: Medium) — TODO
 - **Goal:** Build the "Sprint 1 Complete" end screen after Level 2's Stats Update as specified in `CLAUDE.md`.

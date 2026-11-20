@@ -247,6 +247,10 @@ async function fullSevenLevelGame() {
 
     check("Level " + lv + " (" + kind + ") trial completes and enables All-hands", !$("#navNext").disabled);
     next(); await sleep(30); // -> Glitch Report
+    if (lv === 2) {
+      const reportText = ($(".report") || {}).textContent || "";
+      check("Level 2 All-Hands shows no Level 1 anomaly lines", $$(".report .clue").length === 0 && !/spelled wrong|badge flickered|SOP/i.test(reportText));
+    }
     $("#skipAcc").click(); await sleep(20); // -> Gift Window
     w.eval('if (G.timer && G.timer.name === "giftWindow") afterClose(G.tick(G.timer.deadline));');
     await sleep(20); // Gift Window closed, Stats Update button enabled
