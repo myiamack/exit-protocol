@@ -9,13 +9,18 @@ Players are Pixel Interns who wake up on Floor 60 of an office simulation. Each 
 - **On your computer:** download the repo and double-click `index.html` (Chrome or Edge). You need internet for the fonts.
 - **Demo sign-in:** any `@icstars.org` email, join code `CYCLE60`.
 
-This prototype is single-player with sample teammates. It covers sign-in, menu, wardrobe, work style, the elevator arrival, the walkable Floor 60 and Level 1. Real multiplayer (16–24 players plus a host) is planned later using the Base44 backend service.
+This prototype is single-player with sample teammates. It covers sign-in, menu, wardrobe, work style, the elevator arrival, the walkable Floor 60, Level 1, and Level 2 (Split Brief). Real multiplayer (16–24 players plus a host) is planned later using the Base44 backend service.
+
+## Level 2: Split Brief
+- **What it is:** Level 2 (*Sprint 1: Back-Plan the Demo*, tests Collaboration, cost 3) deals 5 private brief cards round-robin to each team's active players, with per-game shuffled task letters (`A`–`D`) and card order. Teammates share up to 3 named notes per player (80 characters max), pick and order 2 of 4 backlog tasks on a shared board, and face a *Ghosted Teammate* twist card at 90 seconds before Lock In or the 180-second timer ends. Teams score 0–5 against the post-twist key (plus light Collaboration influence), ties break to earliest Lock In after the twist then random, and Stats Update leads to the *Sprint 1 Complete* screen.
+- **How to reach it in the browser:** Open `index.html`, sign in with any `@icstars.org` email and join code `CYCLE60`, create your character, play through Level 1 (Boot Up) and its Stats Update, and click **Continue** to enter Level 2.
+- **Test commands:** `npm run build` (rebuild `rules/rules.bundle.js`), `npm test` (run all 12 baseline checks), and `npm run test:screens` (run jsdom screen tests including Level 2 and Sprint 1 Complete).
 
 ## What's here
 | Path | What it is |
 |---|---|
 | `index.html`, `styles.css`, `game.js`, `pixel-art.js`, `world-map.js` | The playable prototype (split into pixel art, Floor 60 map, and game/screen flow) |
-| `board.js`, `attendance-view.js`, `fullscreen-view.js` | Shared screen components used by `index.html` and `pages/vote-test.html` |
+| `board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `judged-view.js` | Shared screen components and trial views used by `index.html` and `pages/vote-test.html` |
 | `rules/` | OOAD rule classes (ES modules, no screen code) and `rules/rules.bundle.js` for the browser |
 | `tools/` | `build-rules.js` (builds `rules/rules.bundle.js`) and `baseline.js` (runs/checks test baselines) |
 | `Tests/` | Automated rule, balance, cheese, save/load, and screen checks |

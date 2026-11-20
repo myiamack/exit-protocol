@@ -202,7 +202,7 @@ classDiagram
     +SETTINGS  rates from sim_v2.py
     +hooks  onStart, beforeClose
     +soloGame(...), typicalSpend(type), makePlayer(id, name, type)
-    +openFloor(), trial(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
+    +openFloor(), trial(), splitBrief(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
     +allocate(p, n, final)
   }
 
@@ -278,7 +278,7 @@ classDiagram
   class Trial {
     <<abstract>>
     +rng, ranking  best first
-    +kind  sop, auto, judged
+    +kind  sop, auto, splitBrief, judged
     +run(round, teams), runTrial(round, teams)
     +rank(round, teams)*
     +influence(round, teams)$ Levels 1 to 4
@@ -295,8 +295,27 @@ classDiagram
     +rank(round, teams) board score plus influence
   }
   class AutoTrial {
-    Levels 2 to 4
+    Levels 3 to 4
     +rank(round, teams) random 0 to 7 plus influence
+  }
+  class SplitBriefTrial {
+    Level 2
+    +scenario, bool dealt, letterMap, cardOrder
+    +tasks, preTwistAnswer, postTwistAnswer
+    +bool twistFired, twistDeadline, onAllLocked
+    +int MAX_NOTE_CHARS = 80$, MAX_NOTES = 3$, MAX_BOARD_TASKS = 2$, MAX_SCORE = 5$
+    +int TRIAL_SECONDS = 180$, TWIST_SECONDS = 90$
+    +deal(teams), cardsFor(player)
+    +postNote(player, text), notesLeft(player), notesFor(team)
+    +boardFor(team), setBoard(player, taskIds)
+    +lockIn(player), isLocked(team), lockOrderOf(team), postTwistLockOrderOf(team), allLocked(teams)
+    +fireTwist(teams), twistFor(player), closeSplitBrief(round, teams)
+    +score(board, answer)$, rank(round, teams)
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class Scenarios {
+    <<data, scenarios.js>>
+    +MEDLINE_SPRINT_1  tasks, cards, twist, answer keys
   }
   class JudgedTrial {
     Levels 5 and 6
@@ -324,7 +343,9 @@ classDiagram
   Round "1" o-- "0..1" Trial : levels 1 to 6, set by Game
   Trial <|-- SopTrial
   Trial <|-- AutoTrial
+  Trial <|-- SplitBriefTrial
   Trial <|-- JudgedTrial
+  SplitBriefTrial ..> Scenarios : reads scenario data
   JudgedTrial "1" *-- "0..1" Vote : vote
   Vote "1" o-- "*" Team : ranks teams, sets won
   Vote "1" --> "*" Player : ballots, up to 3 ranked each
@@ -350,5 +371,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code at commit `6be32c6` (branch ben-ooad).
+Made from the rules code at commit `9c05ca6` (branch `level2-split-brief`).
 Update this diagram whenever a class in `rules/` changes.

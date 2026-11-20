@@ -99,10 +99,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (21 modules, `rules/rules.bundle.js` unchanged), `npm test` (12/12 checks passed against baseline), `npm run test:screens` (69 passed, 0 failed, 0 console errors).
 - **Open issues:** None.
 
-### Step 8: Docs (Effort: Low) — TODO
+### Step 8: Docs (Effort: Low) — DONE
 - **Goal:** Update `CLAUDE.md`, `docs/class-diagram.md`, `README.md`, and `docs/Game_Index.md` to match the final Level 2 code.
 - **Done when:** All docs accurately reflect the implemented classes, files, and rules.
 - **Tests:** `npm run build`, `npm test`.
+- **Files changed:** `CLAUDE.md`, `docs/class-diagram.md`, `README.md`, `docs/Game_Index.md`, `docs/level2-progress.md`.
+- **Test results:** `npm run build` (21 modules, `rules/rules.bundle.js` unchanged) and `npm test` (12/12 checks passed against current baseline).
+- **Open issues:** `CLAUDE.md` line 457 does not mention that Split Brief bots keep 1 note in reserve until the twist fires (left unchanged for review).
 
 ### Step 9: Manual playtest (Ben) — TODO
 - **Goal:** Playtest in browser: cards show privately, notes post with cap, twist fires once at 90s, scoring matches key, and Sprint 1 Complete screen is accurate.

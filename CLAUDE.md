@@ -88,7 +88,7 @@ Refactor result:
 | Accusation | One per player per round, correct or wrong, point effects. |
 | Gift | Cost by type, Independent refusal and refund, overflow refund, Lifeline credit. |
 | Vote | Ranked top 3, team totals, top half wins (rounded up), tie rule. |
-| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: `SopTrial` (Level 1, owns `setSopBoard` and `closeSop`), `AutoTrial` (Levels 2 to 4, random order for now), `JudgedTrial` (Levels 5 and 6, owns prompts, writing, and `Vote`). Ties: judged = more first places, then random; others = random. |
+| Trial | Base class. Takes the round and the teams, returns a ranked list (best first). Top half win, rounded up: 4 teams 2 win, 5 teams 3, 7 teams 4. Subclasses: `SopTrial` (Level 1, owns `setSopBoard` and `closeSop`), `SplitBriefTrial` (Level 2, owns `deal`, `postNote`, `setBoard`, `lockIn`, `fireTwist`, and `closeSplitBrief`), `AutoTrial` (Levels 3 to 4, random order for now), `JudgedTrial` (Levels 5 and 6, owns prompts, writing, and `Vote`). Ties: split brief = earliest Lock In after the twist, then random; judged = more first places, then random; others = random. |
 | Economy | Trial cost payments, Stats Update earnings, draft/lock/auto-place points, Cash Out. |
 | Timer | Step timer deadlines, injected clock, `tick()`, `close()`, and save/restore state. |
 | Attendance | Idle and popup timers, pause/resume, and missed check-in detection. |
@@ -102,16 +102,16 @@ Every import and export in `rules/*.js` must stay on one line, because `tools/bu
 
 ### File map and screen split
 
-- `rules/`: ES module rule classes (`index.js` exports all; `rules.bundle.js` is built for the browser).
+- `rules/`: ES module rule classes (`index.js` exports all; `scenarios.js` holds Level 2 scenario data; `rules.bundle.js` is built for the browser).
 - `pixel-art.js`: Pixel Intern sprite engine, SVG art, wardrobe tab icons, instructors, and tool icons.
 - `world-map.js`: walkable Floor 60 map (movement, collision, rooms, furniture, doors, ghosts, minimap, fog, room popups) and static office preview map.
 - `game.js`: session, navigation, screens `V[0]` to `V[9]`, HUD, timers display, code rain, elevator cutscene, and button wiring.
-- `board.js`, `attendance-view.js`, `fullscreen-view.js`: shared UI panels/buttons used by `index.html` and `pages/vote-test.html`.
+- `board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `judged-view.js`: shared UI panels/buttons and trial views used by `index.html` and `pages/vote-test.html`.
 
 ### Test commands
 
 - `npm run build`: rebuild `rules/rules.bundle.js` from `rules/*.js`.
-- `npm test`: run the baseline checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`).
+- `npm test`: run the baseline checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`).
 - `npm run baseline`: save a new fixed-seed baseline snapshot.
 - `npm run test:screens`: run `Tests/check_screens.js` in jsdom.
 
@@ -142,7 +142,7 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 | Level | Trial activity | Attribute | Cost | Scored by |
 |---|---|---|---|---|
 | 1 Boot Up | SOP mini-game | Grit | 2 | SopTrial: SOP score |
-| 2 Sprint 1 | Prioritize against a timer | Collaboration | 3 | AutoTrial (random for now) |
+| 2 Sprint 1 | Prioritize against a timer | Collaboration | 3 | SplitBriefTrial: post-twist board score |
 | 3 The Mirror | Q&A gauntlet | Focus | 3 | AutoTrial (random for now; later set answers) |
 | 4 Geek Week | Testing challenge | Initiative | 4 | AutoTrial (random for now) |
 | 5 Sprint 2 | Fix the broken team | Composure | 4 | JudgedTrial: player vote |
@@ -417,7 +417,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - Difficulty dials (round 6 cost 7, graduation total 23).
 - Clue system and special abilities.
 - Engine auto-dials.
-- Trial mini-games for levels 2 to 4. For now AutoTrial ranks teams in random order (top half win) with an on-screen placeholder note.
+- Trial mini-games for levels 3 to 4. For now AutoTrial ranks teams in random order (top half win) with an on-screen placeholder note.
 - No-repeat prompts across games (Levels 5-6).
 - Ollama prompt generation (Levels 5-6).
 
