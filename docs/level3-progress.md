@@ -20,24 +20,34 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Done when:** Data module exports clean plain data with zero hardcoded team names and the data-shape test + baseline tests pass.
 - **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_data.js`
 
-### Step 2: `MirrorTrial` core rules (Effort: High) - TODO
-- **Goal:** Implement `MirrorTrial` in `rules/Trial.js` (not wired into `Round.LEVELS` yet): lobby state (`Team.active()` only, signal-grab connect/miss speed-up, score-0 fail if any active player is left out at doors close), seeded crew deal (Setup Crew half rounded up max 3, rest Dance Crew, 1s reveal), seeded setup slot order and sequential 5-step split (1 player: all 5; 2 players: cables/sound/mic then deck/Q&A; 3 players: cables/sound, mic/deck, Q&A), rules-owned step actions and seeded content picks (cables, sound 70-85 hold / 100 feedback, mic rounds 3/4/5, deck reshuffle/grab, 3 Q&A with up to 5 penalty points restored on right answer, last-slot wrap-up), per-dancer rhythm boost (cap 45) and dancer penalties averaged across dancers (0 dancers = 0 boost and 0 dance penalty), attention formula (`base + baseBoost + avgDanceBoost - setupPenalties - avgDancePenalties`, clamped 0..100, attention 0 ends trial with score 0), score `Math.round(attention / 100 * 7)`, bot-only random attention 0..100, ranking with light Focus influence and tie-break by higher exact attention then random, and `toJSON`/`fromJSON` capturing full mid-trial state.
-- **Done when:** `MirrorTrial` handles all lobby, crew, setup, dance, scoring, tie-break, and save/load rules deterministically with seeded `Rng`, and existing baselines stay untouched.
-- **Tests:** `npm run build`, `npm test`
+### Step 2a: `MirrorTrial` lobby, crew deal, and setup slot order (Effort: Medium) - TODO
+- **Goal:** Implement `MirrorTrial` lobby state (`Team.active()` only, signal-grab connect/miss speed-up, score-0 fail if any active player is left out at doors close), seeded crew deal (Setup Crew half rounded up max 3, rest Dance Crew, 1s reveal), seeded setup slot order and sequential 5-step split (1 player: all 5; 2 players: cables/sound/mic then deck/Q&A; 3 players: cables/sound, mic/deck, Q&A), and `toJSON`/`fromJSON` save/load for that state (not wired into `Round.LEVELS` yet). Add `Tests/check_mirror_lobby.js` and register it in `tools/baseline.js`.
+- **Done when:** Lobby, crew deal, setup slot split, and save/load of that state work deterministically with seeded `Rng`, `Tests/check_mirror_lobby.js` passes, and existing baselines remain unchanged.
+- **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_lobby.js`
+
+### Step 2b: `MirrorTrial` setup step actions and seeded content picks (Effort: Medium) - TODO
+- **Goal:** Add the 5 Setup Crew step actions, turn-order progression, seeded content picks (mic sequences for rounds 3/4/5, file order and reshuffle, Q&A order), setup penalties and Q&A recoveries (up to 5 penalty points restored on right answer), last-slot Wrap up action, and `toJSON`/`fromJSON` save/load for the state it adds. The rules accept RESULTS reported by the screen (examples: cable hit, wrong cable, sound held 3 seconds, feedback, mic tap right or wrong, file grabbed, Q&A answer or timeout, note perfect, note good, note missed, stray press). The rules do not run moving parts or per-tick motion. The screen handles motion and timing; the rules handle state, order, penalties, boosts, content picks, and scoring. Add `Tests/check_mirror_setup.js` and register it in `tools/baseline.js`.
+- **Done when:** All 5 setup steps, turn order, penalties/recoveries, seeded content picks, Wrap up, and save/load of that state pass in `Tests/check_mirror_setup.js` with existing baselines unchanged.
+- **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_setup.js`
+
+### Step 2c: `MirrorTrial` dance averaging, attention formula, and scoring (Effort: Medium) - TODO
+- **Goal:** Add per-dancer rhythm boosts (cap 45) and dancer penalties averaged across dancers (0 dancers = 0 boost and 0 dance penalty), attention formula (`base + baseBoost + avgDanceBoost - setupPenalties - avgDancePenalties`, clamped 0..100), attention 0 fail with score 0, score 0 to 7 (`Math.round(attention / 100 * 7)`), ranking with light Focus influence (`rankWithInfluence`), tie-break by higher exact attention then random (`Rng`), bot-only random attention 0..100, and `toJSON`/`fromJSON` save/load for the state it adds. Add `Tests/check_mirror_score.js` and register it in `tools/baseline.js`.
+- **Done when:** Dance averaging, attention formula, attention 0 fail, score 0 to 7, Focus ranking, tie-break, bot-only attention roll, and save/load of that state pass in `Tests/check_mirror_score.js` with existing baselines unchanged.
+- **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_score.js`
 
 ### Step 3: Level 3 timers and `Game` integration (Effort: Medium) - TODO
-- **Goal:** Add deadline-based Level 3 timers in `rules/Game.js` (`mirrorLobby`: 30s, `mirrorReveal`: 1s, `mirrorShowtime`: 75s) so attention drains only during showtime; add `Game` pass-through methods for `MirrorTrial` lobby/setup/dance/wrap-up actions and mid-trial save/load catch-up; prepare `Round.toJSON`/`fromJSON` for `mirrorResults` (keeping `Round.LEVELS` row 3 on `auto` until Step 5).
-- **Done when:** Timer transitions (30s lobby -> 1s reveal -> 75s showtime -> close) and mid-trial save/load work deterministically and existing baselines still pass.
-- **Tests:** `npm run build`, `npm test`
+- **Goal:** Add deadline-based Level 3 timers in `rules/Game.js` (`mirrorLobby`: 30s, `mirrorReveal`: 1s, `mirrorShowtime`: 75s) so attention drains only during showtime; add `Game` pass-through methods for `MirrorTrial` lobby/setup/dance/wrap-up actions and mid-trial save/load catch-up; prepare `Round.toJSON`/`fromJSON` for `mirrorResults` (keeping `Round.LEVELS` row 3 on `auto` until Step 5). Add `Tests/check_mirror_timing.js` and register it in `tools/baseline.js`.
+- **Done when:** Timer transitions (30s lobby -> 1s reveal -> 75s showtime -> close) and mid-trial save/load work deterministically, `Tests/check_mirror_timing.js` passes, and existing baselines still pass.
+- **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_timing.js`
 
 ### Step 4: Level 3 bots and idle auto-pilot (Effort: Medium) - TODO
-- **Goal:** Add Level 3 bot logic in `rules/bots.js` connected only through `Game` hooks (`onStart`, `onTick`, `beforeClose`): bots connect in lobby after a seeded random 3 to 15 seconds; bot setup slots finish each step after a set time with a 30% hiccup costing 3 attention and automatic wrap-up in the last slot; bot dancers gain +1 boost every 1.5 to 2.5 seconds up to 45 with no misses; bot-only teams roll a random attention 0 to 100 and score from it; idle humans follow the existing idle auto-pilot rule (bot rule plays their part).
-- **Done when:** All bot and idle-human behaviors run cleanly via `Game` hooks with seeded `Rng` and existing baselines remain unchanged.
-- **Tests:** `npm run build`, `npm test`
+- **Goal:** Add Level 3 bot logic in `rules/bots.js` connected only through `Game` hooks (`onStart`, `onTick`, `beforeClose`): bots connect in lobby after a seeded random 3 to 15 seconds; bot setup slots finish each step after a set time with a 30% hiccup costing 3 attention and automatic wrap-up in the last slot; bot dancers gain +1 boost every 1.5 to 2.5 seconds up to 45 with no misses; bot-only teams roll a random attention 0 to 100 and score from it; idle humans follow the existing idle auto-pilot rule (bot rule plays their part). Add `Tests/check_mirror_bots.js` and register it in `tools/baseline.js`.
+- **Done when:** All bot and idle-human behaviors run cleanly via `Game` hooks with seeded `Rng`, `Tests/check_mirror_bots.js` passes, and existing baselines remain unchanged.
+- **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_bots.js`
 
-### Step 5: Rule tests, wire Level 3 into `Round.LEVELS`, and baseline update (Effort: Medium) - TODO
-- **Goal:** Add `Tests/check_mirror.js`, `Tests/check_mirror_timing.js`, and `Tests/check_mirror_bots.js` (registered in `tools/baseline.js`), update `Tests/check_save.js` to exercise mid-trial Level 3 actions and timers, switch `Round.LEVELS` row 3 to `trialName: "Presentation Day"`, `trialKind: "mirror"` (Focus, cost 3), verify Level 1 and Level 2 snapshots do not change, explain Level 3+ baseline diffs, and run `npm run baseline`.
-- **Done when:** All new Level 3 rule/timing/bot/save checks and the full baseline suite pass with explained diffs.
+### Step 5: Save/load update, wire Level 3 into `Round.LEVELS`, and baseline update (Effort: Medium) - TODO
+- **Goal:** Update `Tests/check_save.js` for mid-trial Level 3, switch `Round.LEVELS` row 3 to `trialName: "Presentation Day"`, `trialKind: "mirror"` (Focus, cost 3), confirm Level 1 and Level 2 snapshots do not change, explain Level 3+ baseline diffs, and run `npm run baseline`. No new rule test files in Step 5.
+- **Done when:** `Tests/check_save.js` covers mid-trial Level 3, Level 1 and Level 2 snapshots are unchanged, Level 3+ baseline diffs are explained, and the full baseline suite passes after `npm run baseline`.
 - **Tests:** `npm run build`, `npm test` (after `npm run baseline`)
 
 ### Step 6a: Screens - Level 3 flow, Briefing, Host Script, Hint Table, and Sprint 1 Complete unlock (Effort: Medium) - TODO
@@ -50,9 +60,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Done when:** Active human can connect via signal grab, bots connect at 3 to 15s, doors-close fail triggers score 0, and `CREW LOCKED` transitions into showtime.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
 
-### Step 6c: Screens - Setup Crew steps (Effort: High) - TODO
-- **Goal:** Build all 5 Setup Crew steps in `mirror-view.js` and `styles.css`: Audience Attention bar, live step checklist for waiting Setup players, Step 1 moving cable belt & live team machines (no hardcoded team names), Step 2 sound mixer (`-10/+5/+10`, green zone 70-85 for 3s, 100 feedback reset), Step 3 mic memory (3/4/5 flash and `?`), Step 4 6-file reshuffling grid, Step 5 rapid-fire Q&A with countdown bar and "Wrap up the presentation" button for the last Setup player, plus live Dance Crew readout panel.
-- **Done when:** Setup players play only their assigned slot steps in order, waiting players see the checklist, all penalties and recoveries route through `G`, and Wrap up ends the trial.
+### Step 6c-1: Screens - Setup Crew frame, cables, and sound steps (Effort: Medium) - TODO
+- **Goal:** Build the Setup Crew showtime shell and first two steps in `mirror-view.js` and `styles.css`: Audience Attention bar, live step checklist for waiting Setup players, Dance Crew readout panel, cables step (moving belt and machines, no hardcoded team names), and sound step (`-10/+5/+10`, green zone 70-85 for 3s, 100 feedback reset). Screen handles motion and timing and reports results to `G`.
+- **Done when:** Waiting Setup players see the live checklist and Dance Crew readout, active Setup players can complete cables and sound with results routed through `G`, and no hardcoded team names appear.
+- **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+
+### Step 6c-2: Screens - Setup Crew mic, deck, Q&A, and Wrap up (Effort: Medium) - TODO
+- **Goal:** Build the remaining Setup Crew steps and wrap-up in `mirror-view.js` and `styles.css`: mic step (3/4/5 memory rounds with flash and `?`), deck step (6-file reshuffling grid), Q&A step (3 rapid-fire questions with countdown bar), and the "Wrap up the presentation" button for the last Setup player. Screen handles display timing and reports results to `G`.
+- **Done when:** Setup players complete mic, deck, and Q&A in assigned slot order with penalties and recoveries routed through `G`, and the last Setup player's Wrap up button ends the trial.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
 
 ### Step 6d: Screens - Dance Crew rhythm lane (Effort: Medium) - TODO

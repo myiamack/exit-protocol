@@ -531,7 +531,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
   - Dance Crew: bot dancers gain +1 boost every 1.5 to 2.5 seconds up to 45, no misses.
   - Bot-only teams: roll a random attention 0 to 100 and score from it (`Math.round(attention / 100 * 7)`).
   - Idle humans: follow the existing idle auto-pilot rule (bot rule plays their part).
-- **Multiplayer and code split:** Each player plays their own part on their own device. The screen handles motion and timing (belts, notes). The rules engine holds all Level 3 state, step order, penalties, boosts, content picks (mic sequences, file order, Q&A order), and scoring. All randomness uses the seeded `Rng`. `Game.toJSON` and `Game.fromJSON` must capture mid-trial Level 3 state.
+- **Multiplayer and code split:** Each player plays their own part on their own device. The screen handles motion and timing (belts, notes). The screen reports results to the rules (hit, miss, held, feedback, answer, timeout); the rules never run per-tick motion. The rules engine holds all Level 3 state, step order, penalties, boosts, content picks (mic sequences, file order, Q&A order), and scoring. All randomness uses the seeded `Rng`. `Game.toJSON` and `Game.fromJSON` must capture mid-trial Level 3 state.
 - **No hardcoded team names:** Never hardcode team names anywhere in Level 3.
 
 ### Level 3 clues, briefing, host script, end screen, and dev jump
