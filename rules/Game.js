@@ -68,6 +68,7 @@ const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lock
    catches up exactly as if it never stopped. */
 const TIMER_SECONDS = {
   intermission: STEP_SECONDS.intermission, openFloor: STEP_SECONDS.openFloor, sop: STEP_SECONDS.sopTrial,
+  splitBrief: Trial.SplitBriefTrial.TRIAL_SECONDS,
   writing: Trial.JudgedTrial.WRITING_SECONDS, glitchReport: AUTO_ADVANCE_SECONDS.glitchReport,
   giftWindow: STEP_SECONDS.giftWindow, statsUpdate: AUTO_ADVANCE_SECONDS.statsUpdate, graduation: GRADUATION_PLACE_SECONDS,
 };
@@ -100,7 +101,10 @@ class Game {
       clock,
       durations: TIMER_SECONDS,
       getPhase: () => { const name = this.timerName(); return name ? { name, key: this.level + ":" + name } : null; },
-      onStart: name => { if (this.hooks.onStart) this.hooks.onStart(this, name); },
+      onStart: name => {
+        if (name === "splitBrief") this._startSplitBrief();
+        if (this.hooks.onStart) this.hooks.onStart(this, name);
+      },
       onClose: name => {
         if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
         this._closeTimerPhase(name);
@@ -121,6 +125,7 @@ class Game {
     if (s === "trial") {
       const t = this.round.trial;
       if (t instanceof Trial.SopTrial && !this.didRun("runTrial")) return "sop";
+      if (t instanceof Trial.SplitBriefTrial && !this.didRun("runTrial")) return "splitBrief";
       if (t instanceof Trial.JudgedTrial && t.writing === "open") return "writing";
       return null;
     }
@@ -131,7 +136,33 @@ class Game {
   }
   refreshTimer() { this._timer.refresh(); }
   secondsLeft(now) { return this._timer.secondsLeft(now); }
-  tick(now) { return this._timer.tick(now); }
+  _startSplitBrief() {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.SplitBriefTrial)) return;
+    if (t.twistDeadline == null && !t.twistFired) {
+      t.setTwistDeadline(this.now() + Trial.SplitBriefTrial.TWIST_SECONDS * 1000);
+    }
+  }
+  _wireSplitBrief(t) {
+    if (!(t instanceof Trial.SplitBriefTrial)) return;
+    t.onAllLocked = () => {
+      if (this.running) this.closeTimer(this.now());
+      else this.closeSplitBrief();
+    };
+  }
+  _checkTwist(now) {
+    if (this.step !== "trial" || this.didRun("runTrial")) return false;
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.SplitBriefTrial)) return false;
+    if (t.twistFired || t.twistDeadline == null || now < t.twistDeadline) return false;
+    return t.fireTwist(this.teams);
+  }
+  tick(now = this.now()) {
+    this._checkTwist(now);
+    const closed = this._timer.tick(now);
+    this._checkTwist(now);
+    return closed;
+  }
   closeTimer(now) { return this._timer.close(now); }
   closeTimerAt(at) { this._timer.closeAt(at); }
   _closeTimerPhase(name) {
@@ -139,6 +170,7 @@ class Game {
       case "intermission": this.startNextRound(); break;
       case "openFloor": this.advance(); break;
       case "sop": this.closeSop(); break;
+      case "splitBrief": this.closeSplitBrief(); break;
       case "writing": this.closeWriting(); break;
       case "glitchReport": this.closeGlitchReport(); break;
       case "giftWindow": this.closeGiftWindow(); break;
@@ -253,9 +285,22 @@ class Game {
     if (need && !this.didRun(need)) throw new Error("Finish " + this.stepName() + " first (" + need + ").");
     if (this.step === "openFloor" || this.step === "giftWindow") Gift.expireAll(this.round);   // no answer = declined
     const step = this.round.nextStep();
+    if (step === "trial" && this.round.trial instanceof Trial.SplitBriefTrial) {
+      if (!this.round.trial.dealt) this.round.trial.deal(this.teams);
+      this._wireSplitBrief(this.round.trial);
+    }
     this.syncAttendance();
     this.refreshTimer();
     return step;
+  }
+  setTrialForTest(trial) {
+    if (!this.round || this.round.isFinal) throw new Error("No active trial round.");
+    this.round.trial = trial;
+    if (this.step === "trial" && trial instanceof Trial.SplitBriefTrial) {
+      if (!trial.dealt) trial.deal(this.teams);
+      this._wireSplitBrief(trial);
+      this.refreshTimer();
+    }
   }
 
   startNextRound() {
@@ -353,6 +398,16 @@ class Game {
      Results per team id: { right, endlessOut, score } in round.sopResults. */
   closeSop() {
     const ranking = this.sop().closeSop(this.round, this.teams);
+    this.refreshTimer();
+    return ranking;
+  }
+  splitBrief() {
+    this.mustBe("trial");
+    if (!(this.round.trial instanceof Trial.SplitBriefTrial)) throw new Error("This level has no Split Brief.");
+    return this.round.trial;
+  }
+  closeSplitBrief() {
+    const ranking = this.splitBrief().closeSplitBrief(this.round, this.teams);
     this.refreshTimer();
     return ranking;
   }
@@ -576,7 +631,10 @@ class Game {
     });
     g._timer = g._makeTimer(clock);
     g._timer.restore({ running: data.running, timer: data.timer });
-    if (data.round) g.round = Round.fromJSON(data.round, { byId, trialFromJSON: d => Trial.fromJSON(d, { rng, teams, byId }) });
+    if (data.round) {
+      g.round = Round.fromJSON(data.round, { byId, trialFromJSON: d => Trial.fromJSON(d, { rng, teams, byId }) });
+      if (g.round.trial instanceof Trial.SplitBriefTrial) g._wireSplitBrief(g.round.trial);
+    }
     if (tick) g.tick();
     return g;
   }

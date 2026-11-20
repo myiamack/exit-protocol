@@ -20,6 +20,7 @@ const TESTS = [
   "check_save",
   "check_scenarios",
   "check_split_brief",
+  "check_split_timing",
 ];
 
 function runTest(name) {

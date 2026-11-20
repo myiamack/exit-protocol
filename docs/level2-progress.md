@@ -28,10 +28,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (21 modules) and `npm test` (10/10 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`; 47/47 assertions in `check_split_brief.js`).
 - **Open issues:** None.
 
-### Step 3: Timer and twist timing (Effort: Medium) — TODO
+### Step 3: Timer and twist timing (Effort: Medium) — DONE
 - **Goal:** 180s trial timer, twist at 90s, early close when all teams lock in, deadlines saved per the save/load rule.
 - **Done when:** Timer and mid-trial save/load tests pass, including caught-up twist and trial close deadlines.
 - **Tests:** `npm run build`, `npm test` (including `check_save`).
+- **Files changed:** `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `Tests/check_split_timing.js`, `Tests/baseline/check_split_timing.txt`, `Tests/check_save.js`, `tools/baseline.js`, `docs/level2-progress.md`.
+- **Test results:** `npm run build` (21 modules) and `npm test` (11/11 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`; 19/19 assertions in `check_split_timing.js`).
+- **Open issues:** None.
 
 ### Step 4: Bots (Effort: Medium) — TODO
 - **Goal:** Connect bots via `Game` hooks only (no `Game`-to-`Bots` link): post card notes at random times in the first 30s, post twist note within 10s, never edit the board or lock in.

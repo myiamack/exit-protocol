@@ -1,0 +1,26 @@
+-- 1. Timer is 180s, Attendance active, twist fires at 90s and only once
+PASS  TIMER_SECONDS.splitBrief is 180
+PASS  splitBrief timer starts at 180s
+PASS  Cards are dealt on entering trial step
+PASS  Attendance is not paused during splitBrief trial
+PASS  Twist deadline saved as absolute timestamp (now + 90s)
+PASS  Twist has not fired at 89s
+PASS  Twist fires at 90s and trial stays open
+PASS  Twist fires only once
+-- 2. Early close when all teams lock in at 30s (twist fires first)
+PASS  Partial lock-in (1/4) keeps trial open
+PASS  Partial lock-in (2/4) keeps trial open
+PASS  Partial lock-in (3/4) keeps trial open
+PASS  Last team lock-in at 30s fires twist then closes trial immediately
+PASS  Trial costs can be paid after early close
+-- 3. Timer end at 180s closes trial and pays trial costs
+PASS  tick at 180s closes splitBrief, fires twist, and runs trial
+PASS  payTrialCosts applies cost and advances to glitchReport
+-- 4. Save at 60s, wake at 100s: twist fired, trial still open
+PASS  Saved trial stores twistDeadline as absolute ms
+PASS  Wake at 100s fires twist and keeps trial open with 80s left
+-- 5. Save at 60s, wake at 200s: twist fired first, then trial closed
+PASS  Wake at 200s fires twist first, then closes trial
+PASS  Trial costs can be paid after caught-up close
+
+19 passed, 0 failed.

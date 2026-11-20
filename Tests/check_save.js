@@ -192,7 +192,8 @@ ok("both copies hold the same state after every action", sameEveryStep, firstDif
 ok("final endings match the game that never reloaded", sameEndings);
 const ALL_STEPS = ["intermission", "briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate", "graduation"];
 ok("saved and loaded at every round step", ALL_STEPS.every(s => stepsSaved.has(s)), [...stepsSaved].join(", "));
-const ALL_TIMERS = Object.keys(Game.TIMER_SECONDS);
+const hasSplitBrief = EP.Round.LEVELS.some(l => l.trialKind === "splitBrief");
+const ALL_TIMERS = Object.keys(Game.TIMER_SECONDS).filter(k => k !== "splitBrief" || hasSplitBrief);
 ok("saved and loaded while every timer was running", ALL_TIMERS.every(s => timersSaved.has(s)), [...timersSaved].join(", "));
 
 /* ----- 2. passed deadlines ----- */

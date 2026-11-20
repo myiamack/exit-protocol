@@ -213,16 +213,21 @@ class SplitBriefTrial extends Trial {
   #lockCounter = 0;
   #twistHolders = new Map(); // Team -> Player
   #twistFired = false;
+  #twistDeadline = null;
 
   constructor(rng, scenario = Scenarios.MEDLINE_SPRINT_1) {
     if (typeof rng !== "function") throw new Error("SplitBriefTrial requires a seeded rng.");
     super(rng);
     this.#scenario = scenario || Scenarios.MEDLINE_SPRINT_1;
+    this.onAllLocked = null;
   }
 
   get kind() { return "splitBrief"; }
   get scenario() { return this.#scenario; }
+  get dealt() { return this.#dealt; }
   get twistFired() { return this.#twistFired; }
+  get twistDeadline() { return this.#twistDeadline; }
+  setTwistDeadline(at) { this.#twistDeadline = at; }
 
   #shuffle(list) {
     const out = list.slice();
@@ -341,7 +346,12 @@ class SplitBriefTrial extends Trial {
     if (why) return { ok: false, reason: why };
     this.#lockCounter += 1;
     this.#lockOrder.set(team, this.#lockCounter);
-    return { ok: true, lockOrder: this.#lockCounter, board: this.boardFor(team) };
+    const out = { ok: true, lockOrder: this.#lockCounter, board: this.boardFor(team) };
+    if (this.allLocked() && this.onAllLocked) {
+      this.onAllLocked();
+      out.closed = true;
+    }
+    return out;
   }
 
   isLocked(team) { return this.#lockOrder.has(team); }
@@ -372,6 +382,12 @@ class SplitBriefTrial extends Trial {
       }
     }
     return null;
+  }
+
+  /* Close the trial: fire the twist first if it has not fired yet, then run and rank. */
+  closeSplitBrief(round, teams = this.#teams) {
+    if (!this.#twistFired) this.fireTwist(teams);
+    return this.runTrial(round, teams);
   }
 
   /* +2 per correct task picked, +1 if both tasks are correct and in exact order. Max 5; empty scores 0. */
@@ -411,6 +427,7 @@ class SplitBriefTrial extends Trial {
       lockCounter: this.#lockCounter,
       twistHolders: [...this.#twistHolders].map(([t, p]) => [t.id, p.id]),
       twistFired: this.#twistFired,
+      twistDeadline: this.#twistDeadline,
     };
   }
 
@@ -427,6 +444,7 @@ class SplitBriefTrial extends Trial {
     t.#lockCounter = data.lockCounter || 0;
     t.#twistHolders = new Map((data.twistHolders || []).map(([tId, pId]) => [teamById.get(tId), byId.get(pId)]));
     t.#twistFired = !!data.twistFired;
+    t.#twistDeadline = data.twistDeadline ?? null;
     t.ranking = data.ranking ? data.ranking.map(r => ({ ...r, team: teamById.get(r.team) })) : null;
     return t;
   }
@@ -582,6 +600,8 @@ SplitBriefTrial.MAX_NOTE_CHARS = 80;
 SplitBriefTrial.MAX_NOTES = 3;
 SplitBriefTrial.MAX_BOARD_TASKS = 2;
 SplitBriefTrial.MAX_SCORE = 5;
+SplitBriefTrial.TRIAL_SECONDS = 180;
+SplitBriefTrial.TWIST_SECONDS = 90;
 JudgedTrial.MAX_CHARS = 300;          // submission length
 JudgedTrial.MAX_PROMPT_CHARS = 200;   // custom host prompt length
 JudgedTrial.WRITING_SECONDS = 180;    // writing timer: 3 minutes
