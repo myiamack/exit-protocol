@@ -12,6 +12,10 @@ Updated Nov 8, 2026. One place that points to everything about the game. Game de
 | Character system (Pixel Intern builder, instructors, tools, cursor, holograms + ghosts) | https://claude.ai/artifact/KmNvHPM9t5TCwa4N3cqBNZ | `pages/character-system.html` |
 | Character concepts (6 original directions) | https://claude.ai/artifact/RzYThjbpPVeRSHqhfVXmsc | `pages/character-concepts.html` |
 
+## Level 2 & architecture docs
+- `docs/game-report.md`: High-level report on how Level 1, rules, ghosts/tea guests, and trials work today.
+- `docs/level2-progress.md`: Step-by-step build plan and progress tracker for Level 2 (Split Brief).
+
 The .html copies are snapshots from Nov 8, 2026. Open a file in a browser to run it.
 
 ## Rules summary

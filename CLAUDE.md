@@ -419,3 +419,66 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - Balance depends on trial win rate, guessing skill, and how players spend points. Package A meets 1 to 3 points only at about a 50% win rate with random guessing.
 - With 0 Contrarians, Independents cannot complete Auditor.
 - Sabotage victims graduate much less often than others. Known and accepted for now.
+
+## Level 2 work rules (for every agent)
+
+- Level 2 is built one step at a time from docs/level2-progress.md. Do one step per task, then stop.
+- At the start of every task, read CLAUDE.md, docs/level2-progress.md, and docs/game-report.md.
+- CLAUDE.md is the source of truth for rules. If code and CLAUDE.md disagree, stop and report it. Do not guess.
+- After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only when the step touches screen code (`game.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`).
+- Never save a new baseline unless the step says so. Explain any baseline change before saving.
+- Give a short progress report before long test runs finish.
+- At the end of every step: update `docs/level2-progress.md` (mark the step done, list files changed, test results, any open issues), commit on `level2-split-brief`, and push.
+- Do not edit `docs/design/Mock_Interview*` (partner's file).
+- Do not change Level 1 behavior unless the step says so.
+
+## Level 2 trial: Split Brief
+
+- Level 2 uses a new trial kind, Split Brief. Cost 3, paid in Collaboration (already in `Round.LEVELS`). Same light stat influence as other trials (`rankWithInfluence`).
+- Every team gets the same scenario. The brief has 5 cards, dealt round-robin to the team's active players (not Stuck, not idle). Small teams hold extra cards.
+- Cards are private. Only the holder sees them.
+- Talking out loud is allowed. Team notes exist for remote players and bots.
+- Team notes: active players can post to their own team's feed. 80 characters max per note. 3 notes per player per trial, with a "notes left" counter. Notes show the poster's name. Only that team sees its feed.
+- Board: 4 backlog tasks. The team picks 2 and orders them (slot 1, slot 2). Any active teammate can edit.
+- Lock In: any active player can lock their team's board. Lock In is final; the board freezes for the whole team. Early lock-in is allowed.
+- Ghosted Teammate twist: at the 90 second mark, one random active player on each team gets the twist card as a popup ("Breaking news. Only you got this."). Only that player sees it. It still fires for teams that already locked in.
+- Timer: 180 seconds. The trial closes early when every team has locked in. The board at lock-in or timer end is scored.
+- Scoring, against the post-twist answer key: +2 per correct task picked, +1 if both tasks are correct and in the correct order. Max 5. An empty board scores 0.
+- A team with only bots gets a random base score from 0 to 5 (same idea as Level 1).
+- Ranking: score after influence, then earliest lock-in, then random. Top half win (`Trial.winners`).
+- Bots: post an accurate pre-written note for each card they hold at a random time in the first 30 seconds. A bot holding the twist posts it as a note within 10 seconds. Bots never edit the board or lock in. Bot notes count toward the 3-note cap.
+
+### Scenario: Medline Sprint 1 Demo
+- **Tasks:**
+  - **A** Build the login page (3 days).
+  - **B** Write the client status report (1 day).
+  - **C** Import Medline data (2 days).
+  - **D** Build the dashboard (2 days).
+- **Cards:**
+  1. **Deadline:** "Demo is in 4 work days. Only finished tasks count."
+  2. **Must-have:** "Client: 'We must see the dashboard at the demo.'"
+  3. **Blocker:** "The dashboard needs real data. Data import must finish first."
+  4. **Scope:** "Login is not in scope for Sprint 1."
+  5. **Red herring:** "Marketing loves long status reports. Do one if you can."
+- **Pre-twist answer:** C then D.
+- **Twist card:** "Data vendor is down. Import can't start this sprint. Client will accept the dashboard with sample data. Send them a status report after the dashboard explaining the change."
+- **Post-twist answer (scored):** D then B.
+
+## Per-level clues, briefing, and end screen
+
+- Ghosts and the tea guest give clues during the Lobby and Open Floor, same as Level 1 (walk up, Listen or Network, only that player sees it, text only, no rule effect). Their text comes from a per-level hint table, not hardcoded text. Level 1 text stays exactly as it is now.
+- Level 2 hints:
+  - `ATTEMPT_01`: "We locked our plan in early. Then the client changed everything."
+  - `NULL`: "Not every note is true. Check who wrote it."
+  - `USER_???`: "The news comes halfway through. Only one of you hears it first."
+  - Tea guest: "On my first sprint, we committed to a plan on day one. Halfway through, our vendor went down and the plan was dead. Now I wait for the news before I commit. And whoever hears it first tells everyone."
+- Level 2 briefing:
+  - Header: "System Briefing · Level 2"
+  - Title: "Sprint 1: Back-Plan the Demo"
+  - Tests: Collaboration, cost 3
+  - Memo: "Medline wants a demo in 4 days. Your team has more work than time. Each of you holds part of the client brief. Share what you know, pick the 2 tasks that matter, and put them in order. Plans change. Stay alert."
+  - Weeks: Weeks 2–4 (Sep 8 – Sep 25)
+  - Workshops: LW3A Perception vs. Intent · LW3B Roles + Handoff · BW3B Prioritize Under Pressure · W3A 14-Week Budget · BW4A Credibility in Writing · BW4B Tell the Story · LW4A Act on Purpose Under Pressure · W4A Emotional Patterns Map
+- The host script (`FAC`) gets per-level entries. Level 2 entries say: Collaboration, cost 3, Split Brief.
+- After Level 1's Stats Update, the browser continues to Level 2 (`G.startNextRound`, then the Briefing screen).
+- After Level 2's Stats Update, show a "Sprint 1 Complete" screen: your Level 1 and Level 2 trial results (win/loss), hearts left, glitch count (`x/2`), status, your 5 attributes; your team name and trial wins out of 2; all teams ranked by trial wins; a "Level 3 locked" card with Replay and Back to sign-in buttons. Never show work styles or secret path progress on this screen.
