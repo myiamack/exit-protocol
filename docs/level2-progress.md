@@ -20,10 +20,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (21 modules) and `npm test` (9/9 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`; 9/9 assertions in `check_scenarios.js`).
 - **Open issues:** None.
 
-### Step 2: SplitBriefTrial class (Effort: High) — TODO
+### Step 2: SplitBriefTrial class (Effort: High) — DONE
 - **Goal:** New `Trial` subclass with round-robin dealing, private cards, team notes (80 chars, 3 per player, named), 2-slot board, final Lock In, twist card, scoring (0-5), bot-only random 0-5, ranking ties (score -> earliest lock-in -> random), and `toJSON`/`fromJSON`. Not wired into `Game` yet.
 - **Done when:** Unit tests cover dealing, notes cap/length, board edits, Lock In, twist, scoring, tie-breaking, and save/load.
 - **Tests:** `npm run build`, `npm test`, and new unit tests.
+- **Files changed:** `rules/Trial.js`, `rules/rules.bundle.js`, `Tests/check_split_brief.js`, `Tests/baseline/check_split_brief.txt`, `tools/baseline.js`, `docs/level2-progress.md`.
+- **Test results:** `npm run build` (21 modules) and `npm test` (10/10 checks passed: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`; 47/47 assertions in `check_split_brief.js`).
+- **Open issues:** None.
 
 ### Step 3: Timer and twist timing (Effort: Medium) — TODO
 - **Goal:** 180s trial timer, twist at 90s, early close when all teams lock in, deadlines saved per the save/load rule.

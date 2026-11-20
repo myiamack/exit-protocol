@@ -19,6 +19,7 @@ const TESTS = [
   "check_cheese",
   "check_save",
   "check_scenarios",
+  "check_split_brief",
 ];
 
 function runTest(name) {

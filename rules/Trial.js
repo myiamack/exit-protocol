@@ -7,6 +7,7 @@
    Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
      JudgedTrial Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
    Rule code only. No screen code. Works in the browser and in Node. */
+import { Scenarios } from "./scenarios.js";
 import { Vote } from "./Vote.js";
 
 
@@ -66,14 +67,14 @@ class Trial {
     return new Map(teams.map(t => [t, avg.has(t) ? Trial.INFLUENCE * (avg.get(t) - all) : 0]));
   }
 
-  /* Rank by base + influence. Ties random. */
-  rankWithInfluence(round, teams, baseOf) {
+  /* Rank by base + influence. Ties random after any extraKeys. */
+  rankWithInfluence(round, teams, baseOf, extraKeys = []) {
     const inf = Trial.influence(round, teams);
     const entries = teams.map(team => {
       const base = baseOf(team);
       return { team, base, influence: inf.get(team), score: base + inf.get(team) };
     });
-    return this.sortBy(entries, [e => e.score]);
+    return this.sortBy(entries, [e => e.score, ...extraKeys]);
   }
 
   /* A random whole number from 0 to 7 (same range as the SOP score). */
@@ -98,6 +99,8 @@ class Trial {
     if (data.kind === "sop") {
       t = new SopTrial(rng);
       t.scores = new Map(data.scores.map(([id, s]) => [teamById.get(id), s]));
+    } else if (data.kind === "splitBrief") {
+      t = SplitBriefTrial.fromJSON(data, { rng, teams, byId });
     } else if (data.kind === "judged") {
       t = new JudgedTrial(rng, data.level);
       t.prompt = data.prompt;
@@ -190,6 +193,243 @@ SopTrial.ENDLESS = "Repeat step 1 until performance is satisfactory";
 /* Levels 2-4 for now: random whole number 0 to 7 plus light influence. */
 class AutoTrial extends Trial {
   rank(round, teams) { return this.rankWithInfluence(round, teams, () => this.randomBase()); }
+}
+
+function scenarioById(id) {
+  return Object.values(Scenarios).find(s => s.id === id) || Scenarios.MEDLINE_SPRINT_1;
+}
+
+/* Level 2: Split Brief. Private cards dealt round-robin, team notes, shared 2-slot board,
+   final Lock In, and Ghosted Teammate twist. */
+class SplitBriefTrial extends Trial {
+  #scenario;
+  #teams = [];
+  #dealt = false;
+  #deals = new Map();        // Player -> string[] card ids
+  #notes = new Map();        // Team -> [{ posterId, posterName, text, order }]
+  #notesUsed = new Map();    // Player -> number
+  #boards = new Map();       // Team -> string[] task ids
+  #lockOrder = new Map();    // Team -> number
+  #lockCounter = 0;
+  #twistHolders = new Map(); // Team -> Player
+  #twistFired = false;
+
+  constructor(rng, scenario = Scenarios.MEDLINE_SPRINT_1) {
+    if (typeof rng !== "function") throw new Error("SplitBriefTrial requires a seeded rng.");
+    super(rng);
+    this.#scenario = scenario || Scenarios.MEDLINE_SPRINT_1;
+  }
+
+  get kind() { return "splitBrief"; }
+  get scenario() { return this.#scenario; }
+  get twistFired() { return this.#twistFired; }
+
+  #shuffle(list) {
+    const out = list.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  #teamOf(player) { return this.#teams.find(t => t.has(player)) || null; }
+  #cardById(id) { return this.#scenario.cards.find(c => c.id === id) || null; }
+  #validTaskIds() { return new Set(this.#scenario.tasks.map(t => t.id)); }
+
+  #activeWhy(player, verb) {
+    if (!player) return "Unknown player.";
+    if (player.isStuck()) return "Stuck players cannot " + verb + ".";
+    if (player.idle) return "Idle players cannot " + verb + ".";
+    if (!player.isActive()) return "Only active players can " + verb + ".";
+    return null;
+  }
+
+  #baseScore(team) {
+    if (team.members.some(p => !p.isBot)) {
+      return SplitBriefTrial.score(this.boardFor(team), this.#scenario.postTwistAnswer);
+    }
+    return Math.floor(this.rng() * (SplitBriefTrial.MAX_SCORE + 1));
+  }
+
+  /* Deal the scenario's cards round-robin to each team's active players in random seat order. */
+  deal(teams) {
+    if (this.#dealt) throw new Error("Cards were already dealt.");
+    this.#teams = teams.slice();
+    this.#dealt = true;
+    const cards = this.#scenario.cards;
+    for (const team of this.#teams) {
+      this.#boards.set(team, []);
+      this.#notes.set(team, []);
+      for (const p of team.members) {
+        this.#deals.set(p, []);
+        this.#notesUsed.set(p, 0);
+      }
+      const active = team.active();
+      if (!active.length) continue;
+      const seats = this.#shuffle(active);
+      for (let i = 0; i < cards.length; i++) {
+        this.#deals.get(seats[i % seats.length]).push(cards[i].id);
+      }
+    }
+  }
+
+  /* Private view: returns only the asking player's cards. */
+  cardsFor(player) {
+    return (this.#deals.get(player) || []).map(id => ({ ...this.#cardById(id) }));
+  }
+
+  /* Team notes: active players only, max 80 chars, non-empty, max 3 per player, allowed after Lock In. */
+  postNote(player, text) {
+    const team = this.#teamOf(player);
+    const used = this.#notesUsed.get(player) || 0;
+    const t = String(text == null ? "" : text).trim();
+    const why = (this.ranking ? "The trial is closed." : null) ||
+      (!team ? "Player is not in this trial." : null) ||
+      this.#activeWhy(player, "post notes") ||
+      (used >= SplitBriefTrial.MAX_NOTES ? "No notes left." : null) ||
+      (!t ? "Write a note first." : null) ||
+      (t.length > SplitBriefTrial.MAX_NOTE_CHARS
+        ? "Note too long: " + t.length + " of " + SplitBriefTrial.MAX_NOTE_CHARS + " characters."
+        : null);
+    if (why) return { ok: false, reason: why };
+    const list = this.#notes.get(team);
+    const note = { posterId: player.id, posterName: player.name, text: t, order: list.length + 1 };
+    list.push(note);
+    this.#notesUsed.set(player, used + 1);
+    return { ok: true, note: { ...note }, notesLeft: SplitBriefTrial.MAX_NOTES - (used + 1) };
+  }
+
+  notesLeft(player) {
+    return Math.max(0, SplitBriefTrial.MAX_NOTES - (this.#notesUsed.get(player) || 0));
+  }
+
+  notesFor(team) {
+    return (this.#notes.get(team) || []).map(n => ({ ...n }));
+  }
+
+  boardFor(team) {
+    return (this.#boards.get(team) || []).slice();
+  }
+
+  /* Set team's ordered 0 to 2 task ids. Rejected after team Lock In. */
+  setBoard(player, taskIds) {
+    const team = this.#teamOf(player);
+    const validIds = this.#validTaskIds();
+    const why = (this.ranking ? "The trial is closed." : null) ||
+      (!team ? "Player is not in this trial." : null) ||
+      this.#activeWhy(player, "edit the board") ||
+      (this.#lockOrder.has(team) ? "Your team already locked in." : null) ||
+      (!Array.isArray(taskIds) ? "Not a valid board." : null) ||
+      (taskIds.length > SplitBriefTrial.MAX_BOARD_TASKS
+        ? "Pick at most " + SplitBriefTrial.MAX_BOARD_TASKS + " tasks."
+        : null) ||
+      (taskIds.some(id => !validIds.has(id)) ? "Not a valid task." : null) ||
+      (new Set(taskIds).size !== taskIds.length ? "Duplicate tasks are not allowed." : null);
+    if (why) return { ok: false, reason: why };
+    this.#boards.set(team, taskIds.slice());
+    return { ok: true, board: taskIds.slice() };
+  }
+
+  /* Any active teammate locks the team's board permanently, recording sequential lock order. */
+  lockIn(player) {
+    const team = this.#teamOf(player);
+    const why = (this.ranking ? "The trial is closed." : null) ||
+      (!team ? "Player is not in this trial." : null) ||
+      this.#activeWhy(player, "lock in") ||
+      (this.#lockOrder.has(team) ? "Your team already locked in." : null);
+    if (why) return { ok: false, reason: why };
+    this.#lockCounter += 1;
+    this.#lockOrder.set(team, this.#lockCounter);
+    return { ok: true, lockOrder: this.#lockCounter, board: this.boardFor(team) };
+  }
+
+  isLocked(team) { return this.#lockOrder.has(team); }
+  lockOrderOf(team) { return this.#lockOrder.get(team) || null; }
+  allLocked(teams = this.#teams) { return teams.length > 0 && teams.every(t => this.#lockOrder.has(t)); }
+
+  /* Picks one random active player per team (including locked teams). Fires once only. */
+  fireTwist(teams = this.#teams) {
+    if (this.#twistFired || this.ranking) return false;
+    this.#twistFired = true;
+    for (const team of teams) {
+      const active = team.active();
+      if (!active.length) continue;
+      const chosen = active[Math.floor(this.rng() * active.length)];
+      this.#twistHolders.set(team, chosen);
+    }
+    return true;
+  }
+
+  /* Returns the twist card only for the chosen holder on each team, null for everyone else. */
+  twistFor(player) {
+    if (!this.#twistFired) return null;
+    const team = this.#teamOf(player);
+    if (team) return this.#twistHolders.get(team) === player ? { ...this.#scenario.twist } : null;
+    if (!this.#teams.length) {
+      for (const holder of this.#twistHolders.values()) {
+        if (holder === player) return { ...this.#scenario.twist };
+      }
+    }
+    return null;
+  }
+
+  /* +2 per correct task picked, +1 if both tasks are correct and in exact order. Max 5; empty scores 0. */
+  static score(board, answer = Scenarios.MEDLINE_SPRINT_1.postTwistAnswer) {
+    if (!Array.isArray(board) || board.length === 0) return 0;
+    const picked = [...new Set(board)].slice(0, SplitBriefTrial.MAX_BOARD_TASKS);
+    const correct = picked.filter(id => answer.includes(id)).length;
+    const exactOrder = picked.length === answer.length && answer.every((id, i) => picked[i] === id);
+    return correct * 2 + (exactOrder ? 1 : 0);
+  }
+
+  /* Rank by score after influence, then earlier lock order (unlocked after locked), then random. */
+  rank(round, teams) {
+    const ranked = this.rankWithInfluence(
+      round,
+      teams,
+      t => this.#baseScore(t),
+      [
+        e => (this.#lockOrder.has(e.team) ? 1 : 0),
+        e => (this.#lockOrder.has(e.team) ? -this.#lockOrder.get(e.team) : 0),
+      ]
+    );
+    return ranked.map(e => ({ ...e, lockOrder: this.#lockOrder.get(e.team) || null }));
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      scenarioId: this.#scenario.id,
+      dealt: this.#dealt,
+      teamIds: this.#teams.map(t => t.id),
+      deals: [...this.#deals].map(([p, ids]) => [p.id, ids.slice()]),
+      notes: [...this.#notes].map(([t, list]) => [t.id, list.map(n => ({ ...n }))]),
+      notesUsed: [...this.#notesUsed].map(([p, n]) => [p.id, n]),
+      boards: [...this.#boards].map(([t, ids]) => [t.id, ids.slice()]),
+      lockOrder: [...this.#lockOrder].map(([t, n]) => [t.id, n]),
+      lockCounter: this.#lockCounter,
+      twistHolders: [...this.#twistHolders].map(([t, p]) => [t.id, p.id]),
+      twistFired: this.#twistFired,
+    };
+  }
+
+  static fromJSON(data, { rng, teams, byId, scenario } = {}) {
+    const teamById = new Map(teams.map(t => [t.id, t]));
+    const t = new SplitBriefTrial(rng, scenario || scenarioById(data.scenarioId));
+    t.#dealt = !!data.dealt;
+    t.#teams = (data.teamIds || []).map(id => teamById.get(id)).filter(Boolean);
+    t.#deals = new Map((data.deals || []).map(([id, cards]) => [byId.get(id), cards.slice()]));
+    t.#notes = new Map((data.notes || []).map(([id, list]) => [teamById.get(id), list.map(n => ({ ...n }))]));
+    t.#notesUsed = new Map((data.notesUsed || []).map(([id, n]) => [byId.get(id), n]));
+    t.#boards = new Map((data.boards || []).map(([id, ids]) => [teamById.get(id), ids.slice()]));
+    t.#lockOrder = new Map((data.lockOrder || []).map(([id, n]) => [teamById.get(id), n]));
+    t.#lockCounter = data.lockCounter || 0;
+    t.#twistHolders = new Map((data.twistHolders || []).map(([tId, pId]) => [teamById.get(tId), byId.get(pId)]));
+    t.#twistFired = !!data.twistFired;
+    t.ranking = data.ranking ? data.ranking.map(r => ({ ...r, team: teamById.get(r.team) })) : null;
+    return t;
+  }
 }
 
 /* Levels 5-6 prompts. Fixed, reviewed list (placeholders; the team may change them). */
@@ -338,12 +578,17 @@ class JudgedTrial extends Trial {
 
 Trial.INFLUENCE = 0.5;
 Trial.MAX_BASE = 7;
+SplitBriefTrial.MAX_NOTE_CHARS = 80;
+SplitBriefTrial.MAX_NOTES = 3;
+SplitBriefTrial.MAX_BOARD_TASKS = 2;
+SplitBriefTrial.MAX_SCORE = 5;
 JudgedTrial.MAX_CHARS = 300;          // submission length
 JudgedTrial.MAX_PROMPT_CHARS = 200;   // custom host prompt length
 JudgedTrial.WRITING_SECONDS = 180;    // writing timer: 3 minutes
 JudgedTrial.BOT_ANSWER = "Bot answer";
 Trial.SopTrial = SopTrial;
 Trial.AutoTrial = AutoTrial;
+Trial.SplitBriefTrial = SplitBriefTrial;
 Trial.JudgedTrial = JudgedTrial;
 
 export { Trial };
