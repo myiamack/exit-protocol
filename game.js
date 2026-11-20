@@ -23,7 +23,7 @@ function setRain(level){
 addEventListener("resize",()=>{if(sized){sizeRain();if(!rainOn)staticRain()}});
 
 /* ---------- data ---------- */
-const A=[{k:"focus",n:"Focus"},{k:"initiative",n:"Initiative"},{k:"collab",n:"Collaboration"},{k:"composure",n:"Composure"},{k:"grit",n:"Grit"}];
+const A=[{k:"focus",n:"Focus"},{k:"collab",n:"Collaboration"},{k:"initiative",n:"Initiative"},{k:"grit",n:"Grit"},{k:"composure",n:"Composure"}];
 const AN=Object.fromEntries(A.map(a=>[a.k,a.n]));
 /* Rule data lives in rules/*.js. These tables only add display text. */
 const TYPE_TEXT={
@@ -267,7 +267,7 @@ const maxOf=k=>S.type?T().ct.max(k):EP.CharacterType.MAX;
 const spendLeft=()=>EP.Player.spendLeft(S.spend);
 const fmt=x=>Math.floor(Math.max(0,x)/60)+":"+String(Math.max(0,x)%60).padStart(2,"0");
 function cleanName(v){return v.replace(/[^A-Za-z0-9 ]/g,"").replace(/\s{2,}/g," ").replace(/^\s+/,"").slice(0,16)}
-const status=()=>ME?ME.flag():"OK";
+const status=()=>ME?ME.boardStatus():"Active";
 const flag=s=>`<span class="flag ${s==="At risk"?"risk":s}">${s}</span>`;
 const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3.2 12A5.3 5.3 0 0 1 12 4.6 5.3 5.3 0 0 1 20.8 12Z" fill="${on?"#e0394d":"#3a1520"}" stroke="#0b0e13" stroke-width="2.4" stroke-linejoin="round"/>${on?'<path d="M7 8.5a2.5 2.5 0 0 1 3-1.5" stroke="#ffb3bd" stroke-width="1.8" fill="none" stroke-linecap="round"/>':""}</svg>`;
 /* Timers live in Game (Part 13): each timed step has a deadline. The countdown reads it.
@@ -397,7 +397,7 @@ function badgeCard(){const idn=String(((S.name.length*37)+S.email.length*11)%900
 function packet(){return `<div style="display:grid;gap:12px">
   <div class="memo"><span class="label">Onboarding packet · Cycle 60</span><p>You've been given a second chance: a 14-week tech internship. Everything here looks normal. Learn fast, support your team and pass each review. Complete all 7 phases and pass your final <b>Performance Review</b> to exit. Interns who don't qualify are kept on for another contract.</p>
   <p style="font-family:var(--code);font-size:1.2rem;color:var(--red2)">&gt; note: exit_conditions could not be located. Continue anyway.</p></div>
-  <div class="cols"><div class="panel"><span class="chip b">5 attributes</span><p>Focus, Initiative, Collaboration, Composure and Grit. Each review tests one and costs points from it.</p></div>
+  <div class="cols"><div class="panel"><span class="chip b">5 attributes</span><p>Focus, Collaboration, Initiative, Grit and Composure. Each review tests one and costs points from it.</p></div>
   <div class="panel"><span class="chip r">3 hearts</span><p>They cover you when an attribute runs short. Refill 1 per round.</p></div>
   <div class="panel"><span class="chip p">Glitches</span><p>Below 0 and you glitch. A teammate's gift can save you. Glitch twice and you're stuck.</p></div>
   <div class="panel"><span class="chip g">To exit</span><p>By Level 7: ${EP.Player.GRAD_TOTAL}+ total points, every attribute ${EP.Player.GRAD_MIN}+, not stuck.</p></div></div>
@@ -451,11 +451,11 @@ ${S.type?`<div class="row" style="justify-content:space-between"><h3>Spend your 
   <span class="step"><button class="minus" data-dec="${a.k}" aria-label="Lower ${a.n}" ${!P.canLower(S.spend,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-inc="${a.k}" aria-label="Raise ${a.n}" ${!P.canRaise(S.type,S.spend,a.k)?"disabled":""}>+</button></span>
   <span class="fin">final ${P.startValue(S.type,S.spend,a.k)}</span></div>`}).join("")}</div>`:""}`};
 
-function personRow(p,me){return `<div class="person"><span class="who">${avatarSVG(p.av,{head:true,label:p.n})}${esc(p.n)}${me?' <span class="tag m">you</span>':""}</span>${flag(p.st||"OK")}</div>`}
+function personRow(p,me){return `<div class="person"><span class="who">${avatarSVG(p.av,{head:true,label:p.n})}${esc(p.n)}${me?' <span class="tag m">you</span>':""}</span>${flag(p.st||"Active")}</div>`}
 V[4]=()=>{const t=T();if(!S.arrived)return elevatorScene();return `<div class="row" style="justify-content:space-between"><div><span class="chip b">Lobby · Code ${esc(S.code)}</span><h2 style="margin-top:8px">Floor 60 · Find your team</h2></div><span class="hint">Your team is waiting in All Skate. Explore while the intermission runs.</span></div>
 ${worldHTML("lobby")}
 <div class="cols">
-  <div class="panel"><span class="label">Team Kestrel</span><div class="roster">${personRow({n:S.name,av:S.av,st:status()},true)}${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>
+  <div class="panel"><span class="label">Team Kestrel</span><div class="roster">${personRow({n:S.name,av:S.av,st:status()},true)}${TEAM.map(p=>personRow({...p,st:MATE(p.n).boardStatus()})).join("")}</div></div>
   <div class="panel"><span class="label">Secret path · ${t.path} <span class="tag s">${t.n}</span></span><p>${t.pathDesc}</p><span class="hint">Progress ${ME.pathProgress} / ${t.goal}. Only you can see this.</span></div>
   ${G&&G.level===7?`<div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>`:""}
 </div>`};
@@ -570,7 +570,7 @@ function gwClosedText(){
   return "Window closed. No glitch for you this round."}
 /* Gift buttons for every teammate (Open Floor and gift window). Stuck players are spectators. */
 const GIFT_RULE="They choose Accept or Decline. Accepted points go to their glitching attribute if they are Glitching, otherwise to their lowest attribute with room. You don't pick the attribute. If they decline, or don't answer before this step ends, your hearts come back.";
-function giftRoster(){return `<p class="hint">${GIFT_RULE}</p><div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.flag())}${!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n),why=EP.Gift.check(ME,q,MYTEAM,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${why?`disabled title="${esc(why)}"`:""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`}
+function giftRoster(){return `<p class="hint">${GIFT_RULE}</p><div class="roster">${MYTEAM.mates(ME).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.boardStatus())}${!q.isStuck()?[1,2].map(n=>{const c=EP.Gift.cost(ME,n),why=EP.Gift.check(ME,q,MYTEAM,n);return `<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${n}" ${why?`disabled title="${esc(why)}"`:""}>Gift ${n} (${c} heart${c>1?"s":""})</button>`}).join(""):""}</span></div>`).join("")}</div>`}
 const plural=(n,w)=>`${n} ${w}${n===1?"":"s"}`;
 function giftMsg(q,pts,g){
   /* An automatic refusal (Independent) reads exactly like a normal decline. Never mention the type. */
@@ -610,13 +610,11 @@ function sprint1CompleteScreen(){
   const lv2Win=!!MYTEAM.won;
   const lv1Win=MYTEAM.trialWins-(lv2Win?1:0)>0;
   const teams=[...G.teams].sort((a,b)=>b.trialWins-a.trialWins);
-  const st=status()==="OK"?"Active":status();
-  const attrs=["focus","collab","initiative","grit","composure"].map(k=>A.find(a=>a.k===k));
   return `<div><span class="chip g">Sprint 1 Complete</span><h2 style="margin-top:8px">Sprint 1 Complete, ${esc(S.name)}</h2></div>
   <div class="cols">
     <div class="panel"><span class="label">Your trial results</span><div class="row" style="justify-content:space-between"><span>Level 1 · Boot Up</span><b style="color:${lv1Win?"var(--ok)":"var(--bad)"}">${lv1Win?"WIN":"LOSS"}</b></div><div class="row" style="justify-content:space-between"><span>Level 2 · Sprint 1</span><b style="color:${lv2Win?"var(--ok)":"var(--bad)"}">${lv2Win?"WIN":"LOSS"}</b></div></div>
-    <div class="panel"><span class="label">Your status</span><span class="hint">Hearts: ${ME.hearts.count}/${EP.Hearts.CAP} · Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}</span>${flag(st)}</div>
-    <div class="panel"><span class="label">Your 5 attributes</span>${attrs.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
+    <div class="panel"><span class="label">Your status</span><span class="hint">Hearts: ${ME.hearts.count}/${EP.Hearts.CAP} · Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}</span>${flag(status())}</div>
+    <div class="panel"><span class="label">Your 5 attributes</span>${A.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
   </div>
   <div class="panel"><span class="label">Your team</span><p><b>${esc(MYTEAM.name)}</b> · ${MYTEAM.trialWins} / 2 trial wins</p></div>
   <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${teams.map((tm,i)=>`<tr><td class="n">${i+1}</td><td>${esc(tm.name)}${tm===MYTEAM?" (you)":""}</td><td class="n">${tm.trialWins} / 2</td></tr>`).join("")}</tbody></table></div>

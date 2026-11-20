@@ -61,8 +61,14 @@ async function fullscreen() {
   check("blocked by the browser: nothing happens, no error", !FS.el && isEnter() && errors.length === before, b.textContent);
 }
 
+const ATTR_ORDER = ["Focus", "Collaboration", "Initiative", "Grit", "Composure"];
+const noOkFlags = () => $$(".flag").every(el => el.textContent.trim() !== "OK");
 async function creation(type = "coop") {
   $('[data-type="' + type + '"]').click(); await sleep(30);
+  if (type === "coop") {
+    const cAttrs = $$(".buy .brow .nm").map(el => ATTR_ORDER.find(a => el.textContent.startsWith(a)));
+    check("character creation lists attributes in standard order", JSON.stringify(cAttrs) === JSON.stringify(ATTR_ORDER), cAttrs.join(", "));
+  }
   while (true) { const b = $$("[data-inc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
   next(); await sleep(50);
   for (let i = 0; i < 40 && !/Start Level 1/.test($("#navNext").textContent); i++) { next(); await sleep(200); }
@@ -94,6 +100,9 @@ async function fullSevenLevelGame() {
   await sleep(50);
   await creation("coop");
   check("full game starts at Lobby ready for Level 1", /Start Level 1/.test($("#navNext").textContent));
+  const hudAttrs = $$("#hud .attr .top span:first-child").map(el => el.textContent.trim());
+  check("HUD lists attributes in standard order", JSON.stringify(hudAttrs) === JSON.stringify(ATTR_ORDER), hudAttrs.join(", "));
+  let anyOkFlag = !noOkFlags();
   next(); await sleep(30); // -> Level 1 Briefing
 
   const seenBriefings = [];
@@ -258,12 +267,12 @@ async function fullSevenLevelGame() {
     for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
     next(); await sleep(30); // Lock in points -> roundDone
     if (lv === 2) {
-      const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, hearts: ME.hearts.count, glitches: ME.glitches, status: ME.flag() })');
+      const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, hearts: ME.hearts.count, glitches: ME.glitches, status: ME.boardStatus() })');
       const s1Text = $("#stage").textContent;
-      const statusOk = s1.status === "OK" ? (s1Text.includes("Active") && !/\bOK\b/.test(s1Text)) : s1Text.includes(s1.status);
+      const statusOk = s1Text.includes(s1.status) && !/\bOK\b/.test(s1Text);
       const attrPanel = $$("#stage .panel").find(p => p.textContent.includes("Your 5 attributes"));
       const attrText = attrPanel ? attrPanel.textContent : "";
-      const attrIdx = ["Focus", "Collaboration", "Initiative", "Grit", "Composure"].map(n => attrText.indexOf(n));
+      const attrIdx = ATTR_ORDER.map(n => attrText.indexOf(n));
       const attrOrderOk = attrIdx.every((p, i) => p >= 0 && (i === 0 || p > attrIdx[i - 1]));
       const hasSprint1 = s1Text.includes("Sprint 1 Complete") &&
         s1Text.includes("Level 1") && s1Text.includes("Level 2") &&
@@ -278,12 +287,20 @@ async function fullSevenLevelGame() {
       check("Sprint 1 Complete screen appears after Level 2 Stats Update", hasSprint1);
       const leaksTypeOrPath = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i.test(s1Text);
       check("Sprint 1 Complete screen hides work style and secret path", !leaksTypeOrPath, leaksTypeOrPath ? "leaked" : "clean");
+      w.eval("ME.idle = true; render();");
+      const idleText = $("#stage").textContent;
+      check("Idle player shows Idle (not Active) on Sprint 1 Complete screen", idleText.includes("Idle") && !/\bActive\b/.test(idleText));
+      w.eval("ME.idle = false; render();");
+      if (!noOkFlags()) anyOkFlag = true;
       w.eval("startNextLevel()"); await sleep(30); // -> Level 3 Briefing
     } else {
+      if (!noOkFlags()) anyOkFlag = true;
       check("Level " + lv + " unlocks Level " + (lv + 1), new RegExp("Start Level " + (lv + 1)).test($("#navNext").textContent) && !$("#navNext").disabled);
       next(); await sleep(30); // -> Level lv+1 Briefing
     }
   }
+  if (!noOkFlags()) anyOkFlag = true;
+  check("no screen shows OK as a player status", !anyOkFlag);
   check("All 7 levels displayed unique briefings", new Set(seenBriefings).size === 7, seenBriefings.length + "/7");
 }
 

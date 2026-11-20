@@ -113,7 +113,7 @@ Every import and export in `rules/*.js` must stay on one line, because `tools/bu
 These are rules v2 from my OOAD Class Reference v2, plus changes decided after balance testing. Where this list and the v2 doc disagree, **this list wins**.
 
 ### Character creation
-- 5 attributes: Focus, Initiative, Collaboration, Composure, Grit.
+- 5 attributes: Focus, Collaboration, Initiative, Grit, Composure.
 - Every attribute starts at 1 (5 free points). Player spends 15 more.
 - Type boost: +2 in each of the type's 2 bonus attributes. Starting total 24.
 - Max 10 per attribute. Penalty attribute max **4**. The boost counts toward the max.
