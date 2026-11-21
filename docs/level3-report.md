@@ -370,3 +370,41 @@ Both branches forked from the same parent line (`862d9fa`) and edited 9 of the s
 - **What was built:** Added one rules-first method `Game.jumpToLevel(targetLevel)` in `rules/Game.js` (using `this.hooks`, `this.rng`, and existing step/timer/Mirror rules with zero `Math.random`) and `Bots.hooks.onFastForward(game, phase)` plus idempotency guards (`sabotagesThisRound > 0` in `Bots.openFloor`, `vote.ballots.has(p)` in `Bots.vote`) in `rules/bots.js`, then rebuilt `rules/rules.bundle.js` (23 modules). In `game.js`, placed the shortcut behind one `var DEV_JUMP = true;` flag (`"remove or gate before Base44"`) with `devJumpLevel(e)`, `devJump(n)`, and a bubble-phase `keydown` listener for `Ctrl+Shift+1` to `7` (so `AttendanceView`'s capture listener still swallows keys while an Attendance popup is open). Forward jumps reuse and fast-forward the current `Game`; same-level or backward jumps start a fresh `Game` and fast-forward; all shortcuts land on the target level's Briefing (`V[5]`), with `toJSON`/`fromJSON` save/load and timers ready to continue normally.
 - **Base44 handoff note:** **The dev jump (`DEV_JUMP` in `game.js` and `Game.jumpToLevel` in `rules/Game.js`) must be removed or gated before Base44 deployment.**
 - **Verification:** Added Run 11 (`devJumpCases()`) in `Tests/check_screens.js` covering `DEV_JUMP === true`, jumping from Sign-in, landing and advancing through working screens across all 7 levels (`Ctrl+Shift+1` to `7`, including Level 3 Mirror lobby) without work-style or secret-path leaks, forward jumps keeping the same `Game` (including from mid-Level 3 Showtime), backward/same-level jumps starting a new `Game` (plus partial character creation), post-jump `toJSON`/`fromJSON` save/load + `EP.Rng` determinism, `DEV_JUMP = false` disabling keys, and Attendance popup key swallowing. `npm run build` (23 modules), `npm test` (19/19 checks passed, zero baseline diffs), and `npm run test:screens` (146 passed, 0 failed, 0 console errors) all passed.
+
+## Step 8: Screen tests (branch `level3-mirror`)
+
+- **Tests added (`Tests/check_screens.js`, Run 12 `mirrorStep8Cases`):** No separate new test file was created; 8 tests were added to `Tests/check_screens.js`:
+  1. `"Level 3 mid-lobby save/reload restores countdown, miss speed, and connected bots on stage"`
+  2. `"Level 3 mid-reveal save/reload restores Crew Reveal and catches up into Showtime past deadline"`
+  3. `"Level 3 mid-showtime Setup save/reload restores step, penalties, seeded deck state, and attention on stage"`
+  4. `"Reloaded Level 3 Setup flow completes deck, Q&A, wrap up, and reaches Presentation Day Complete without leaks"`
+  5. `"Level 3 mid-showtime Dance Crew save/reload restores boost, penalties, and setup progress then finishes on bot wrap up"`
+  6. `"Level 3 mid-showtime save/reload past deadline catches up to closed trial result on stage"`
+  7. `"Level 3 live-stage lobby doors-close fail scores 0, shows LOBBY FAILED, and unlocks All-hands"`
+  8. `"Backward and same-level dev jump from mid-Level 3 Dance Showtime cleans up loop and starts fresh Game"`
+- **Test counts & flaky check:**
+  - `npm run build`: passed (23 modules, `rules/rules.bundle.js` unchanged).
+  - `npm test`: `19/19` baseline checks passed.
+  - `npm run test:screens` (Run 1): `154 passed, 0 failed`, `no console errors -> none` (up from `146 passed`).
+  - `npm run test:screens` (Run 2): `154 passed, 0 failed`, `no console errors -> none`.
+  - Flaky tests: **0** (all 154 assertions passed identically on both runs).
+- **Level 3 ranking and cable belt (Patch the Rack) tests in `Tests/check_screens.js`:**
+  - **Level 3 ranking:**
+    - `fullSevenLevelGame` — `"Level 3 trial result screen shows rules score, attention, ranking, tie rule, and team summary"`: expects `#mirrorRankTable tbody tr` rows to match `G.trialRanking()` (`place`, `team.name`, formatted `attention%`, `base / 7`, `"Win"`/`"Loss"`), `#mirrorTieRule` text `"Ties: higher exact attention wins, then random."`, and `"Team WIN/LOSS. Score X of 7."`.
+    - `fullSevenLevelGame` — `"Presentation Day Complete screen appears after Level 3 Stats Update with Level 4 locked"`: expects `#stage table.levels tbody tr` rows to match `G.teamStandings()` (`team.name`, `wins / 3`).
+    - `mirrorStep6eCases` — `"Level 3 result screen matches rules scores, exact attention, and ranking"`: expects 4 `#mirrorRankTable tbody tr` rows matching `gA.trialRanking()` and `"Team WIN/LOSS. Score X of 7."`.
+    - `mirrorStep6eCases` — `"Level 3 result screen shows tie rule line"`: expects `#mirrorTieRule` exact text `"Ties: higher exact attention wins, then random."`.
+    - `mirrorStep6eCases` — `"Level 3 result screen plainly shows lobby-failed teams (other and own)"`: expects lobby-failed row in `#mirrorRankTable` to have `data-fail-reason="lobby"`, `"Failed lobby"`, `"0%"`, `"0 / 7"`, and own lobby-failed screen to show `#mirrorLobbyFailed` (`"LOBBY FAILED"`) and `"Team LOSS. Score 0 of 7."`.
+    - `mirrorStep6eCases` — `"Level 3 result screen shows ROOM EMPTIED when attention hits 0%"`: expects `#mirrorAttnFailed`, `"ROOM EMPTIED"`, `"Score 0 of 7."`, and the team's `#mirrorRankTable` row to include `"Attention 0%"`.
+    - `mirrorStep6eCases` — `"Presentation Day Complete preserves exact L1-L3 history across save/load and renders all required sections"`: expects `#stage table.levels tbody tr` rows to match `gCReloaded.teamStandings()` (`place`, `team.name`, `wins / 3`).
+    - `mirrorStep8Cases` — Reloaded Setup flow, Dance Crew save/reload flow, past-deadline showtime catch-up, and live-stage lobby fail checks: all expect `#mirrorRankTable tbody tr` rows to match `G.trialRanking()` (`place`, `team.name`, `attention%`, `base / 7`, `"Win"`/`"Loss"`); the lobby-fail check also expects `base === 0`, `attention === 0`, `failReason === "lobby"`, `"LOBBY FAILED"`, `"Score 0 of 7."`, and the failed row displaying `Failed lobby`, `0%`, and `0 / 7`.
+  - **Cable belt (Patch the Rack):**
+    - `fullSevenLevelGame` — `"Level 3 Showtime finishes cleanly without leaks"`: when `ME` owns `cables`, ticks `drawTimer()` and clicks matching `[data-cable-port]` whenever `[data-cable-item][data-in-frame="1"]` is in the frame until `cables` finishes.
+    - `mirrorStep6c1Cases` — `"Cables screen shows only for its owner and non-owners see waiting view with progress"`: expects `#mirrorCablesStep` only for slot 0 owner, no hardcoded team names on `[data-cable-port]` buttons, and waiting slot 1 to see `#mirrorWaitingView` with `"Cables"` and `"0 of 4"`.
+    - `mirrorStep6c1Cases` — `"Cables miss reports spark penalty to rules and updates attention bar"`: clicks `[data-cable-port="HDMI"]` at tick 0 (empty belt/frame) and expects `sparks === 1`, `penalties === 3`, attention `-3`, and `#mirrorMsg` containing `"Spark"` and `"3"`.
+    - `mirrorStep6c1Cases` — `"Cables hits report to rules, update waiting progress, and advance frame to Sound"`: ticks belt up to 200 ticks, clicks `[data-cable-port]` matching `[data-cable-item][data-in-frame="1"]`, expects waiting `#mirrorWaitProgress` to show `"1 of 4"` after first connect and all 4 ports to connect and advance to `"sound"`.
+    - `mirrorStep6c2Cases` — `"All 5 Setup steps and wrap up hand off cleanly for 1, 2, and 3 Setup players without leaks"`: runs the same belt hit loop for 1-, 2-, and 3-Setup slot teams, expecting all 4 ports to connect and hand off to `"sound"`.
+- **Notes (out of scope, untouched):**
+  - `#mirrorRankTable` in `mirror-view.js` orders rows using `G.trialRanking()` (which includes Focus influence `base + influence`), while its columns display `Place`, `Team`, `Attention`, `Score` (`base / 7`), and `Result` without showing the Focus influence value.
+  - Clicking a `[data-cable-port]` button on an empty frame/belt calls `G.mirrorCableMiss` (spark `-3`), and `mirrorStep6c1Cases` explicitly relies on that behavior at tick 0.
+  - `mirror-view.js` cable-belt bag shuffling uses `Math.random()` rather than `G.rng`.

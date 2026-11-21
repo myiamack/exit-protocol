@@ -3159,6 +3159,486 @@ async function devJumpCases() {
   }
 }
 
+/* Step 8: Level 3 mid-trial save/reload (lobby, reveal, reveal catch-up, Setup, Dance, showtime catch-up),
+   live-stage lobby doors-close fail, and dev jump cleanup from mid-Level 3 Dance Showtime. */
+async function mirrorStep8Cases() {
+  const res = w.eval(`(() => {
+    const LEAK_RE = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i;
+    const HARDCODED_TEAMS_RE = /Team Kestrel|Team Wren|Team Finch|Team Heron/i;
+    const KEY_BY_DIR = { left: "ArrowLeft", up: "ArrowUp", right: "ArrowRight", down: "ArrowDown" };
+    const formatAtt = val => {
+      const n = Math.max(0, Math.min(100, typeof val === "number" && Number.isFinite(val) ? val : 0));
+      return Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1);
+    };
+    const noOk = () => [...document.querySelectorAll("#stage .flag")].every(el => el.textContent.trim() !== "OK");
+    const stageClean = () => {
+      const txt = (document.querySelector("#stage") || {}).textContent || "";
+      return !LEAK_RE.test(txt) && !/bot/i.test(txt) && noOk();
+    };
+    const rankTableMatches = game => {
+      const rank = game.trialRanking();
+      const rows = [...document.querySelectorAll("#mirrorRankTable tbody tr")];
+      return rank.length > 0 && rows.length === rank.length && rank.every((r, i) => {
+        const c = [...rows[i].children].map(td => td.textContent);
+        return c[0] === String(r.place) &&
+          c[1].includes(r.team.name) &&
+          c[2].includes(formatAtt(r.attention) + "%") &&
+          c[3] === r.base + " / 7" &&
+          c[4] === (r.won ? "Win" : "Loss");
+      });
+    };
+
+    const makeLv3Session = (seed, getNow) => {
+      const sess = EP.Bots.soloGame({
+        me: { name: "Step8Me", type: "coop", spend: EP.Bots.typicalSpend("coop") },
+        myTeam: { name: "Unit Alpha", mates: TEAM.map(p => p.n) },
+        others: [
+          { name: "Unit Beta", players: ["B1", "B2", "B3", "B4"] },
+          { name: "Unit Gamma", players: ["C1", "C2", "C3", "C4"] },
+          { name: "Unit Delta", players: ["D1", "D2", "D3", "D4"] },
+        ],
+        rng: EP.Rng.seeded(seed),
+        hooks: EP.Bots.hooks,
+      });
+      const g = sess.game;
+      g._timer.clock = getNow;
+      for (let round = 1; round <= 2; round++) {
+        g.startNextRound();
+        g.advance();
+        g.advance();
+        g.runTrial();
+        g.endTrial();
+        g.endGlitchReport();
+        g.advance();
+        g.advance();
+        g.lockIn();
+        g.advance();
+        g.computeEarnings();
+        g.placeAllRemaining();
+        g.finishRound();
+      }
+      g.startNextRound();
+      g.advance();
+      g.advance();
+      g.start();
+      return sess;
+    };
+
+    const mountStage = (game, me, team, step = 7) => {
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      G = game;
+      ME = me;
+      MYTEAM = team;
+      S = {
+        ...fresh(),
+        email: "step8@icstars.org",
+        code: "CYCLE60",
+        name: ME.name,
+        type: ME.type.key,
+        spend: EP.Bots.typicalSpend(ME.type.key),
+        arrived: true,
+        step,
+        maxStep: Math.max(5, step),
+      };
+      resetRoundUI();
+      render();
+    };
+
+    const origRaf = window.requestAnimationFrame;
+    const origCancel = window.cancelAnimationFrame;
+    const prevRainOn = typeof rainOn === "boolean" ? rainOn : false;
+    if (typeof rainOn === "boolean") rainOn = false;
+    let nextRafId = 1;
+    const rafQueue = new Map();
+    window.requestAnimationFrame = cb => {
+      if (cb && cb.name === "rainFrame") return 0;
+      const id = nextRafId++;
+      rafQueue.set(id, cb);
+      return id;
+    };
+    window.cancelAnimationFrame = id => { rafQueue.delete(id); };
+    const flushRaf = ts => {
+      const batch = [...rafQueue.entries()];
+      rafQueue.clear();
+      for (const [, cb] of batch) cb(ts);
+    };
+
+    const sendJump = n => window.dispatchEvent(new KeyboardEvent("keydown", {
+      key: String(n), code: "Digit" + n, ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }));
+
+    try {
+      // 1. Mid-lobby save/reload restores countdown, miss speed, and connected bots on stage
+      let simNow = 20000000;
+      const lobbySess = makeLv3Session(801, () => simNow);
+      mountStage(lobbySess.game, lobbySess.me, lobbySess.team, 7);
+      for (let i = 0; i < 60; i++) {
+        const cur = document.querySelector("#mirrorSigCursor");
+        if (cur && !cur.classList.contains("hot")) break;
+        drawTimer();
+      }
+      document.querySelector("#mirrorSignalBtn").click();
+      const earliestBotSec = Math.min(...G.mirror().botConnectTimes(MYTEAM).map(b => b.seconds));
+      simNow += earliestBotSec * 1000;
+      let cl = G.tick();
+      if (cl.length) afterClose(cl); else drawTimer();
+      const preLobbySnap = JSON.parse(JSON.stringify(G.toJSON()));
+      const preBtn = document.querySelector("#mirrorSignalBtn");
+      const preBotConnectedIds = G.mirrorLobbyTeam(MYTEAM).players.filter(p => p.playerId !== ME.id && p.connected).map(p => p.playerId);
+      const preSpeed = preBtn.dataset.speed;
+      const preZone = preBtn.dataset.zone;
+      const preSecsLeft = G.secondsLeft();
+
+      const reloadedLobbyG = EP.Game.fromJSON(preLobbySnap, { clock: () => simNow, hooks: EP.Bots.hooks });
+      const reloadedLobbyMe = reloadedLobbyG.players.find(p => p.id === lobbySess.me.id);
+      const reloadedLobbyTeam = reloadedLobbyG.teamOf(reloadedLobbyMe);
+      mountStage(reloadedLobbyG, reloadedLobbyMe, reloadedLobbyTeam, 7);
+      const postBtn = document.querySelector("#mirrorSignalBtn");
+      const postBotTilesOk = preBotConnectedIds.length >= 1 && preBotConnectedIds.every(id => {
+        const el = document.querySelector('[data-lobby-player="' + id + '"]');
+        return !!el && el.classList.contains("in");
+      });
+      const lobbyReloadRestoredOk = G.mirrorPhase() === "lobby" &&
+        (document.querySelector("#lobbyCd") || {}).textContent === preSecsLeft + "s" &&
+        !!postBtn && postBtn.dataset.misses === "1" &&
+        postBtn.dataset.speed === preSpeed && postBtn.dataset.zone === preZone &&
+        (document.querySelector("#mirrorLobbyCount") || {}).textContent === (preBotConnectedIds.length + " of " + MYTEAM.active().length + " connected") &&
+        postBotTilesOk && stageClean();
+
+      simNow += Math.max(0, 16 - earliestBotSec) * 1000;
+      cl = G.tick();
+      if (cl.length) afterClose(cl); else drawTimer();
+      for (let i = 0; i < 80; i++) {
+        const cur = document.querySelector("#mirrorSigCursor");
+        if (cur && cur.classList.contains("hot")) break;
+        drawTimer();
+      }
+      document.querySelector("#mirrorSignalBtn").click();
+      const midLobbyOk = lobbyReloadRestoredOk && G.mirrorPhase() === "reveal";
+
+      // 2. Mid-reveal save/reload restores Crew Reveal and catches up into Showtime past deadline
+      const snapReveal = JSON.parse(JSON.stringify(G.toJSON()));
+      const preSlots = JSON.stringify(G.mirrorSetupSlots(MYTEAM));
+      const preCrew = JSON.stringify(G.mirrorCrew(MYTEAM));
+      const revG = EP.Game.fromJSON(snapReveal, { clock: () => simNow, hooks: EP.Bots.hooks });
+      const revMe = revG.players.find(p => p.id === reloadedLobbyMe.id);
+      const revTeam = revG.teamOf(revMe);
+      mountStage(revG, revMe, revTeam, 7);
+      const revealRestoredOk = G.mirrorPhase() === "reveal" &&
+        !!document.querySelector("#mirrorCrewReveal") &&
+        document.querySelector("#stage").textContent.includes("CREW LOCKED") &&
+        JSON.stringify(G.mirrorSetupSlots(MYTEAM)) === preSlots &&
+        JSON.stringify(G.mirrorCrew(MYTEAM)) === preCrew &&
+        document.querySelectorAll("[data-setup-slot]").length === JSON.parse(preSlots).length &&
+        document.querySelectorAll("[data-dance-player]").length === JSON.parse(preCrew).danceIds.length &&
+        stageClean();
+
+      const lateRevNow = snapReveal.timer.deadline + 200;
+      const lateRevG = EP.Game.fromJSON(snapReveal, { clock: () => lateRevNow, hooks: EP.Bots.hooks });
+      const lateRevMe = lateRevG.players.find(p => p.id === reloadedLobbyMe.id);
+      const lateRevTeam = lateRevG.teamOf(lateRevMe);
+      mountStage(lateRevG, lateRevMe, lateRevTeam, 7);
+      const revealCatchupOk = G.mirrorPhase() === "showtime" &&
+        !document.querySelector("#mirrorCrewReveal") &&
+        !!document.querySelector("#attnBar") &&
+        !!document.querySelector("#mirrorSetupFrame") &&
+        stageClean();
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      rafQueue.clear();
+
+      // 3. Mid-showtime Setup save/reload restores step, penalties, seeded deck state, and attention on stage
+      let tNow = 21000000;
+      let setupSess = null;
+      for (let seed = 1; seed <= 40; seed++) {
+        tNow = 21000000 + seed * 100000;
+        const cand = makeLv3Session(seed, () => tNow);
+        tNow += 16000;
+        cand.game.tick();
+        cand.game.mirrorConnect(cand.me);
+        tNow = cand.game.timer.deadline;
+        cand.game.tick();
+        const slots = cand.game.mirrorSetupSlots(cand.team);
+        if (slots.length === 2 && slots[1].playerId === cand.me.id) {
+          setupSess = cand;
+          break;
+        }
+      }
+      mountStage(setupSess.game, setupSess.me, setupSess.team, 7);
+      for (let sec = 0; sec < 30; sec++) {
+        const st = G.mirrorSetupTeam(MYTEAM);
+        if (st && st.currentStep === "deck") break;
+        tNow += 1000;
+        const c = G.tick();
+        if (c.length) afterClose(c); else drawTimer();
+      }
+      const wrongFileIdx = EP.MirrorData.files.findIndex(f => !f.correct);
+      document.querySelector('[data-file="' + wrongFileIdx + '"]').click();
+      const stBeforeDeck = G.mirrorSetupTeam(MYTEAM);
+      const attBeforeDeck = Math.round(G.mirrorAttention(MYTEAM));
+      const snapSetup = JSON.parse(JSON.stringify(G.toJSON()));
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      rafQueue.clear();
+
+      const relSetupG = EP.Game.fromJSON(snapSetup, { clock: () => tNow, hooks: EP.Bots.hooks });
+      const relSetupMe = relSetupG.players.find(p => p.id === setupSess.me.id);
+      const relSetupTeam = relSetupG.teamOf(relSetupMe);
+      mountStage(relSetupG, relSetupMe, relSetupTeam, 7);
+      const stAfterDeck = G.mirrorSetupTeam(MYTEAM);
+      const domOrderAfter = [...document.querySelectorAll("[data-file]")].map(b => Number(b.dataset.file));
+      const wrongBtnAfter = document.querySelector('[data-file="' + wrongFileIdx + '"]');
+      const midSetupReloadOk = G.mirrorPhase() === "showtime" &&
+        !!document.querySelector("#mirrorDeckStep") &&
+        JSON.stringify(domOrderAfter) === JSON.stringify(stBeforeDeck.deck.fileOrder) &&
+        JSON.stringify(stAfterDeck.deck.fileOrder) === JSON.stringify(stBeforeDeck.deck.fileOrder) &&
+        stAfterDeck.penalties === stBeforeDeck.penalties &&
+        (document.querySelector("#attnPct") || {}).textContent === attBeforeDeck + "%" &&
+        !!wrongBtnAfter && wrongBtnAfter.disabled && wrongBtnAfter.classList.contains("bad") &&
+        ["cables", "sound", "mic"].every(k => document.querySelector('[data-setup-step="' + k + '"]').dataset.stepState === "done") &&
+        document.querySelector('[data-setup-step="deck"]').dataset.stepState === "live" &&
+        stageClean();
+
+      // 4. Reloaded Setup flow completes deck, Q&A, wrap up, and reaches Presentation Day Complete without leaks
+      const signedIdx = EP.MirrorData.files.findIndex(f => f.correct);
+      document.querySelector('[data-file="' + signedIdx + '"]').click();
+      for (let q = 0; q < EP.MirrorData.qaItems.length; q++) {
+        const stQ = G.mirrorSetupTeam(MYTEAM);
+        if (!stQ || stQ.currentStep !== "qa") break;
+        const item = EP.MirrorData.qaItems[stQ.qa.order[stQ.qa.index]];
+        document.querySelector('[data-qa="' + item.correctIndex + '"]').click();
+      }
+      document.querySelector("#wrapUp").click();
+      const setupTrialResultOk = G.didRun("runTrial") &&
+        !!document.querySelector("#mirrorResult") &&
+        rankTableMatches(G) &&
+        !document.querySelector("#navNext").disabled &&
+        stageClean();
+
+      goForward(); // -> Glitch Report (step 8)
+      document.querySelector("#skipAcc").click();
+      if (G.timer && G.timer.name === "giftWindow") {
+        tNow = G.timer.deadline;
+        afterClose(G.tick());
+      }
+      goForward(); // -> Stats Update (step 9)
+      for (let i = 0; i < 15; i++) {
+        const pInc = document.querySelector("[data-pinc]:not([disabled])");
+        if (!pInc) break;
+        pInc.click();
+      }
+      goForward(); // -> Presentation Day Complete
+      const pdcTxt = (document.querySelector("#stage") || {}).textContent || "";
+      const resPanel = [...document.querySelectorAll("#stage .panel")].find(p => p.textContent.includes("Your trial results"));
+      const resRows = resPanel ? [...resPanel.querySelectorAll(".row")] : [];
+      const setupReachesPdcOk = setupTrialResultOk &&
+        G.level === 3 && G.step === "intermission" && roundDone() &&
+        pdcTxt.includes("Presentation Day Complete") &&
+        resRows.length === 3 &&
+        pdcTxt.includes("Level 4 locked") &&
+        !!document.querySelector("#replay") &&
+        !!document.querySelector("#restart") &&
+        !HARDCODED_TEAMS_RE.test(pdcTxt) &&
+        stageClean();
+
+      // 5. Mid-showtime Dance Crew save/reload restores boost, penalties, and setup progress then finishes on bot wrap up
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      rafQueue.clear();
+      let dNow = 23000000;
+      let danceSess = null;
+      for (let seed = 1; seed <= 40; seed++) {
+        dNow = 23000000 + seed * 100000;
+        const cand = makeLv3Session(seed, () => dNow);
+        dNow += 16000;
+        cand.game.tick();
+        cand.game.mirrorConnect(cand.me);
+        dNow = cand.game.timer.deadline;
+        cand.game.tick();
+        if (cand.game.mirrorRole(cand.me) === "dance") {
+          danceSess = cand;
+          break;
+        }
+      }
+      mountStage(danceSess.game, danceSess.me, danceSess.team, 7);
+      flushRaf(1000);
+      for (let i = 1; i <= 10; i++) flushRaf(1000 + i * 250);
+      const perfNote = document.querySelector('[data-note-zone="perfect"]');
+      if (perfNote) {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: KEY_BY_DIR[perfNote.dataset.noteDir], bubbles: true, cancelable: true }));
+      }
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+      dNow += 5000;
+      const clD5 = G.tick();
+      if (clD5.length) afterClose(clD5); else drawTimer();
+      const preDanceAtt = Math.round(G.mirrorAttention(MYTEAM));
+      const preDanceTeam = G.mirrorDanceTeam(MYTEAM);
+      const preDanceBoostStr = (document.querySelector("#teamDanceBoost") || {}).textContent;
+      const preDancePenStr = (document.querySelector("#teamDancePen") || {}).textContent;
+      const snapDanceNow = dNow;
+      const snapDance = JSON.parse(JSON.stringify(G.toJSON()));
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      rafQueue.clear();
+
+      let rNow = snapDanceNow;
+      const relDanceG = EP.Game.fromJSON(snapDance, { clock: () => rNow, hooks: EP.Bots.hooks });
+      const relDanceMe = relDanceG.players.find(p => p.id === danceSess.me.id);
+      const relDanceTeam = relDanceG.teamOf(relDanceMe);
+      mountStage(relDanceG, relDanceMe, relDanceTeam, 7);
+      const danceReloadRestoredOk = !!document.querySelector("#mirrorDancePanel") &&
+        !!document.querySelector("#lane") &&
+        rafQueue.size === 1 &&
+        (document.querySelector("#myDanceBoost") || {}).textContent.includes("+3 / 45") &&
+        (document.querySelector("#danceHits") || {}).textContent === "1" &&
+        (document.querySelector("#danceStrays") || {}).textContent === "1" &&
+        (document.querySelector("#teamDanceBoost") || {}).textContent === preDanceBoostStr &&
+        (document.querySelector("#teamDancePen") || {}).textContent === preDancePenStr &&
+        (document.querySelector("#attnPct") || {}).textContent === preDanceAtt + "%" &&
+        G.mirrorDanceTeam(MYTEAM).dancers.find(d => d.playerId === ME.id).boost === 3 &&
+        preDanceTeam.dancers.length === G.mirrorDanceTeam(MYTEAM).dancers.length &&
+        document.querySelector('[data-setup-step="cables"]').dataset.stepState === "done" &&
+        stageClean();
+
+      flushRaf(6000);
+      for (let i = 1; i <= 10; i++) flushRaf(6000 + i * 250);
+      const perfNote2 = document.querySelector('[data-note-zone="perfect"]');
+      if (perfNote2) {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: KEY_BY_DIR[perfNote2.dataset.noteDir], bubbles: true, cancelable: true }));
+      }
+      const boostAfter2ndHit = G.mirrorDanceTeam(MYTEAM).dancers.find(d => d.playerId === ME.id).boost;
+      for (let s = 0; s < 45 && !G.didRun("runTrial"); s++) {
+        rNow += 1000;
+        const c = G.tick();
+        if (c.length) afterClose(c); else drawTimer();
+      }
+      const danceFinishesOk = danceReloadRestoredOk &&
+        boostAfter2ndHit === 6 &&
+        G.didRun("runTrial") &&
+        !document.querySelector("#lane") &&
+        rafQueue.size === 0 &&
+        !!document.querySelector("#mirrorResult") &&
+        rankTableMatches(G) &&
+        !document.querySelector("#navNext").disabled &&
+        stageClean();
+
+      // 6. Mid-showtime save/reload past deadline catches up to closed trial result on stage
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      rafQueue.clear();
+      const lateShowNow = snapDance.timer.deadline + 1000;
+      const lateShowG = EP.Game.fromJSON(snapDance, { clock: () => lateShowNow, hooks: EP.Bots.hooks });
+      const lateShowMe = lateShowG.players.find(p => p.id === danceSess.me.id);
+      const lateShowTeam = lateShowG.teamOf(lateShowMe);
+      mountStage(lateShowG, lateShowMe, lateShowTeam, 7);
+      const showtimeCatchupOk = G.didRun("runTrial") &&
+        !!document.querySelector("#mirrorResult") &&
+        rankTableMatches(G) &&
+        !document.querySelector("#navNext").disabled &&
+        stageClean();
+
+      // 7. Live-stage lobby doors-close fail scores 0, shows LOBBY FAILED, and unlocks All-hands
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      rafQueue.clear();
+      let failNow = 25000000;
+      const failSess = makeLv3Session(809, () => failNow);
+      mountStage(failSess.game, failSess.me, failSess.team, 7);
+      failNow += 29000;
+      const cl29 = G.tick();
+      if (cl29.length) afterClose(cl29); else drawTimer();
+      const openAt29Ok = G.mirrorPhase() === "lobby" &&
+        (document.querySelector("#lobbyCd") || {}).textContent === "1s" &&
+        document.querySelector("#navNext").disabled;
+      failNow += 1000;
+      const cl30 = G.tick();
+      if (cl30.length) afterClose(cl30); else drawTimer();
+      const failRank = G.trialRanking();
+      const failMine = failRank.find(r => r.team === MYTEAM);
+      const failRow = document.querySelector('#mirrorRankTable tbody tr[data-team-id="' + MYTEAM.id + '"]');
+      const failResTxt = (document.querySelector("#mirrorResult") || {}).textContent || "";
+      const lobbyFailStageOk = openAt29Ok &&
+        G.didRun("runTrial") &&
+        G.mirrorFailReason(MYTEAM) === "lobby" &&
+        !!failMine && failMine.base === 0 && failMine.attention === 0 && failMine.failReason === "lobby" &&
+        !!document.querySelector("#mirrorLobbyFailed") &&
+        document.querySelector("#mirrorLobbyFailed").textContent.includes("LOBBY FAILED") &&
+        failResTxt.includes("Score 0 of 7.") &&
+        rankTableMatches(G) &&
+        !!failRow && failRow.dataset.failReason === "lobby" &&
+        failRow.textContent.includes("Failed lobby") && failRow.textContent.includes("0%") && failRow.textContent.includes("0 / 7") &&
+        !document.querySelector("#navNext").disabled &&
+        /All-hands/.test(document.querySelector("#navNext").textContent) &&
+        stageClean();
+      goForward();
+      const lobbyFailAdvancesOk = lobbyFailStageOk && G.step === "glitchReport" && S.step === 8;
+
+      // 8. Backward and same-level dev jump from mid-Level 3 Dance Showtime cleans up loop and starts fresh Game
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      currentTrialView = null;
+      rafQueue.clear();
+      const djDanceG = EP.Game.fromJSON(snapDance, { clock: () => snapDanceNow, hooks: EP.Bots.hooks });
+      const djDanceMe = djDanceG.players.find(p => p.id === danceSess.me.id);
+      const djDanceTeam = djDanceG.teamOf(djDanceMe);
+      mountStage(djDanceG, djDanceMe, djDanceTeam, 7);
+      const mountedDanceOk = !!document.querySelector("#lane") && rafQueue.size === 1;
+      const oldG = G, oldTeam = MYTEAM, oldMe = ME;
+      const oldStraysBefore = oldG.mirrorDanceTeam(oldTeam).dancers.find(d => d.playerId === oldMe.id).strays;
+
+      sendJump(3); // same-level jump from mid-Level 3 Dance Showtime
+      const jump3G = G;
+      const sameLvCleanupOk = mountedDanceOk &&
+        G !== oldG &&
+        G.level === 3 && G.step === "briefing" && S.step === 5 &&
+        currentTrialView === null &&
+        rafQueue.size === 0 &&
+        !document.querySelector("#lane") &&
+        stageClean();
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+      const oldListenerRemovedOk = oldG.mirrorDanceTeam(oldTeam).dancers.find(d => d.playerId === oldMe.id).strays === oldStraysBefore;
+
+      sendJump(1); // backward jump 3 -> 1
+      const back1Ok = G !== oldG && G !== jump3G &&
+        G.level === 1 && G.step === "briefing" && S.step === 5 &&
+        document.querySelector("#stage").textContent.includes("Boot Up: Team Week") &&
+        stageClean();
+
+      return {
+        midLobbyOk,
+        revealRestoredOk,
+        revealCatchupOk,
+        midSetupReloadOk,
+        setupReachesPdcOk,
+        danceFinishesOk,
+        showtimeCatchupOk,
+        lobbyFailAdvancesOk,
+        devJumpCleanupOk: sameLvCleanupOk && oldListenerRemovedOk && back1Ok,
+      };
+    } finally {
+      window.requestAnimationFrame = origRaf;
+      window.cancelAnimationFrame = origCancel;
+      if (typeof rainOn === "boolean") {
+        rainOn = prevRainOn;
+        if (prevRainOn && typeof origRaf === "function") origRaf(rainFrame);
+      }
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  check("Level 3 mid-lobby save/reload restores countdown, miss speed, and connected bots on stage", res.midLobbyOk);
+  check("Level 3 mid-reveal save/reload restores Crew Reveal and catches up into Showtime past deadline", res.revealRestoredOk && res.revealCatchupOk);
+  check("Level 3 mid-showtime Setup save/reload restores step, penalties, seeded deck state, and attention on stage", res.midSetupReloadOk);
+  check("Reloaded Level 3 Setup flow completes deck, Q&A, wrap up, and reaches Presentation Day Complete without leaks", res.setupReachesPdcOk);
+  check("Level 3 mid-showtime Dance Crew save/reload restores boost, penalties, and setup progress then finishes on bot wrap up", res.danceFinishesOk);
+  check("Level 3 mid-showtime save/reload past deadline catches up to closed trial result on stage", res.showtimeCatchupOk);
+  check("Level 3 live-stage lobby doors-close fail scores 0, shows LOBBY FAILED, and unlocks All-hands", res.lobbyFailAdvancesOk);
+  check("Backward and same-level dev jump from mid-Level 3 Dance Showtime cleans up loop and starts fresh Game", res.devJumpCleanupOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -3198,6 +3678,8 @@ w.addEventListener("load", async () => {
     await mirrorStep6eCases();
     log("run 11: Step 7 dev jump (Ctrl+Shift+1..7)");
     await devJumpCases();
+    log("run 12: Step 8 Level 3 mid-trial save/reload and live-stage flows");
+    await mirrorStep8Cases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

@@ -149,10 +149,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (146 passed, 0 failed, 0 console errors).
 - **Open issues:** None.
 
-### Step 8: Screen tests (`Tests/check_screens.js`) (Effort: Medium) - TODO
+### Step 8: Screen tests (`Tests/check_screens.js`) (Effort: Medium) - DONE
+- **Built:** Added Run 12 (`mirrorStep8Cases()`) to `Tests/check_screens.js` (8 new screen tests) covering live-stage Level 3 mid-trial save/reload across lobby, Crew Reveal, reveal past-deadline catch-up, Setup Crew (deck wrong-file penalty, seeded `fileOrder`, and attention), Setup completion through Presentation Day Complete, Dance Crew rhythm lane (boost, penalties, setup progress, and bot wrap-up completion), showtime past-deadline catch-up, live-stage lobby doors-close fail advancing to All-hands, and same-level/backward dev jump cleanup from mid-Level 3 Dance Showtime (combined with existing Runs 4, 6, 7, 8, 9, 10, and 11 covering Start Level 3, briefing/hints, lobby, Setup 1–5, Dance lane, Presentation Day Complete, and dev jump).
 - **Goal:** Extend `Tests/check_screens.js` to cover Sprint 1 Complete "Start Level 3", Level 3 briefing & hints, lobby signal grab + miss + bot connect + doors-close fail, Crew Reveal, Setup Crew all 5 steps + wrap up, Dance Crew rhythm lane + bot setup wrap up, mid-trial save/reload, Presentation Day Complete screen (no work styles or secret paths), and dev jump forward and backward (`Ctrl+Shift+1..7`).
 - **Done when:** `npm run test:screens` passes all assertions with zero console errors.
-- **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+- **Tests:** `npm run build`, `npm test`, `npm run test:screens` (run twice)
+- **Files changed:** `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md` (no `rules/`, screen, or `Tests/baseline/` files changed).
+- **Test results:** `npm run build` (23 modules, `rules/rules.bundle.js` unchanged), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` run 1 (`154 passed, 0 failed`, 0 console errors) and run 2 (`154 passed, 0 failed`, 0 console errors; 0 flaky tests).
+- **Open issues:** None (known Level 2 and Level 3 bugs left out of scope per Step 8 rules; see `docs/level3-report.md`).
 
 ### Step 9: Class diagram, README, and docs sync (Effort: Low) - TODO
 - **Goal:** Update `docs/class-diagram.md` with `MirrorTrial`, `MirrorLobby`, `SetupCrew`, and `DanceCrew` and the commit hash it was built from, update `README.md` (Level 3 overview, `mirror-view.js`, dev jump note, Hannah Ziegler credit), update `docs/Game_Index.md`, and sync `CLAUDE.md` file map and test commands list.
