@@ -509,13 +509,14 @@ class SplitBriefTrial extends Trial {
 
 const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
 
-/* Level 3: The Mirror: Presentation Day. Coordinates #lobby (and later #setup, #dance).
+/* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup (and later #dance).
    Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
 class MirrorTrial extends Trial {
   #lobby;
+  #setup;
   #teams = [];
   #teamIds = [];
-  #phase = "idle";         // "idle" | "lobby" | "reveal" | "failed"
+  #phase = "idle";         // "idle" | "lobby" | "reveal" | "showtime" | "failed"
   #failedTeams = new Set();
   #crews = new Map();      // teamId -> { setupIds: [], danceIds: [] }
 
@@ -523,12 +524,14 @@ class MirrorTrial extends Trial {
     if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
     super(rng);
     this.#lobby = new MirrorParts.MirrorLobby(rng);
+    this.#setup = new MirrorParts.SetupCrew(rng);
   }
 
   get kind() { return "mirror"; }
   get phase() { return this.#phase; }
   get lobbyStarted() { return this.#lobby.started; }
   get lobbyClosed() { return this.#lobby.closed; }
+  get setupStarted() { return this.#setup.started; }
 
   /* Setup Crew gets half of connected active players rounded up, capped at 3. */
   static setupCrewSize(activeCount) {
@@ -543,6 +546,12 @@ class MirrorTrial extends Trial {
       [out[i], out[j]] = [out[j], out[i]];
     }
     return out;
+  }
+
+  #showtimeWhy() {
+    if (this.ranking) return "The trial is closed.";
+    if (this.#phase !== "showtime") return "Showtime has not started.";
+    return null;
   }
 
   startLobby(teams) {
@@ -562,7 +571,7 @@ class MirrorTrial extends Trial {
   botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
   allConnected() { return this.#lobby.allConnected(); }
 
-  /* Close lobby doors, fail incomplete teams, and deal Setup vs Dance crews for passing teams. */
+  /* Close lobby doors, fail incomplete teams, deal Setup vs Dance crews, and start SetupCrew. */
   closeDoors() {
     const res = this.#lobby.closeDoors();
     if (res.alreadyClosed) return { ...res, phase: this.#phase, crews: this.allCrews() };
@@ -572,9 +581,91 @@ class MirrorTrial extends Trial {
       const setupCount = MirrorTrial.setupCrewSize(pool.length);
       this.#crews.set(teamId, { setupIds: pool.slice(0, setupCount), danceIds: pool.slice(setupCount) });
     }
+    if (res.passedTeams.length > 0) {
+      const setupDeals = res.passedTeams.map(teamId => {
+        const deal = this.#crews.get(teamId);
+        return {
+          teamId,
+          players: deal.setupIds.map(pid => this.#lobby.playerState(pid)),
+          danceIds: deal.danceIds.slice(),
+        };
+      });
+      this.#setup.start(setupDeals, { shuffleSlots: false });
+    }
     this.#phase = res.passedTeams.length > 0 ? "reveal" : "failed";
     return { ...res, phase: this.#phase, crews: this.allCrews() };
   }
+
+  startShowtime() {
+    if (this.#phase === "showtime") return { ok: false, alreadyStarted: true, phase: this.#phase };
+    if (this.#phase !== "reveal") throw new Error("Showtime can only start after crew reveal.");
+    this.#phase = "showtime";
+    return { ok: true, phase: this.#phase, setup: this.#setup.state() };
+  }
+
+  cableHit(playerId, port, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.cableHit(playerId, port, opts);
+  }
+  cableMiss(playerId, port, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.cableMiss(playerId, port, opts);
+  }
+  soundHeld(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.soundHeld(playerId, opts);
+  }
+  soundFeedback(playerId) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.soundFeedback(playerId);
+  }
+  micTap(playerId, micNumber, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.micTap(playerId, micNumber, opts);
+  }
+  pickFile(playerId, fileIndexOrName, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.pickFile(playerId, fileIndexOrName, opts);
+  }
+  reshuffleDeck(teamOrId) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.reshuffleDeck(teamOrId);
+  }
+  answerQa(playerId, answerIndex, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.answerQa(playerId, answerIndex, opts);
+  }
+  timeoutQa(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.timeoutQa(playerId, opts);
+  }
+  wrapUp(playerId) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.wrapUp(playerId);
+  }
+  completeBotSetupStep(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.completeBotStep(playerId, opts);
+  }
+  advanceBotSetup(teamOrId, elapsedSeconds, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.advanceBotSetup(teamOrId, elapsedSeconds, opts);
+  }
+
+  setupSlots(teamOrId) { return this.#setup.slotsFor(teamOrId); }
+  setupSlotOf(playerOrId) { return this.#setup.slotOf(playerOrId); }
+  setupStep(teamOrId) { return this.#setup.currentStep(teamOrId); }
+  setupCurrentPlayerId(teamOrId) { return this.#setup.currentPlayerId(teamOrId); }
+  isSetupTurn(playerOrId) { return this.#setup.isPlayersTurn(playerOrId); }
+  isSetupWrappedUp(teamOrId) { return this.#setup.isWrappedUp(teamOrId); }
+  setupPenalties(teamOrId) { return this.#setup.penaltiesFor(teamOrId); }
+  micSequenceFor(teamOrId) { return this.#setup.micSequenceFor(teamOrId); }
+  deckOrderFor(teamOrId) { return this.#setup.deckOrderFor(teamOrId); }
+  qaOrderFor(teamOrId) { return this.#setup.qaOrderFor(teamOrId); }
+  currentQaFor(teamOrId) { return this.#setup.currentQaFor(teamOrId); }
+  botSetupDueAt(teamOrId, opts) { return this.#setup.botStepDueAt(teamOrId, opts); }
+  setupTeamState(teamOrId) { return this.#setup.teamState(teamOrId); }
+  setupState() { return this.#setup.state(); }
 
   isTeamFailed(teamOrId) { return this.#failedTeams.has(mirrorIdOf(teamOrId)); }
   failedTeamIds() { return [...this.#failedTeams]; }
@@ -607,6 +698,7 @@ class MirrorTrial extends Trial {
       phase: this.#phase,
       teamIds: this.#teamIds.slice(),
       lobby: this.#lobby.toJSON(),
+      setup: this.#setup.toJSON(),
       failedTeams: [...this.#failedTeams],
       crews: [...this.#crews].map(([teamId, deal]) => [
         teamId,
@@ -623,6 +715,7 @@ class MirrorTrial extends Trial {
     t.#teamIds = (data.teamIds || []).slice();
     t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
     if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng });
+    if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng });
     t.#failedTeams = new Set(data.failedTeams || []);
     t.#crews = new Map((data.crews || []).map(([teamId, deal]) => [
       teamId,

@@ -24,6 +24,7 @@ const TESTS = [
   "check_split_bots",
   "check_mirror_data",
   "check_mirror_lobby",
+  "check_mirror_setup",
 ];
 
 function runTest(name) {

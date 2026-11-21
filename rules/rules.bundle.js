@@ -1808,7 +1808,930 @@ class MirrorLobby {
   }
 }
 
-const MirrorParts = { MirrorLobby };
+/* Setup Crew state for Presentation Day: seeded slot order, 1/2/3 player step splits,
+   sequential step turns, results-based step actions, seeded content picks, penalties/recovery,
+   bot setup schedule/hiccups, and wrap-up. Outside code calls MirrorTrial only. */
+class SetupCrew {
+  #rng;
+  #started = false;
+  #teams = new Map();       // teamId -> team setup state
+  #playerIndex = new Map(); // playerId -> { teamId, slotIndex, name, isBot }
+
+  constructor(rng, entries = null, options = {}) {
+    if (typeof rng !== "function") throw new Error("SetupCrew requires a seeded rng.");
+    this.#rng = rng;
+    if (entries !== null) this.start(entries, options);
+  }
+
+  get started() { return this.#started; }
+
+  static crewSize(activeCount) {
+    if (activeCount <= 0) return 0;
+    return Math.min(MirrorData.scoring.maxSetupCrew, Math.ceil(activeCount / 2));
+  }
+
+  static splitSteps(slotCount) {
+    const groups = MirrorData.setupSplits[slotCount];
+    return groups ? groups.map(g => g.slice()) : [];
+  }
+
+  static botStepDuration(step) {
+    const ms = MirrorData.bots.setupMilestones;
+    const idx = ms.findIndex(m => m.step === step);
+    if (idx < 0) return null;
+    return idx === 0 ? ms[0].seconds : ms[idx].seconds - ms[idx - 1].seconds;
+  }
+
+  static botMilestoneLabel(step) {
+    const found = MirrorData.bots.setupMilestones.find(m => m.step === step);
+    return found ? found.label : step;
+  }
+
+  #shuffle(list) {
+    const out = list.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(this.#rng() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  #lookupPlayer(playerOrId) {
+    const id = idOf(playerOrId);
+    if (id === null || id === undefined) return null;
+    return this.#playerIndex.get(id) || null;
+  }
+
+  #currentStep(ts) {
+    if (ts.wrappedUp) return null;
+    if (ts.stepIndex < MirrorData.setupSteps.length) return MirrorData.setupSteps[ts.stepIndex];
+    return "wrapUp";
+  }
+
+  #ownerSlot(ts, step) {
+    if (!step) return null;
+    if (step === "wrapUp") return ts.slots[ts.slots.length - 1] || null;
+    return ts.slots.find(s => s.steps.includes(step)) || null;
+  }
+
+  #currentPlayerId(ts) {
+    const slot = this.#ownerSlot(ts, this.#currentStep(ts));
+    return slot ? slot.playerId : null;
+  }
+
+  #makeMicSequence(length) {
+    return Array.from({ length }, () => 1 + Math.floor(this.#rng() * MirrorData.mic.count));
+  }
+
+  #makeFileOrder() {
+    return this.#shuffle(MirrorData.files.map((_, i) => i));
+  }
+
+  #makeQaOrder() {
+    return this.#shuffle(MirrorData.qaItems.map((_, i) => i));
+  }
+
+  #enterStep(ts, step) {
+    if (step === "mic") {
+      ts.mic.round = 0;
+      ts.mic.index = 0;
+      ts.mic.done = false;
+      ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[0]);
+    } else if (step === "deck") {
+      ts.deck.fileOrder = this.#makeFileOrder();
+      ts.deck.filesTried = [];
+      ts.deck.grabbed = false;
+      ts.deck.reshuffles = 0;
+    } else if (step === "qa") {
+      ts.qa.order = this.#makeQaOrder();
+      ts.qa.index = 0;
+      ts.qa.done = false;
+    }
+  }
+
+  #advanceStep(ts, elapsedSeconds = null) {
+    if (ts.stepIndex < MirrorData.setupSteps.length) {
+      ts.completedSteps.push(MirrorData.setupSteps[ts.stepIndex]);
+    }
+    ts.stepIndex += 1;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      ts.stepStartedAt = elapsedSeconds;
+    }
+    const next = this.#currentStep(ts);
+    if (next) this.#enterStep(ts, next);
+  }
+
+  #checkTurn(playerOrId, expectedStep) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return { ok: false, reason: "Player is not on the Setup Crew." };
+    const ts = this.#teams.get(entry.teamId);
+    if (ts.wrappedUp) return { ok: false, reason: "Setup is already wrapped up." };
+    const curStep = this.#currentStep(ts);
+    if (curStep !== expectedStep) {
+      return { ok: false, reason: "Current step is " + curStep + ", not " + expectedStep + "." };
+    }
+    if (this.#currentPlayerId(ts) !== entry.playerId) {
+      return { ok: false, reason: "It is not your turn." };
+    }
+    return { ok: true, ts, entry };
+  }
+
+  /* Initialize Setup Crew from Team objects (active players only) or { teamId, players, danceIds } deals. */
+  start(entries, { shuffleSlots = true } = {}) {
+    if (this.#started) throw new Error("Setup already started.");
+    this.#started = true;
+
+    for (const item of entries) {
+      let teamId;
+      let setupPlayers;
+      let danceIds;
+      if (item && typeof item.active === "function") {
+        teamId = item.id;
+        const active = item.active();
+        if (!active.length) continue;
+        const pool = shuffleSlots ? this.#shuffle(active) : active.slice();
+        const count = SetupCrew.crewSize(pool.length);
+        setupPlayers = pool.slice(0, count);
+        danceIds = pool.slice(count).map(p => p.id);
+      } else {
+        teamId = item.teamId;
+        const list = (item.players || []).slice();
+        if (!list.length) continue;
+        if (list.length > MirrorData.scoring.maxSetupCrew) {
+          throw new Error("Setup Crew cannot exceed " + MirrorData.scoring.maxSetupCrew + " players.");
+        }
+        setupPlayers = shuffleSlots ? this.#shuffle(list) : list;
+        danceIds = (item.danceIds || []).slice();
+      }
+
+      const split = SetupCrew.splitSteps(setupPlayers.length);
+      const slots = setupPlayers.map((p, slotIndex) => {
+        const playerId = p.playerId !== undefined ? p.playerId : p.id;
+        const name = p.name !== undefined ? p.name : String(playerId);
+        const isBot = !!p.isBot;
+        return { slotIndex, playerId, name, isBot, steps: split[slotIndex] };
+      });
+
+      const ts = {
+        teamId,
+        slots,
+        danceIds,
+        stepIndex: 0,
+        wrappedUp: false,
+        penalties: 0,
+        penaltiesAdded: 0,
+        qaRecovered: 0,
+        stepStartedAt: 0,
+        botHiccups: 0,
+        completedSteps: [],
+        cables: { connected: [], sparks: 0 },
+        sound: { locked: false, feedbacks: 0 },
+        mic: { round: 0, index: 0, sequence: null, done: false, wrongs: 0 },
+        deck: { fileOrder: null, filesTried: [], grabbed: false, reshuffles: 0 },
+        qa: { order: null, index: 0, right: 0, wrong: 0, timeouts: 0, done: false },
+      };
+
+      this.#teams.set(teamId, ts);
+      for (const slot of slots) {
+        this.#playerIndex.set(slot.playerId, {
+          teamId,
+          slotIndex: slot.slotIndex,
+          playerId: slot.playerId,
+          name: slot.name,
+          isBot: slot.isBot,
+        });
+      }
+    }
+    return this.state();
+  }
+
+  /* Step 1 (cables): record a matched cable connection reported by the screen. */
+  cableHit(playerOrId, port, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "cables");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    if (!MirrorData.ports.includes(port)) return { ok: false, reason: "Unknown cable port." };
+    if (ts.cables.connected.includes(port)) return { ok: false, reason: "Port is already connected." };
+    ts.cables.connected.push(port);
+    const remaining = MirrorData.ports.length - ts.cables.connected.length;
+    const stepDone = remaining === 0;
+    if (stepDone) this.#advanceStep(ts, elapsedSeconds);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "cables",
+      hit: true,
+      port,
+      connected: ts.cables.connected.slice(),
+      remaining,
+      stepDone,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+      penalties: ts.penalties,
+    };
+  }
+
+  /* Step 1 (cables): record a wrong cable click (spark) costing 3 attention. */
+  cableMiss(playerOrId, port = null, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "cables");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    if (port !== null && port !== undefined) {
+      if (!MirrorData.ports.includes(port)) return { ok: false, reason: "Unknown cable port." };
+      if (ts.cables.connected.includes(port)) return { ok: false, reason: "Port is already connected." };
+    }
+    ts.cables.sparks += 1;
+    const penaltyAdded = MirrorData.cables.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "cables",
+      hit: false,
+      spark: true,
+      port: port ?? null,
+      penaltyAdded,
+      penalties: ts.penalties,
+      remaining: MirrorData.ports.length - ts.cables.connected.length,
+      stepDone: false,
+      nextStep: "cables",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 2 (sound): record that sound held steady in the green zone for 3 seconds. */
+  soundHeld(playerOrId, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "sound");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    ts.sound.locked = true;
+    this.#advanceStep(ts, elapsedSeconds);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "sound",
+      hit: true,
+      locked: true,
+      stepDone: true,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+      micSequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
+      penalties: ts.penalties,
+    };
+  }
+
+  /* Step 2 (sound): record feedback overshoot costing 4 attention. */
+  soundFeedback(playerOrId) {
+    const chk = this.#checkTurn(playerOrId, "sound");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    ts.sound.feedbacks += 1;
+    const penaltyAdded = MirrorData.sound.feedbackPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "sound",
+      hit: false,
+      feedback: true,
+      penaltyAdded,
+      penalties: ts.penalties,
+      stepDone: false,
+      nextStep: "sound",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 3 (mic): record a mic tap against the seeded sequence across rounds of lengths 3, 4, 5. */
+  micTap(playerOrId, micNumber, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "mic");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    if (!Number.isInteger(micNumber) || micNumber < 1 || micNumber > MirrorData.mic.count) {
+      return { ok: false, reason: "Invalid mic number." };
+    }
+    const expected = ts.mic.sequence[ts.mic.index];
+    if (micNumber === expected) {
+      ts.mic.index += 1;
+      if (ts.mic.index === ts.mic.sequence.length) {
+        if (ts.mic.round >= MirrorData.mic.roundLengths.length - 1) {
+          ts.mic.done = true;
+          this.#advanceStep(ts, elapsedSeconds);
+          return {
+            ok: true,
+            teamId: ts.teamId,
+            playerId: entry.playerId,
+            step: "mic",
+            hit: true,
+            micNumber,
+            round: ts.mic.round,
+            roundDone: true,
+            stepDone: true,
+            nextStep: this.#currentStep(ts),
+            nextPlayerId: this.#currentPlayerId(ts),
+            fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+            penalties: ts.penalties,
+          };
+        }
+        ts.mic.round += 1;
+        ts.mic.index = 0;
+        ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[ts.mic.round]);
+        return {
+          ok: true,
+          teamId: ts.teamId,
+          playerId: entry.playerId,
+          step: "mic",
+          hit: true,
+          micNumber,
+          round: ts.mic.round,
+          index: 0,
+          sequence: ts.mic.sequence.slice(),
+          roundDone: true,
+          stepDone: false,
+          nextStep: "mic",
+          nextPlayerId: this.#currentPlayerId(ts),
+          penalties: ts.penalties,
+        };
+      }
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step: "mic",
+        hit: true,
+        micNumber,
+        round: ts.mic.round,
+        index: ts.mic.index,
+        remaining: ts.mic.sequence.length - ts.mic.index,
+        roundDone: false,
+        stepDone: false,
+        nextStep: "mic",
+        nextPlayerId: this.#currentPlayerId(ts),
+        penalties: ts.penalties,
+      };
+    }
+
+    ts.mic.wrongs += 1;
+    ts.mic.index = 0;
+    const penaltyAdded = MirrorData.mic.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[ts.mic.round]);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "mic",
+      hit: false,
+      micNumber,
+      round: ts.mic.round,
+      index: 0,
+      sequence: ts.mic.sequence.slice(),
+      penaltyAdded,
+      penalties: ts.penalties,
+      roundDone: false,
+      stepDone: false,
+      nextStep: "mic",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 4 (deck): record a file click by index or name. Wrong file costs 6 attention. */
+  pickFile(playerOrId, fileIndexOrName, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "deck");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    let idx = -1;
+    if (typeof fileIndexOrName === "string") {
+      idx = MirrorData.files.findIndex(f => f.name === fileIndexOrName);
+    } else if (Number.isInteger(fileIndexOrName) && fileIndexOrName >= 0 && fileIndexOrName < MirrorData.files.length) {
+      idx = fileIndexOrName;
+    }
+    if (idx < 0) return { ok: false, reason: "Unknown deck file." };
+    if (ts.deck.filesTried.includes(idx)) return { ok: false, reason: "File was already tried." };
+
+    const file = MirrorData.files[idx];
+    if (file.correct) {
+      ts.deck.grabbed = true;
+      this.#advanceStep(ts, elapsedSeconds);
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step: "deck",
+        hit: true,
+        fileIndex: idx,
+        fileName: file.name,
+        stepDone: true,
+        nextStep: this.#currentStep(ts),
+        nextPlayerId: this.#currentPlayerId(ts),
+        qaOrder: ts.qa.order ? ts.qa.order.slice() : null,
+        penalties: ts.penalties,
+      };
+    }
+
+    ts.deck.filesTried.push(idx);
+    const penaltyAdded = MirrorData.deck.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "deck",
+      hit: false,
+      fileIndex: idx,
+      fileName: file.name,
+      penaltyAdded,
+      penalties: ts.penalties,
+      reshuffleRequested: true,
+      stepDone: false,
+      nextStep: "deck",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 4 (deck): generate a seeded reshuffle of the 6 deck files. */
+  reshuffleDeck(teamOrId) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "deck") return { ok: false, reason: "Deck step is not active." };
+    ts.deck.fileOrder = this.#makeFileOrder();
+    ts.deck.reshuffles += 1;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      fileOrder: ts.deck.fileOrder.slice(),
+      reshuffles: ts.deck.reshuffles,
+    };
+  }
+
+  /* Step 5 (qa): record a multiple-choice answer. Right restores up to 5 penalty points; wrong costs 5. */
+  answerQa(playerOrId, answerIndex, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "qa");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    const itemIndex = ts.qa.order[ts.qa.index];
+    const item = MirrorData.qaItems[itemIndex];
+    if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex >= item.options.length) {
+      return { ok: false, reason: "Invalid Q&A option." };
+    }
+    const correct = answerIndex === item.correctIndex;
+    let penaltyAdded = 0;
+    let recovered = 0;
+    if (correct) {
+      ts.qa.right += 1;
+      recovered = Math.min(ts.penalties, MirrorData.qa.rightRecover);
+      ts.penalties -= recovered;
+      ts.qaRecovered += recovered;
+    } else {
+      ts.qa.wrong += 1;
+      penaltyAdded = MirrorData.qa.wrongPenalty;
+      ts.penalties += penaltyAdded;
+      ts.penaltiesAdded += penaltyAdded;
+    }
+    ts.qa.index += 1;
+    const stepDone = ts.qa.index >= ts.qa.order.length;
+    if (stepDone) {
+      ts.qa.done = true;
+      this.#advanceStep(ts, elapsedSeconds);
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "qa",
+      hit: correct,
+      correct,
+      itemIndex,
+      answerIndex,
+      why: item.why,
+      recovered,
+      penaltyAdded,
+      penalties: ts.penalties,
+      qaIndex: ts.qa.index,
+      remaining: ts.qa.order.length - ts.qa.index,
+      stepDone,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 5 (qa): record a question timeout costing 5 attention. */
+  timeoutQa(playerOrId, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "qa");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    const itemIndex = ts.qa.order[ts.qa.index];
+    ts.qa.timeouts += 1;
+    const penaltyAdded = MirrorData.qa.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    ts.qa.index += 1;
+    const stepDone = ts.qa.index >= ts.qa.order.length;
+    if (stepDone) {
+      ts.qa.done = true;
+      this.#advanceStep(ts, elapsedSeconds);
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "qa",
+      hit: false,
+      timeout: true,
+      itemIndex,
+      recovered: 0,
+      penaltyAdded,
+      penalties: ts.penalties,
+      qaIndex: ts.qa.index,
+      remaining: ts.qa.order.length - ts.qa.index,
+      stepDone,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Last Setup slot wraps up the presentation after Q&A completes. */
+  wrapUp(playerOrId) {
+    const chk = this.#checkTurn(playerOrId, "wrapUp");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    ts.wrappedUp = true;
+    ts.stepIndex = MirrorData.setupSteps.length + 1;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "wrapUp",
+      wrappedUp: true,
+      penalties: ts.penalties,
+      penaltiesAdded: ts.penaltiesAdded,
+      qaRecovered: ts.qaRecovered,
+    };
+  }
+
+  /* Bot or autoPilot human completes the current setup step with a seeded 30% hiccup (-3 attention). */
+  completeBotStep(playerOrId, { elapsedSeconds = null, autoPilot = false } = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return { ok: false, reason: "Player is not on the Setup Crew." };
+    const ts = this.#teams.get(entry.teamId);
+    if (ts.wrappedUp) return { ok: false, reason: "Setup is already wrapped up." };
+    if (this.#currentPlayerId(ts) !== entry.playerId) return { ok: false, reason: "It is not your turn." };
+    if (!entry.isBot && !autoPilot) return { ok: false, reason: "Player is not a bot." };
+
+    const step = this.#currentStep(ts);
+    const duration = SetupCrew.botStepDuration(step);
+    const finishedAt = (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds))
+      ? elapsedSeconds
+      : ts.stepStartedAt + duration;
+    const label = SetupCrew.botMilestoneLabel(step);
+
+    if (step === "wrapUp") {
+      ts.wrappedUp = true;
+      ts.stepIndex = MirrorData.setupSteps.length + 1;
+      ts.stepStartedAt = finishedAt;
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step,
+        label,
+        hiccup: false,
+        penaltyAdded: 0,
+        penalties: ts.penalties,
+        finishedAt,
+        nextStep: null,
+        nextPlayerId: null,
+        wrappedUp: true,
+      };
+    }
+
+    const hiccup = this.#rng() < MirrorData.bots.setupHiccupChance;
+    const penaltyAdded = hiccup ? MirrorData.bots.setupHiccupPenalty : 0;
+    if (hiccup) {
+      ts.botHiccups += 1;
+      ts.penalties += penaltyAdded;
+      ts.penaltiesAdded += penaltyAdded;
+    }
+
+    if (step === "cables") ts.cables.connected = MirrorData.ports.slice();
+    else if (step === "sound") ts.sound.locked = true;
+    else if (step === "mic") ts.mic.done = true;
+    else if (step === "deck") ts.deck.grabbed = true;
+    else if (step === "qa") {
+      ts.qa.index = ts.qa.order ? ts.qa.order.length : MirrorData.qaItems.length;
+      ts.qa.done = true;
+    }
+
+    this.#advanceStep(ts, finishedAt);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step,
+      label,
+      hiccup,
+      penaltyAdded,
+      penalties: ts.penalties,
+      finishedAt,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+      wrappedUp: false,
+    };
+  }
+
+  /* Advance any due bot (or autoPilot human) setup steps up to elapsedSeconds. */
+  advanceBotSetup(teamOrId, elapsedSeconds, { autoPilotIds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Setup Crew." };
+    if (typeof elapsedSeconds !== "number" || !Number.isFinite(elapsedSeconds)) {
+      return { ok: false, reason: "Invalid elapsedSeconds." };
+    }
+    const isAuto = id => !!(autoPilotIds && (autoPilotIds instanceof Set
+      ? autoPilotIds.has(id)
+      : Array.isArray(autoPilotIds) && autoPilotIds.includes(id)));
+
+    const events = [];
+    while (!ts.wrappedUp) {
+      const step = this.#currentStep(ts);
+      const slot = this.#ownerSlot(ts, step);
+      if (!slot) break;
+      const auto = isAuto(slot.playerId);
+      if (!slot.isBot && !auto) break;
+      const dueAt = ts.stepStartedAt + SetupCrew.botStepDuration(step);
+      if (elapsedSeconds < dueAt) break;
+      const ev = this.completeBotStep(slot.playerId, { elapsedSeconds: dueAt, autoPilot: auto });
+      if (!ev.ok) break;
+      events.push(ev);
+    }
+
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      events,
+      currentStep: this.#currentStep(ts),
+      currentPlayerId: this.#currentPlayerId(ts),
+      wrappedUp: ts.wrappedUp,
+      penalties: ts.penalties,
+    };
+  }
+
+  teamIds() { return [...this.#teams.keys()]; }
+  hasPlayer(playerOrId) { return !!this.#lookupPlayer(playerOrId); }
+
+  slotsFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.slots.map(s => ({ ...s, steps: s.steps.slice() })) : [];
+  }
+
+  slotOf(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return null;
+    const ts = this.#teams.get(entry.teamId);
+    const slot = ts ? ts.slots[entry.slotIndex] : null;
+    return slot ? { teamId: entry.teamId, ...slot, steps: slot.steps.slice() } : null;
+  }
+
+  currentStep(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? this.#currentStep(ts) : null;
+  }
+
+  currentPlayerId(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? this.#currentPlayerId(ts) : null;
+  }
+
+  isPlayersTurn(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return false;
+    const ts = this.#teams.get(entry.teamId);
+    return !!ts && !ts.wrappedUp && this.#currentPlayerId(ts) === entry.playerId;
+  }
+
+  isWrappedUp(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return !!ts && ts.wrappedUp;
+  }
+
+  penaltiesFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.penalties : 0;
+  }
+
+  micSequenceFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts && ts.mic.sequence ? ts.mic.sequence.slice() : null;
+  }
+
+  deckOrderFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts && ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null;
+  }
+
+  qaOrderFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts && ts.qa.order ? ts.qa.order.slice() : null;
+  }
+
+  currentQaFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "qa" || !ts.qa.order || ts.qa.index >= ts.qa.order.length) {
+      return null;
+    }
+    const itemIndex = ts.qa.order[ts.qa.index];
+    const item = MirrorData.qaItems[itemIndex];
+    return {
+      index: ts.qa.index,
+      total: ts.qa.order.length,
+      itemIndex,
+      question: item.question,
+      options: item.options.slice(),
+      correctIndex: item.correctIndex,
+      why: item.why,
+    };
+  }
+
+  botStepDueAt(teamOrId, { autoPilot = false } = {}) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || ts.wrappedUp) return null;
+    const step = this.#currentStep(ts);
+    const slot = this.#ownerSlot(ts, step);
+    if (!slot || (!slot.isBot && !autoPilot)) return null;
+    return ts.stepStartedAt + SetupCrew.botStepDuration(step);
+  }
+
+  teamState(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return null;
+    return {
+      teamId: ts.teamId,
+      currentStep: this.#currentStep(ts),
+      currentPlayerId: this.#currentPlayerId(ts),
+      slots: ts.slots.map(s => ({ ...s, steps: s.steps.slice() })),
+      danceIds: ts.danceIds.slice(),
+      stepIndex: ts.stepIndex,
+      wrappedUp: ts.wrappedUp,
+      penalties: ts.penalties,
+      penaltiesAdded: ts.penaltiesAdded,
+      qaRecovered: ts.qaRecovered,
+      stepStartedAt: ts.stepStartedAt,
+      botHiccups: ts.botHiccups,
+      completedSteps: ts.completedSteps.slice(),
+      cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks },
+      sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks },
+      mic: {
+        round: ts.mic.round,
+        index: ts.mic.index,
+        sequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
+        done: ts.mic.done,
+        wrongs: ts.mic.wrongs,
+      },
+      deck: {
+        fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+        filesTried: ts.deck.filesTried.slice(),
+        grabbed: ts.deck.grabbed,
+        reshuffles: ts.deck.reshuffles,
+      },
+      qa: {
+        order: ts.qa.order ? ts.qa.order.slice() : null,
+        index: ts.qa.index,
+        right: ts.qa.right,
+        wrong: ts.qa.wrong,
+        timeouts: ts.qa.timeouts,
+        done: ts.qa.done,
+      },
+    };
+  }
+
+  state() {
+    return {
+      started: this.#started,
+      teams: [...this.#teams.keys()].map(id => this.teamState(id)),
+    };
+  }
+
+  toJSON() {
+    return {
+      started: this.#started,
+      teams: [...this.#teams.values()].map(ts => ({
+        teamId: ts.teamId,
+        slots: ts.slots.map(s => ({ ...s, steps: s.steps.slice() })),
+        danceIds: ts.danceIds.slice(),
+        stepIndex: ts.stepIndex,
+        wrappedUp: ts.wrappedUp,
+        penalties: ts.penalties,
+        penaltiesAdded: ts.penaltiesAdded,
+        qaRecovered: ts.qaRecovered,
+        stepStartedAt: ts.stepStartedAt,
+        botHiccups: ts.botHiccups,
+        completedSteps: ts.completedSteps.slice(),
+        cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks },
+        sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks },
+        mic: {
+          round: ts.mic.round,
+          index: ts.mic.index,
+          sequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
+          done: ts.mic.done,
+          wrongs: ts.mic.wrongs,
+        },
+        deck: {
+          fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+          filesTried: ts.deck.filesTried.slice(),
+          grabbed: ts.deck.grabbed,
+          reshuffles: ts.deck.reshuffles,
+        },
+        qa: {
+          order: ts.qa.order ? ts.qa.order.slice() : null,
+          index: ts.qa.index,
+          right: ts.qa.right,
+          wrong: ts.qa.wrong,
+          timeouts: ts.qa.timeouts,
+          done: ts.qa.done,
+        },
+      })),
+    };
+  }
+
+  static fromJSON(data, { rng } = {}) {
+    if (!data || typeof data !== "object") throw new Error("Invalid SetupCrew save data.");
+    const sc = new SetupCrew(rng);
+    sc.#started = !!data.started;
+    for (const td of (data.teams || [])) {
+      const ts = {
+        teamId: td.teamId,
+        slots: (td.slots || []).map(s => ({
+          slotIndex: s.slotIndex,
+          playerId: s.playerId,
+          name: s.name,
+          isBot: !!s.isBot,
+          steps: (s.steps || []).slice(),
+        })),
+        danceIds: (td.danceIds || []).slice(),
+        stepIndex: td.stepIndex || 0,
+        wrappedUp: !!td.wrappedUp,
+        penalties: td.penalties || 0,
+        penaltiesAdded: td.penaltiesAdded || 0,
+        qaRecovered: td.qaRecovered || 0,
+        stepStartedAt: td.stepStartedAt || 0,
+        botHiccups: td.botHiccups || 0,
+        completedSteps: (td.completedSteps || []).slice(),
+        cables: {
+          connected: ((td.cables && td.cables.connected) || []).slice(),
+          sparks: (td.cables && td.cables.sparks) || 0,
+        },
+        sound: {
+          locked: !!(td.sound && td.sound.locked),
+          feedbacks: (td.sound && td.sound.feedbacks) || 0,
+        },
+        mic: {
+          round: (td.mic && td.mic.round) || 0,
+          index: (td.mic && td.mic.index) || 0,
+          sequence: td.mic && Array.isArray(td.mic.sequence) ? td.mic.sequence.slice() : null,
+          done: !!(td.mic && td.mic.done),
+          wrongs: (td.mic && td.mic.wrongs) || 0,
+        },
+        deck: {
+          fileOrder: td.deck && Array.isArray(td.deck.fileOrder) ? td.deck.fileOrder.slice() : null,
+          filesTried: ((td.deck && td.deck.filesTried) || []).slice(),
+          grabbed: !!(td.deck && td.deck.grabbed),
+          reshuffles: (td.deck && td.deck.reshuffles) || 0,
+        },
+        qa: {
+          order: td.qa && Array.isArray(td.qa.order) ? td.qa.order.slice() : null,
+          index: (td.qa && td.qa.index) || 0,
+          right: (td.qa && td.qa.right) || 0,
+          wrong: (td.qa && td.qa.wrong) || 0,
+          timeouts: (td.qa && td.qa.timeouts) || 0,
+          done: !!(td.qa && td.qa.done),
+        },
+      };
+      sc.#teams.set(ts.teamId, ts);
+      for (const slot of ts.slots) {
+        sc.#playerIndex.set(slot.playerId, {
+          teamId: ts.teamId,
+          slotIndex: slot.slotIndex,
+          playerId: slot.playerId,
+          name: slot.name,
+          isBot: slot.isBot,
+        });
+      }
+    }
+    return sc;
+  }
+}
+
+const MirrorParts = { MirrorLobby, SetupCrew };
 return MirrorParts;
 })();
 
@@ -2321,13 +3244,14 @@ class SplitBriefTrial extends Trial {
 
 const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
 
-/* Level 3: The Mirror: Presentation Day. Coordinates #lobby (and later #setup, #dance).
+/* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup (and later #dance).
    Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
 class MirrorTrial extends Trial {
   #lobby;
+  #setup;
   #teams = [];
   #teamIds = [];
-  #phase = "idle";         // "idle" | "lobby" | "reveal" | "failed"
+  #phase = "idle";         // "idle" | "lobby" | "reveal" | "showtime" | "failed"
   #failedTeams = new Set();
   #crews = new Map();      // teamId -> { setupIds: [], danceIds: [] }
 
@@ -2335,12 +3259,14 @@ class MirrorTrial extends Trial {
     if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
     super(rng);
     this.#lobby = new MirrorParts.MirrorLobby(rng);
+    this.#setup = new MirrorParts.SetupCrew(rng);
   }
 
   get kind() { return "mirror"; }
   get phase() { return this.#phase; }
   get lobbyStarted() { return this.#lobby.started; }
   get lobbyClosed() { return this.#lobby.closed; }
+  get setupStarted() { return this.#setup.started; }
 
   /* Setup Crew gets half of connected active players rounded up, capped at 3. */
   static setupCrewSize(activeCount) {
@@ -2355,6 +3281,12 @@ class MirrorTrial extends Trial {
       [out[i], out[j]] = [out[j], out[i]];
     }
     return out;
+  }
+
+  #showtimeWhy() {
+    if (this.ranking) return "The trial is closed.";
+    if (this.#phase !== "showtime") return "Showtime has not started.";
+    return null;
   }
 
   startLobby(teams) {
@@ -2374,7 +3306,7 @@ class MirrorTrial extends Trial {
   botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
   allConnected() { return this.#lobby.allConnected(); }
 
-  /* Close lobby doors, fail incomplete teams, and deal Setup vs Dance crews for passing teams. */
+  /* Close lobby doors, fail incomplete teams, deal Setup vs Dance crews, and start SetupCrew. */
   closeDoors() {
     const res = this.#lobby.closeDoors();
     if (res.alreadyClosed) return { ...res, phase: this.#phase, crews: this.allCrews() };
@@ -2384,9 +3316,91 @@ class MirrorTrial extends Trial {
       const setupCount = MirrorTrial.setupCrewSize(pool.length);
       this.#crews.set(teamId, { setupIds: pool.slice(0, setupCount), danceIds: pool.slice(setupCount) });
     }
+    if (res.passedTeams.length > 0) {
+      const setupDeals = res.passedTeams.map(teamId => {
+        const deal = this.#crews.get(teamId);
+        return {
+          teamId,
+          players: deal.setupIds.map(pid => this.#lobby.playerState(pid)),
+          danceIds: deal.danceIds.slice(),
+        };
+      });
+      this.#setup.start(setupDeals, { shuffleSlots: false });
+    }
     this.#phase = res.passedTeams.length > 0 ? "reveal" : "failed";
     return { ...res, phase: this.#phase, crews: this.allCrews() };
   }
+
+  startShowtime() {
+    if (this.#phase === "showtime") return { ok: false, alreadyStarted: true, phase: this.#phase };
+    if (this.#phase !== "reveal") throw new Error("Showtime can only start after crew reveal.");
+    this.#phase = "showtime";
+    return { ok: true, phase: this.#phase, setup: this.#setup.state() };
+  }
+
+  cableHit(playerId, port, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.cableHit(playerId, port, opts);
+  }
+  cableMiss(playerId, port, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.cableMiss(playerId, port, opts);
+  }
+  soundHeld(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.soundHeld(playerId, opts);
+  }
+  soundFeedback(playerId) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.soundFeedback(playerId);
+  }
+  micTap(playerId, micNumber, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.micTap(playerId, micNumber, opts);
+  }
+  pickFile(playerId, fileIndexOrName, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.pickFile(playerId, fileIndexOrName, opts);
+  }
+  reshuffleDeck(teamOrId) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.reshuffleDeck(teamOrId);
+  }
+  answerQa(playerId, answerIndex, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.answerQa(playerId, answerIndex, opts);
+  }
+  timeoutQa(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.timeoutQa(playerId, opts);
+  }
+  wrapUp(playerId) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.wrapUp(playerId);
+  }
+  completeBotSetupStep(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.completeBotStep(playerId, opts);
+  }
+  advanceBotSetup(teamOrId, elapsedSeconds, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#setup.advanceBotSetup(teamOrId, elapsedSeconds, opts);
+  }
+
+  setupSlots(teamOrId) { return this.#setup.slotsFor(teamOrId); }
+  setupSlotOf(playerOrId) { return this.#setup.slotOf(playerOrId); }
+  setupStep(teamOrId) { return this.#setup.currentStep(teamOrId); }
+  setupCurrentPlayerId(teamOrId) { return this.#setup.currentPlayerId(teamOrId); }
+  isSetupTurn(playerOrId) { return this.#setup.isPlayersTurn(playerOrId); }
+  isSetupWrappedUp(teamOrId) { return this.#setup.isWrappedUp(teamOrId); }
+  setupPenalties(teamOrId) { return this.#setup.penaltiesFor(teamOrId); }
+  micSequenceFor(teamOrId) { return this.#setup.micSequenceFor(teamOrId); }
+  deckOrderFor(teamOrId) { return this.#setup.deckOrderFor(teamOrId); }
+  qaOrderFor(teamOrId) { return this.#setup.qaOrderFor(teamOrId); }
+  currentQaFor(teamOrId) { return this.#setup.currentQaFor(teamOrId); }
+  botSetupDueAt(teamOrId, opts) { return this.#setup.botStepDueAt(teamOrId, opts); }
+  setupTeamState(teamOrId) { return this.#setup.teamState(teamOrId); }
+  setupState() { return this.#setup.state(); }
 
   isTeamFailed(teamOrId) { return this.#failedTeams.has(mirrorIdOf(teamOrId)); }
   failedTeamIds() { return [...this.#failedTeams]; }
@@ -2419,6 +3433,7 @@ class MirrorTrial extends Trial {
       phase: this.#phase,
       teamIds: this.#teamIds.slice(),
       lobby: this.#lobby.toJSON(),
+      setup: this.#setup.toJSON(),
       failedTeams: [...this.#failedTeams],
       crews: [...this.#crews].map(([teamId, deal]) => [
         teamId,
@@ -2435,6 +3450,7 @@ class MirrorTrial extends Trial {
     t.#teamIds = (data.teamIds || []).slice();
     t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
     if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng });
+    if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng });
     t.#failedTeams = new Set(data.failedTeams || []);
     t.#crews = new Map((data.crews || []).map(([teamId, deal]) => [
       teamId,

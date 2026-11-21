@@ -284,3 +284,12 @@ Both branches forked from the same parent line (`862d9fa`) and edited 9 of the s
 8. What are the final Level 3 ghost hints (`USER_???`, `ATTEMPT_01`, `NULL`), High Tea guest story, briefing copy, and host script lines so we can put them in our per-level tables?
 9. What should the Level 3 end screen show once Level 3 Stats Update finishes (a milestone summary screen like Level 2's Sprint 1 Complete, or a direct button to Level 4)?
 10. Do we want a dev-jump shortcut (`Ctrl+Shift+2..7`) in our rebuild, and if so, should it be hidden behind a dev-only flag (like `?dev=1`) so players cannot trigger it in a real game?
+
+---
+
+## Step 2b: SetupCrew (branch `level3-mirror`)
+
+- **What was built:** Added `SetupCrew` inside `rules/MirrorParts.js` (with private `#` fields only) and wired it as private `#setup` on `MirrorTrial` in `rules/Trial.js` with `startShowtime()`, results-based action pass-throughs, read-only queries, and `toJSON`/`fromJSON` support.
+- **Crew and step splits:** Supports active players only (`Team.active()`, excluding Stuck and Idle). Setup Crew gets half the team's active players rounded up, max 3, with extras on Dance Crew. Assigns sequential steps (`cables`, `sound`, `mic`, `deck`, `qa`) across 1, 2, or 3 Setup slots and enforces turn handoff as each step completes through last-slot `wrapUp`.
+- **Results-based rules and seeded content:** Accepts reported hit/miss outcomes (`cableHit`, `cableMiss`, `soundHeld`, `soundFeedback`, `micTap`, `pickFile`, `reshuffleDeck`, `answerQa`, `timeoutQa`, `wrapUp`) with zero per-tick motion. Uses the injected seeded `EP.Rng` for slot order, mic memory sequences (lengths 3, 4, 5), 6-file drive order and reshuffles, Q&A item order, and bot setup milestone timing (`4, 10, 16, 22, 28, 34` seconds) with a 30% hiccup chance costing 3 attention.
+- **Verification:** Rebuilt `rules/rules.bundle.js` (23 modules). Added `Tests/check_mirror_setup.js` (29/29 assertions passing) and registered it in `tools/baseline.js`. `npm test` passed 15/15 checks with all 14 existing baselines unchanged.
