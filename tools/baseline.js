@@ -26,6 +26,7 @@ const TESTS = [
   "check_mirror_lobby",
   "check_mirror_setup",
   "check_mirror_dance",
+  "check_mirror_score",
 ];
 
 function runTest(name) {

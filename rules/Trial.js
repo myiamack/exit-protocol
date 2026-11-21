@@ -517,11 +517,13 @@ class MirrorTrial extends Trial {
   #dance;
   #teams = [];
   #teamIds = [];
-  #phase = "idle";         // "idle" | "lobby" | "reveal" | "showtime" | "failed"
+  #phase = "idle";               // "idle" | "lobby" | "reveal" | "showtime" | "failed"
   #failedTeams = new Set();
+  #failReasons = new Map();      // teamId -> "lobby" | "attention"
   #botOnlyTeams = new Set();
-  #botAttention = new Map(); // teamId -> rolled 0..100 attention for bot-only teams
-  #crews = new Map();      // teamId -> { setupIds: [], danceIds: [] }
+  #botAttention = new Map();     // teamId -> rolled 0..100 attention for bot-only teams
+  #lockedAttention = new Map();  // teamId -> 0..100 attention frozen at wrap-up, attention 0, or close
+  #crews = new Map();            // teamId -> { setupIds: [], danceIds: [] }
 
   constructor(rng) {
     if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
@@ -529,6 +531,18 @@ class MirrorTrial extends Trial {
     this.#lobby = new MirrorParts.MirrorLobby(rng);
     this.#setup = new MirrorParts.SetupCrew(rng);
     this.#dance = new MirrorParts.DanceCrew(rng);
+  }
+
+  static get MAX_SCORE() { return MirrorData.scoring.maxScore; }
+
+  /* Audience attention (0 to 100) -> whole score 0 to 7. */
+  static score(attention) {
+    const min = MirrorData.scoring.attentionMin;
+    const max = MirrorData.scoring.attentionMax;
+    const maxScore = MirrorData.scoring.maxScore;
+    const raw = typeof attention === "number" && Number.isFinite(attention) ? attention : min;
+    const clamped = Math.max(min, Math.min(max, raw));
+    return Math.max(0, Math.min(maxScore, Math.round((clamped / max) * maxScore)));
   }
 
   get kind() { return "mirror"; }
@@ -558,6 +572,117 @@ class MirrorTrial extends Trial {
     return null;
   }
 
+  #playerTeamId(playerOrId) {
+    const ps = this.#lobby.playerState(playerOrId);
+    return ps ? ps.teamId : null;
+  }
+
+  #teamShowtimeWhy(teamOrId) {
+    const baseWhy = this.#showtimeWhy();
+    if (baseWhy) return baseWhy;
+    if (teamOrId !== null && teamOrId !== undefined) {
+      const tid = mirrorIdOf(teamOrId);
+      if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+        return "Team has already failed.";
+      }
+      if (this.#lockedAttention.has(tid)) {
+        return "Team presentation has already finished.";
+      }
+    }
+    return null;
+  }
+
+  #isBotOnly(team) {
+    if (this.#botOnlyTeams.has(team.id)) return true;
+    return !this.#lobby.started && Array.isArray(team.members) && team.members.length > 0 && team.members.every(p => p.isBot);
+  }
+
+  #ensureBotAttention(teamId) {
+    if (!this.#botAttention.has(teamId)) {
+      const min = MirrorData.scoring.attentionMin;
+      const max = MirrorData.scoring.attentionMax;
+      this.#botAttention.set(teamId, min + Math.floor(this.rng() * (max - min + 1)));
+    }
+    return this.#botAttention.get(teamId);
+  }
+
+  #lockTeamAttention(tid, showtimeSecondsLeft) {
+    const min = MirrorData.scoring.attentionMin;
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+      const reason = this.#lobby.isTeamFailed(tid) ? "lobby" : (this.#failReasons.get(tid) || "attention");
+      this.#failedTeams.add(tid);
+      this.#failReasons.set(tid, reason);
+      this.#lockedAttention.set(tid, min);
+      return { teamId: tid, attention: min, score: 0, failed: true, failReason: reason };
+    }
+    if (this.#lockedAttention.has(tid)) {
+      const att = this.#lockedAttention.get(tid);
+      const failed = att <= min;
+      return {
+        teamId: tid,
+        attention: att,
+        score: MirrorTrial.score(att),
+        failed,
+        failReason: this.#failReasons.get(tid) || (failed ? "attention" : null),
+      };
+    }
+    const att = this.attentionFor(tid, showtimeSecondsLeft);
+    this.#lockedAttention.set(tid, att);
+    const failed = att <= min;
+    if (failed) {
+      this.#failedTeams.add(tid);
+      this.#failReasons.set(tid, "attention");
+    }
+    return {
+      teamId: tid,
+      attention: att,
+      score: MirrorTrial.score(att),
+      failed,
+      failReason: failed ? "attention" : null,
+    };
+  }
+
+  #resolveTeamResult(team) {
+    const tid = team.id;
+    const min = MirrorData.scoring.attentionMin;
+    const botOnly = this.#isBotOnly(team);
+    if (this.#lobby.isTeamFailed(tid)) {
+      return { attention: min, base: 0, failed: true, failReason: "lobby", botOnly };
+    }
+    if (this.#failedTeams.has(tid)) {
+      return {
+        attention: min,
+        base: 0,
+        failed: true,
+        failReason: this.#failReasons.get(tid) || "attention",
+        botOnly,
+      };
+    }
+    if (botOnly) {
+      const att = this.#ensureBotAttention(tid);
+      const failed = att <= min;
+      return {
+        attention: att,
+        base: MirrorTrial.score(att),
+        failed,
+        failReason: failed ? "attention" : null,
+        botOnly: true,
+      };
+    }
+    let att;
+    if (this.#lockedAttention.has(tid)) att = this.#lockedAttention.get(tid);
+    else if (this.#phase === "showtime") att = this.attentionFor(tid, 0);
+    else att = min;
+    const failed = att <= min;
+    return {
+      attention: att,
+      base: MirrorTrial.score(att),
+      failed,
+      failReason: failed ? "attention" : null,
+      botOnly: false,
+    };
+  }
+
   startLobby(teams) {
     if (this.#lobby.started) throw new Error("Mirror lobby already started.");
     this.#teams = teams.slice();
@@ -566,6 +691,8 @@ class MirrorTrial extends Trial {
       this.#teams.filter(t => t.members.length > 0 && t.members.every(p => p.isBot)).map(t => t.id)
     );
     this.#botAttention.clear();
+    this.#lockedAttention.clear();
+    this.#failReasons.clear();
     this.#phase = "lobby";
     return this.#lobby.start(this.#teams);
   }
@@ -583,7 +710,10 @@ class MirrorTrial extends Trial {
   closeDoors() {
     const res = this.#lobby.closeDoors();
     if (res.alreadyClosed) return { ...res, phase: this.#phase, crews: this.allCrews() };
-    for (const teamId of res.failedTeams) this.#failedTeams.add(teamId);
+    for (const teamId of res.failedTeams) {
+      this.#failedTeams.add(teamId);
+      this.#failReasons.set(teamId, "lobby");
+    }
     for (const teamId of res.passedTeams) {
       const pool = this.#shuffle(this.#lobby.connectedIds(teamId));
       const setupCount = MirrorTrial.setupCrewSize(pool.length);
@@ -622,72 +752,120 @@ class MirrorTrial extends Trial {
   }
 
   cableHit(playerId, port, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.cableHit(playerId, port, opts);
   }
   cableMiss(playerId, port, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.cableMiss(playerId, port, opts);
   }
   soundHeld(playerId, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.soundHeld(playerId, opts);
   }
   soundFeedback(playerId) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.soundFeedback(playerId);
   }
   micTap(playerId, micNumber, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.micTap(playerId, micNumber, opts);
   }
   pickFile(playerId, fileIndexOrName, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.pickFile(playerId, fileIndexOrName, opts);
   }
   reshuffleDeck(teamOrId) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(teamOrId);
     return why ? { ok: false, reason: why } : this.#setup.reshuffleDeck(teamOrId);
   }
   answerQa(playerId, answerIndex, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.answerQa(playerId, answerIndex, opts);
   }
   timeoutQa(playerId, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.timeoutQa(playerId, opts);
   }
-  wrapUp(playerId) {
-    const why = this.#showtimeWhy();
-    return why ? { ok: false, reason: why } : this.#setup.wrapUp(playerId);
+  wrapUp(playerId, opts = {}) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    if (why) return { ok: false, reason: why };
+    const res = this.#setup.wrapUp(playerId);
+    if (res.ok && !this.#botOnlyTeams.has(res.teamId)) {
+      let sec = null;
+      if (typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)) {
+        sec = opts.showtimeSecondsLeft;
+      } else if (typeof opts.elapsedSeconds === "number" && Number.isFinite(opts.elapsedSeconds)) {
+        sec = MirrorData.timers.showtimeSeconds - opts.elapsedSeconds;
+      }
+      if (sec !== null) {
+        const locked = this.#lockTeamAttention(res.teamId, sec);
+        return {
+          ...res,
+          attention: locked.attention,
+          score: locked.score,
+          failed: locked.failed,
+          failReason: locked.failReason,
+        };
+      }
+    }
+    return res;
   }
   completeBotSetupStep(playerId, opts) {
-    const why = this.#showtimeWhy();
-    return why ? { ok: false, reason: why } : this.#setup.completeBotStep(playerId, opts);
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    if (why) return { ok: false, reason: why };
+    const res = this.#setup.completeBotStep(playerId, opts);
+    if (res.ok && res.wrappedUp && !this.#botOnlyTeams.has(res.teamId)) {
+      const secLeft = MirrorData.timers.showtimeSeconds - res.finishedAt;
+      const locked = this.#lockTeamAttention(res.teamId, secLeft);
+      return {
+        ...res,
+        attention: locked.attention,
+        score: locked.score,
+        failed: locked.failed,
+        failReason: locked.failReason,
+      };
+    }
+    return res;
   }
   advanceBotSetup(teamOrId, elapsedSeconds, opts) {
-    const why = this.#showtimeWhy();
-    return why ? { ok: false, reason: why } : this.#setup.advanceBotSetup(teamOrId, elapsedSeconds, opts);
+    const why = this.#teamShowtimeWhy(teamOrId);
+    if (why) return { ok: false, reason: why };
+    const res = this.#setup.advanceBotSetup(teamOrId, elapsedSeconds, opts);
+    if (res.ok && res.wrappedUp && !this.#botOnlyTeams.has(res.teamId) && !this.#lockedAttention.has(res.teamId)) {
+      const wrapEv = res.events ? res.events.find(e => e.wrappedUp) : null;
+      const finishedAt = wrapEv && typeof wrapEv.finishedAt === "number" ? wrapEv.finishedAt : elapsedSeconds;
+      const secLeft = MirrorData.timers.showtimeSeconds - finishedAt;
+      const locked = this.#lockTeamAttention(res.teamId, secLeft);
+      return {
+        ...res,
+        attention: locked.attention,
+        score: locked.score,
+        failed: locked.failed,
+        failReason: locked.failReason,
+      };
+    }
+    return res;
   }
 
   danceHit(playerId, quality, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#dance.noteHit(playerId, quality, opts);
   }
   danceMiss(playerId, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#dance.noteMiss(playerId, opts);
   }
   danceStray(playerId, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#dance.strayPress(playerId, opts);
   }
   applyBotDanceBoost(playerId, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#dance.applyBotBoost(playerId, opts);
   }
   advanceBotDance(teamOrId, elapsedSeconds, opts) {
-    const why = this.#showtimeWhy();
+    const why = this.#teamShowtimeWhy(teamOrId);
     return why ? { ok: false, reason: why } : this.#dance.advanceBotDance(teamOrId, elapsedSeconds, opts);
   }
 
@@ -724,7 +902,8 @@ class MirrorTrial extends Trial {
   /* Current team attention (0..100). Attention drains only during showtime, never in lobby/reveal. */
   attentionFor(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
     const tid = mirrorIdOf(teamOrId);
-    if (this.#failedTeams.has(tid)) return MirrorData.scoring.attentionMin;
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) return MirrorData.scoring.attentionMin;
+    if (this.#lockedAttention.has(tid)) return this.#lockedAttention.get(tid);
     if (this.#phase !== "showtime") return MirrorData.scoring.attentionMax;
     if (this.#botOnlyTeams.has(tid)) {
       return this.#botAttention.has(tid) ? this.#botAttention.get(tid) : MirrorData.scoring.attentionMin;
@@ -738,8 +917,130 @@ class MirrorTrial extends Trial {
     return Math.max(MirrorData.scoring.attentionMin, Math.min(MirrorData.scoring.attentionMax, raw));
   }
 
-  isTeamFailed(teamOrId) { return this.#failedTeams.has(mirrorIdOf(teamOrId)); }
-  failedTeamIds() { return [...this.#failedTeams]; }
+  scoreFor(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
+    return MirrorTrial.score(this.attentionFor(teamOrId, showtimeSecondsLeft));
+  }
+
+  lockedAttentionFor(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#lockedAttention.has(tid) ? this.#lockedAttention.get(tid) : null;
+  }
+
+  failReasonOf(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#lobby.isTeamFailed(tid) ? "lobby" : (this.#failReasons.get(tid) || null);
+  }
+
+  /* Check if showtime attention has hit 0 and lock the failure on that team. */
+  checkAttention(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+      const reason = this.#lobby.isTeamFailed(tid) ? "lobby" : (this.#failReasons.get(tid) || "attention");
+      return {
+        teamId: tid,
+        attention: MirrorData.scoring.attentionMin,
+        score: 0,
+        failed: true,
+        failReason: reason,
+        locked: true,
+      };
+    }
+    if (this.#lockedAttention.has(tid)) {
+      const att = this.#lockedAttention.get(tid);
+      const failed = att <= MirrorData.scoring.attentionMin;
+      return {
+        teamId: tid,
+        attention: att,
+        score: MirrorTrial.score(att),
+        failed,
+        failReason: this.#failReasons.get(tid) || (failed ? "attention" : null),
+        locked: true,
+      };
+    }
+    const att = this.attentionFor(tid, showtimeSecondsLeft);
+    if (this.#phase === "showtime" && !this.#botOnlyTeams.has(tid) && att <= MirrorData.scoring.attentionMin) {
+      const res = this.#lockTeamAttention(tid, showtimeSecondsLeft);
+      return { ...res, locked: true };
+    }
+    return {
+      teamId: tid,
+      attention: att,
+      score: MirrorTrial.score(att),
+      failed: false,
+      failReason: null,
+      locked: false,
+    };
+  }
+
+  /* Lock a team's final attention and 0..7 score during showtime. */
+  finishTeam(teamOrId, showtimeSecondsLeft = 0) {
+    if (this.ranking) return { ok: false, reason: "The trial is closed." };
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+      return { ok: true, ...this.#lockTeamAttention(tid, 0) };
+    }
+    if (this.#phase !== "showtime") return { ok: false, reason: "Showtime has not started." };
+    if (this.#botOnlyTeams.has(tid)) {
+      const att = this.#ensureBotAttention(tid);
+      const failed = att <= MirrorData.scoring.attentionMin;
+      return {
+        ok: true,
+        teamId: tid,
+        attention: att,
+        score: MirrorTrial.score(att),
+        failed,
+        failReason: failed ? "attention" : null,
+      };
+    }
+    return { ok: true, ...this.#lockTeamAttention(tid, showtimeSecondsLeft) };
+  }
+
+  /* Finalize all remaining teams and rank the round with Focus influence and exact-attention tiebreaks. */
+  closeMirror(round, teams = this.#teams, { showtimeSecondsLeft = 0 } = {}) {
+    if (this.#lobby.started && !this.#lobby.closed) this.closeDoors();
+    if (this.#phase === "reveal") this.startShowtime();
+    const list = teams && teams.length ? teams : this.#teams;
+    for (const t of list) {
+      if (this.#lobby.isTeamFailed(t.id) || this.#failedTeams.has(t.id)) {
+        this.#lockTeamAttention(t.id, 0);
+      } else if (this.#isBotOnly(t)) {
+        this.#ensureBotAttention(t.id);
+      } else if (!this.#lockedAttention.has(t.id) && this.#phase === "showtime") {
+        this.#lockTeamAttention(t.id, showtimeSecondsLeft);
+      }
+    }
+    return this.runTrial(round, list);
+  }
+
+  /* Rank by 0..7 score + light Focus influence, then higher exact attention, then Rng. */
+  rank(round, teams = this.#teams) {
+    const list = teams && teams.length ? teams : this.#teams;
+    const byTeam = new Map(list.map(t => [t, this.#resolveTeamResult(t)]));
+    const ranked = this.rankWithInfluence(
+      round,
+      list,
+      t => byTeam.get(t).base,
+      [e => byTeam.get(e.team).attention]
+    );
+    return ranked.map(e => {
+      const info = byTeam.get(e.team);
+      return {
+        ...e,
+        attention: info.attention,
+        failed: info.failed,
+        failReason: info.failReason,
+        botOnly: info.botOnly,
+      };
+    });
+  }
+
+  isTeamFailed(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid);
+  }
+  failedTeamIds() {
+    return [...new Set([...this.#lobby.failedTeamIds(), ...this.#failedTeams])];
+  }
 
   crewFor(teamOrId) {
     const d = this.#crews.get(mirrorIdOf(teamOrId));
@@ -772,8 +1073,10 @@ class MirrorTrial extends Trial {
       setup: this.#setup.toJSON(),
       dance: this.#dance.toJSON(),
       failedTeams: [...this.#failedTeams],
+      failReasons: [...this.#failReasons],
       botOnlyTeams: [...this.#botOnlyTeams],
       botAttention: [...this.#botAttention],
+      lockedAttention: [...this.#lockedAttention],
       crews: [...this.#crews].map(([teamId, deal]) => [
         teamId,
         { setupIds: deal.setupIds.slice(), danceIds: deal.danceIds.slice() },
@@ -792,8 +1095,10 @@ class MirrorTrial extends Trial {
     if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng });
     if (data.dance) t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng });
     t.#failedTeams = new Set(data.failedTeams || []);
+    t.#failReasons = new Map(data.failReasons || []);
     t.#botOnlyTeams = new Set(data.botOnlyTeams || []);
     t.#botAttention = new Map(data.botAttention || []);
+    t.#lockedAttention = new Map(data.lockedAttention || []);
     t.#crews = new Map((data.crews || []).map(([teamId, deal]) => [
       teamId,
       {
