@@ -484,6 +484,47 @@ async function fullSevenLevelGame() {
       w.eval('G._timer.clock = () => Date.now(); G.activity(ME);');
       await sleep(10);
       check("Level 3 Showtime finishes cleanly without leaks", w.eval('G.didRun("runTrial")') && !LEAK_RE.test($("#stage").textContent) && noOkFlags());
+      const res3 = w.eval(`(() => {
+        const rank = G.trialRanking();
+        const rows = [...document.querySelectorAll("#mirrorRankTable tbody tr")];
+        const rowsMatch = rows.length === rank.length && rank.every((r, i) => {
+          const cells = [...rows[i].children].map(td => td.textContent);
+          const attTxt = Math.abs(r.attention - Math.round(r.attention)) < 0.05
+            ? String(Math.round(r.attention))
+            : r.attention.toFixed(1);
+          return cells[0] === String(r.place) &&
+            cells[1].includes(r.team.name) &&
+            cells[2].includes(attTxt + "%") &&
+            cells[3].includes(r.base + " / 7") &&
+            cells[4] === (r.won ? "Win" : "Loss");
+        });
+        const tieOk = (document.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random.";
+        const lt = G.mirrorLobbyTeam(MYTEAM);
+        const st = G.mirrorSetupTeam(MYTEAM);
+        const dc = G.mirrorDanceTeam(MYTEAM);
+        const sumEl = document.querySelector("#mirrorTeamSummary");
+        const sumLobby = (document.querySelector("#mirrorSumLobby") || {}).textContent || "";
+        const sumSetup = (document.querySelector("#mirrorSumSetup") || {}).textContent || "";
+        const sumDance = (document.querySelector("#mirrorSumDance") || {}).textContent || "";
+        const hiccups = st ? st.botHiccups + st.cables.sparks + st.sound.feedbacks + st.mic.wrongs + st.deck.filesTried.length + st.qa.wrong + st.qa.timeouts : 0;
+        const summaryOk = !!sumEl &&
+          sumLobby.includes(lt.players.filter(p => p.connected).length + " of " + lt.players.length) &&
+          (!st || (sumSetup.includes(st.completedSteps.length + " of 5 steps done") && sumSetup.includes(hiccups + " hiccup"))) &&
+          (!dc || !dc.dancers.length || sumDance.includes(dc.dancers.length + " dancer"));
+        const mine = rank.find(r => r.team === MYTEAM);
+        const resTxt = (document.querySelector("#mirrorResult") || {}).textContent || "";
+        const winLossOk = !!mine && resTxt.includes("Team " + (mine.won ? "WIN" : "LOSS") + ". Score " + mine.base + " of 7.");
+        const stg = document.querySelector("#stage").textContent;
+        return {
+          rowsMatch,
+          tieOk,
+          summaryOk,
+          winLossOk,
+          costOk: resTxt.includes("Every player now pays 3 Focus"),
+          clean: !/Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i.test(stg) && !/bot/i.test(stg),
+        };
+      })()`);
+      check("Level 3 trial result screen shows rules score, attention, ranking, tie rule, and team summary", res3.rowsMatch && res3.tieOk && res3.summaryOk && res3.winLossOk && res3.costOk && res3.clean);
     } else if (kind === "auto") {
       check("Level " + lv + " renders AutoTrial placeholder", !!$("#runAuto"));
       $("#runAuto").click(); await sleep(20);
@@ -553,6 +594,50 @@ async function fullSevenLevelGame() {
       if (!noOkFlags()) anyOkFlag = true;
       $("#nextLevel").click(); await sleep(30); // -> Level 3 Briefing
       check("Start Level 3 button moves into Level 3 Briefing", w.eval('G.level === 3 && G.step === "briefing" && S.step === 5'));
+    } else if (lv === 3) {
+      const p3 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, trialResults: G.teamTrialResults(MYTEAM), standings: G.teamStandings().map(s => ({ name: s.team.name, wins: s.wins })), hearts: ME.hearts.count, glitches: ME.glitches, status: ME.boardStatus(), attrs: ["focus","collab","initiative","grit","composure"].map(k => ME.attrs[k]), total: ME.total() })');
+      const p3Text = $("#stage").textContent;
+      const statusOk = p3.status !== "OK" && p3Text.includes(p3.status) && !/\bOK\b/.test(p3Text);
+      const attrPanel = $$("#stage .panel").find(p => p.textContent.includes("Your 5 attributes"));
+      const attrText = attrPanel ? attrPanel.textContent : "";
+      const attrIdx = ATTR_ORDER.map(n => attrText.indexOf(n));
+      const attrOrderOk = attrIdx.every((p, i) => p >= 0 && (i === 0 || p > attrIdx[i - 1])) &&
+        ATTR_ORDER.every((n, i) => attrText.includes(n) && attrText.includes(String(p3.attrs[i]))) &&
+        attrText.includes("Total: " + p3.total);
+      const resultsPanel = $$("#stage .panel").find(p => p.textContent.includes("Your trial results"));
+      const resultRows = resultsPanel ? [...resultsPanel.querySelectorAll(".row")] : [];
+      const resultsOk = resultRows.length === 3 &&
+        [1, 2, 3].every((n, i) => resultRows[i].textContent.includes("Level " + n) &&
+          resultRows[i].textContent.includes(p3.trialResults[n] ? "WIN" : "LOSS"));
+      const standingsRows = $$("#stage table.levels tbody tr");
+      const rankedOk = standingsRows.length === p3.standings.length &&
+        standingsRows.every((tr, i) => tr.children[1].textContent.includes(p3.standings[i].name) &&
+          tr.children[2].textContent.trim() === p3.standings[i].wins + " / 3");
+      const lockedCardText = ($("#stage .locked") || {}).textContent || "";
+      const hasPresComplete = p3Text.includes("Presentation Day Complete") &&
+        $("#navMid").textContent === "Presentation Day Complete" &&
+        $("#steps").textContent.includes("Presentation Day Complete") &&
+        resultsOk &&
+        p3Text.includes("Hearts: " + p3.hearts + "/3") &&
+        p3Text.includes("Glitches: " + p3.glitches + "/2") &&
+        statusOk && attrOrderOk &&
+        p3Text.includes(p3.myTeam) && p3Text.includes(p3.wins + " / 3 trial wins") &&
+        rankedOk &&
+        lockedCardText.includes("Level 4 locked") &&
+        !/Initiative/i.test(lockedCardText) &&
+        !$("#nextLevel") &&
+        !!$("#replay") && $("#replay").textContent.includes("Replay") &&
+        !!$("#restart") && $("#restart").textContent.includes("Back to sign-in") &&
+        $("#navNext").disabled && /Level 4 locked/.test($("#navNext").textContent);
+      check("Presentation Day Complete screen appears after Level 3 Stats Update with Level 4 locked", hasPresComplete);
+      const leaksTypeOrPath = LEAK_RE.test(p3Text);
+      check("Presentation Day Complete screen hides work style and secret path", !leaksTypeOrPath, leaksTypeOrPath ? "leaked" : "clean");
+      w.eval("ME.idle = true; render();");
+      const idleText = $("#stage").textContent;
+      check("Idle player shows Idle (not Active) on Presentation Day Complete screen", idleText.includes("Idle") && !/\bActive\b/.test(idleText));
+      w.eval("ME.idle = false; render();");
+      if (!noOkFlags()) anyOkFlag = true;
+      w.eval("startNextLevel()"); await sleep(30); // -> Level 4 Briefing
     } else {
       if (!noOkFlags()) anyOkFlag = true;
       check("Level " + lv + " unlocks Level " + (lv + 1), new RegExp("Start Level " + (lv + 1)).test($("#navNext").textContent) && !$("#navNext").disabled);
@@ -2460,6 +2545,416 @@ async function mirrorStep6dCases() {
   check("Dance Crew flow reaches the end of Level 3 without work style or secret path leaks", res.fullDanceLv3EndOk);
 }
 
+async function mirrorStep6eCases() {
+  const res = w.eval(`(() => {
+    const LEAK_RE = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i;
+    const HARDCODED_TEAMS_RE = /Team Kestrel|Team Wren|Team Finch|Team Heron/i;
+    const ATTR_ORDER = ["Focus", "Collaboration", "Initiative", "Grit", "Composure"];
+    const ATTR_KEYS = ["focus", "collab", "initiative", "grit", "composure"];
+
+    const formatAtt = val => {
+      const n = Math.max(0, Math.min(100, typeof val === "number" && Number.isFinite(val) ? val : 0));
+      if (Math.abs(n - Math.round(n)) < 0.05) return String(Math.round(n));
+      return n.toFixed(1);
+    };
+    const formatBoost = val => (Number.isInteger(val) ? String(val) : val.toFixed(1));
+
+    const makeTeam = (tid, size, { allHumans = false, startId = tid * 10 + 1 } = {}) => {
+      const members = [];
+      for (let i = 0; i < size; i++) {
+        const tp = i % 3 === 0 ? "coop" : i % 3 === 1 ? "indep" : "contra";
+        members.push(new EP.Player({
+          id: startId + i,
+          name: "U" + tid + "P" + (i + 1),
+          type: tp,
+          spend: EP.Bots.typicalSpend(tp),
+          isBot: !allHumans && i > 0,
+        }));
+      }
+      return new EP.Team({ id: tid, name: "Unit " + tid, members });
+    };
+
+    const advanceToLv3Trial = game => {
+      for (let round = 1; round <= 2; round++) {
+        game.startNextRound();
+        game.advance();
+        game.advance();
+        game.runTrial();
+        game.endTrial();
+        game.endGlitchReport();
+        game.advance();
+        game.advance();
+        game.lockIn();
+        game.advance();
+        game.computeEarnings();
+        game.placeAllRemaining();
+        game.finishRound();
+      }
+      game.startNextRound();
+      game.advance();
+      game.advance();
+    };
+
+    const driveSetupAndWrap = (game, team, { extraMiss = false, secLeft = 50 } = {}) => {
+      const guardMax = 40;
+      for (let i = 0; i < guardMax; i++) {
+        const st = game.mirrorSetupTeam(team);
+        if (!st || st.wrappedUp || game.didRun("runTrial")) break;
+        const pid = st.currentPlayerId;
+        const step = st.currentStep;
+        if (step === "cables") {
+          if (extraMiss && st.cables.sparks === 0) game.mirrorCableMiss(pid, EP.MirrorData.ports[0]);
+          const rem = EP.MirrorData.ports.filter(p => !st.cables.connected.includes(p));
+          if (rem.length) game.mirrorCableHit(pid, rem[0]);
+        } else if (step === "sound") {
+          game.mirrorSoundHeld(pid);
+        } else if (step === "mic") {
+          const seq = st.mic.sequence;
+          game.mirrorMicTap(pid, seq[st.mic.index]);
+        } else if (step === "deck") {
+          game.mirrorPickFile(pid, EP.MirrorData.files.find(f => f.correct).name);
+        } else if (step === "qa") {
+          const qa = game.round.trial.currentQaFor(team);
+          game.mirrorAnswerQa(pid, qa.correctIndex);
+        } else if (step === "wrapUp") {
+          game.mirrorWrapUp(pid, { showtimeSecondsLeft: secLeft });
+        }
+      }
+    };
+
+    // A. Multi-team trial result screen: scores, attention, ranking, tie line, lobby-failed team, own team summary
+    let simNow = 12000000;
+    const tA1 = makeTeam(1, 4, { allHumans: true });
+    const tA2 = makeTeam(2, 4, { allHumans: true });
+    const tA3 = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2, 3].map(i => EP.Bots.makePlayer(31 + i, "Bot3_" + i, "coop")) });
+    const tA4 = new EP.Team({ id: 4, name: "Unit 4", members: [0, 1, 2, 3].map(i => EP.Bots.makePlayer(41 + i, "Bot4_" + i, "indep")) });
+    const gA = new EP.Game({ teams: [tA1, tA2, tA3, tA4], rng: EP.Rng.seeded(651), clock: () => simNow, hooks: EP.Bots.hooks });
+    advanceToLv3Trial(gA);
+    gA.start();
+    // Connect tA1 fully; leave tA2 incomplete so tA2 fails lobby at 30s
+    for (const p of tA1.active()) gA.mirrorConnect(p);
+    gA.mirrorConnect(tA2.active()[0]);
+    simNow += 30000;
+    gA.tick(); // closes lobby at 30s -> reveal; tA2 fails lobby
+    simNow += 1000;
+    gA.tick(); // closes reveal -> showtime
+    simNow += 15000;
+    gA.tick(); // 60s left in showtime
+
+    // Dance hits and misses/strays on tA1 before wrapping up
+    const dIdsA1 = gA.mirrorDanceTeam(tA1).dancers.map(d => d.playerId);
+    for (const did of dIdsA1) {
+      gA.mirrorDanceHit(did, "perfect");
+      gA.mirrorDanceHit(did, "good");
+    }
+    if (dIdsA1.length) {
+      gA.mirrorDanceMiss(dIdsA1[0]);
+      gA.mirrorDanceStray(dIdsA1[dIdsA1.length - 1]);
+    }
+    driveSetupAndWrap(gA, tA1, { extraMiss: true, secLeft: 55 });
+
+    const rankA = gA.trialRanking();
+    const resA1View = MirrorView.screen({
+      game: gA, me: tA1.members[0], team: tA1, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "Every player now pays 3 Focus.", onRender: () => {},
+    });
+    const boxA1 = document.createElement("div");
+    boxA1.innerHTML = resA1View.html;
+    const textA1 = boxA1.textContent || "";
+    const rowsA1 = [...boxA1.querySelectorAll("#mirrorRankTable tbody tr")];
+    const rankRowsMatch = rankA.length === 4 && rowsA1.length === 4 && rankA.every((r, i) => {
+      const cells = [...rowsA1[i].children].map(td => td.textContent);
+      return cells[0] === String(r.place) &&
+        cells[1].includes(r.team.name) &&
+        cells[2].includes(formatAtt(r.attention) + "%") &&
+        cells[3] === r.base + " / 7" &&
+        cells[4] === (r.won ? "Win" : "Loss");
+    });
+    const failedOtherRow = rowsA1.find(tr => Number(tr.dataset.teamId) === tA2.id);
+    const failedOtherShownPlainly = !!failedOtherRow &&
+      failedOtherRow.dataset.failReason === "lobby" &&
+      failedOtherRow.textContent.includes("Failed lobby") &&
+      failedOtherRow.textContent.includes("0%") &&
+      failedOtherRow.textContent.includes("0 / 7");
+    const tieLineOk = (boxA1.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random.";
+    const stA1 = gA.mirrorSetupTeam(tA1);
+    const dcA1 = gA.mirrorDanceTeam(tA1);
+    const ltA1 = gA.mirrorLobbyTeam(tA1);
+    const sumA1Ok = !!boxA1.querySelector("#mirrorTeamSummary") &&
+      boxA1.querySelector("#mirrorSumLobby").textContent.includes("Passed (" + ltA1.players.length + " of " + ltA1.players.length) &&
+      boxA1.querySelector("#mirrorSumSetup").textContent.includes("5 of 5 steps done (wrapped up)") &&
+      boxA1.querySelector("#mirrorSumSetup").textContent.includes("1 hiccup") &&
+      boxA1.querySelector("#mirrorSumDance").textContent.includes(dcA1.dancers.length + " dancer") &&
+      boxA1.querySelector("#mirrorSumDance").textContent.includes("+" + formatBoost(dcA1.avgBoost)) &&
+      boxA1.querySelector("#mirrorSumDance").textContent.includes(formatBoost(dcA1.avgPenalties) + " penalty avg");
+    const mineA1 = rankA.find(r => r.team === tA1);
+    const winLossA1Ok = !!mineA1 &&
+      textA1.includes("Team " + (mineA1.won ? "WIN" : "LOSS") + ". Score " + mineA1.base + " of 7.") &&
+      !boxA1.querySelector("#mirrorLobbyFailed");
+    const cleanA1 = !LEAK_RE.test(textA1) && !HARDCODED_TEAMS_RE.test(textA1) && !/bot/i.test(textA1) &&
+      [...boxA1.querySelectorAll(".flag")].every(el => el.textContent.trim() !== "OK");
+
+    // Own team failed lobby view
+    const resA2View = MirrorView.screen({
+      game: gA, me: tA2.members[0], team: tA2, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "Cost hint", onRender: () => {},
+    });
+    const boxA2 = document.createElement("div");
+    boxA2.innerHTML = resA2View.html;
+    const textA2 = boxA2.textContent || "";
+    const mineA2 = rankA.find(r => r.team === tA2);
+    const ownLobbyFailOk = !!mineA2 && !mineA2.won && !!boxA2.querySelector("#mirrorLobbyFailed") &&
+      textA2.includes("LOBBY FAILED") &&
+      textA2.includes("Team LOSS. Score 0 of 7.") &&
+      boxA2.querySelector("#mirrorSumLobby").textContent.includes("Failed (1 of 4 connected before doors closed)") &&
+      boxA2.querySelector("#mirrorSumSetup").textContent.includes("lobby failed") &&
+      boxA2.querySelector("#mirrorSumDance").textContent.includes("lobby failed") &&
+      (boxA2.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random." &&
+      !LEAK_RE.test(textA2) && !HARDCODED_TEAMS_RE.test(textA2) && !/bot/i.test(textA2);
+
+    // B. Attention-0 failure result screen and 0-dancer team summary
+    let bNow = 13000000;
+    const tB1 = makeTeam(1, 3, { allHumans: true });
+    tB1.members[1].glitches = 2;
+    tB1.members[2].glitches = 2; // only 1 active player -> 1 setup, 0 dancers
+    const tB2 = makeTeam(2, 4, { allHumans: true });
+    const tB3 = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "Bot3_" + i, "coop")) });
+    const tB4 = new EP.Team({ id: 4, name: "Unit 4", members: [0, 1, 2].map(i => EP.Bots.makePlayer(41 + i, "Bot4_" + i, "indep")) });
+    const gB = new EP.Game({ teams: [tB1, tB2, tB3, tB4], rng: EP.Rng.seeded(652), clock: () => bNow, hooks: EP.Bots.hooks });
+    advanceToLv3Trial(gB);
+    gB.start();
+    bNow += 16000;
+    gB.tick(); // bot teams connect
+    for (const p of tB1.active()) gB.mirrorConnect(p);
+    for (const p of tB2.active()) gB.mirrorConnect(p);
+    bNow = gB.timer.deadline;
+    gB.tick(); // reveal -> showtime
+    // tB1 wraps up cleanly with 0 dancers
+    driveSetupAndWrap(gB, tB1, { secLeft: 65 });
+    // tB2 drains attention to 0
+    bNow += 70000;
+    gB.tick();
+    const sB2 = gB.mirrorSetupTeam(tB2).currentPlayerId;
+    for (let i = 0; i < 6 && gB.mirrorFailReason(tB2) !== "attention"; i++) gB.mirrorCableMiss(sB2, "HDMI");
+
+    const vB1 = MirrorView.screen({
+      game: gB, me: tB1.members[0], team: tB1, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "Cost hint", onRender: () => {},
+    });
+    const boxB1 = document.createElement("div");
+    boxB1.innerHTML = vB1.html;
+    const zeroDancerSummaryOk = gB.didRun("runTrial") &&
+      boxB1.querySelector("#mirrorSumDance b").textContent === "0 dancers · +0 boost avg · −0 penalty avg" &&
+      !/NaN/.test(boxB1.textContent) &&
+      !LEAK_RE.test(boxB1.textContent);
+
+    const vB2 = MirrorView.screen({
+      game: gB, me: tB2.members[0], team: tB2, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "Cost hint", onRender: () => {},
+    });
+    const boxB2 = document.createElement("div");
+    boxB2.innerHTML = vB2.html;
+    const textB2 = boxB2.textContent || "";
+    const attnZeroResultOk = !!boxB2.querySelector("#mirrorAttnFailed") &&
+      textB2.includes("ROOM EMPTIED") &&
+      textB2.includes("Score 0 of 7.") &&
+      boxB2.querySelector('#mirrorRankTable tbody tr[data-team-id="' + tB2.id + '"]').textContent.includes("Attention 0%") &&
+      (boxB2.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random." &&
+      !LEAK_RE.test(textB2);
+
+    // C & D. Presentation Day Complete (exact L1-L3 history after save/load, boardStatus(), attributes order,
+    //        standings, Level 4 locked, Replay & Back to sign-in buttons)
+    const savedG = G, savedME = ME, savedMYTEAM = MYTEAM, savedS = S;
+    let pdcCoreOk = false, pdcSaveOk = false, legacyNoTrialResultsOk = false, pdcStatusesOk = false, pdcNoLeakOk = false;
+    let replayWorksOk = false, signOutWorksOk = false;
+
+    try {
+      let cNow = 14000000;
+      const cTeams = [1, 2, 3, 4].map(tid => makeTeam(tid, 4, { allHumans: tid === 1 }));
+      let gC = new EP.Game({ teams: cTeams, rng: EP.Rng.seeded(653), clock: () => cNow, hooks: EP.Bots.hooks });
+
+      // Play Levels 1, 2, 3 with distinct outcomes for cTeams[0]: L1 WIN, L2 LOSS, L3 WIN (trialWins === 2)
+      // Level 1: cTeams[0] scores 7, cTeams[1] scores 6, others lower -> cTeams[0] WIN
+      gC.startNextRound(); gC.advance(); gC.advance();
+      gC.setSopScore(cTeams[0], 7); gC.setSopScore(cTeams[1], 6); gC.setSopScore(cTeams[2], 1); gC.setSopScore(cTeams[3], 0);
+      gC.runTrial();
+      gC.endTrial(); gC.endGlitchReport(); gC.advance(); gC.advance(); gC.lockIn(); gC.advance();
+      gC.computeEarnings(); gC.placeAllRemaining(); gC.finishRound();
+
+      // Level 2: cTeams[0] empty board (0), cTeams[1..3] lock postTwistAnswer (5) -> cTeams[0] LOSS
+      gC.startNextRound(); gC.advance(); gC.advance();
+      const sb = gC.splitBrief();
+      sb.fireTwist(cTeams);
+      for (const tm of [cTeams[1], cTeams[2], cTeams[3]]) {
+        sb.setBoard(tm.members[0], sb.postTwistAnswer);
+        sb.lockIn(tm.members[0]);
+      }
+      gC.closeSplitBrief();
+      gC.endTrial(); gC.endGlitchReport(); gC.advance(); gC.advance(); gC.lockIn(); gC.advance();
+      gC.computeEarnings(); gC.placeAllRemaining(); gC.finishRound();
+
+      // Level 3: cTeams[0] and cTeams[3] pass lobby while cTeams[1] and cTeams[2] fail lobby -> cTeams[0] WIN
+      gC.startNextRound(); gC.advance(); gC.advance();
+      gC.start();
+      for (const p of cTeams[0].active()) gC.mirrorConnect(p);
+      for (const p of cTeams[3].active()) gC.mirrorConnect(p);
+      cNow += 30000;
+      gC.tick(); // cTeams[1] fails lobby
+      cNow += 1000;
+      gC.tick(); // showtime
+      driveSetupAndWrap(gC, cTeams[0], { secLeft: 65 });
+      if (!gC.didRun("runTrial")) {
+        cNow += 75000;
+        gC.tick();
+      }
+      gC.endTrial(); gC.endGlitchReport(); gC.advance(); gC.advance(); gC.lockIn(); gC.advance();
+      gC.computeEarnings(); gC.placeAllRemaining(); gC.finishRound();
+
+      // Round-trip via toJSON/fromJSON and verify trialResults + teamStandings persist
+      const expectedHistory = { 1: true, 2: false, 3: true };
+      const gCReloaded = EP.Game.fromJSON(JSON.parse(JSON.stringify(gC.toJSON())), { clock: () => cNow, hooks: EP.Bots.hooks });
+      const reloadedMe = gCReloaded.players.find(p => p.id === cTeams[0].members[0].id);
+      const reloadedTeam = gCReloaded.teamOf(reloadedMe);
+      const rHist = gCReloaded.teamTrialResults(reloadedTeam);
+      pdcSaveOk = rHist[1] === true && rHist[2] === false && rHist[3] === true &&
+        reloadedTeam.trialWins === 2 &&
+        JSON.stringify(gCReloaded.teamStandings().map(s => [s.team.id, s.wins])) ===
+          JSON.stringify(gC.teamStandings().map(s => [s.team.id, s.wins]));
+
+      const legacyRaw = JSON.parse(JSON.stringify(gC.toJSON()));
+      for (const t of legacyRaw.teams) delete t.trialResults;
+      const legacyTeamDirect = EP.Team.fromJSON(legacyRaw.teams[0], new Map(gC.players.map(p => [p.id, p])));
+      const legacyGame = EP.Game.fromJSON(legacyRaw, { clock: () => cNow, hooks: EP.Bots.hooks });
+      legacyNoTrialResultsOk =
+        !!legacyTeamDirect.trialResults &&
+        typeof legacyTeamDirect.trialResults === "object" &&
+        !Array.isArray(legacyTeamDirect.trialResults) &&
+        Object.keys(legacyTeamDirect.trialResults).length === 0 &&
+        legacyGame.teams.every(t => !!t.trialResults && typeof t.trialResults === "object" && !Array.isArray(t.trialResults) && Object.keys(t.trialResults).length === 0) &&
+        Object.keys(legacyGame.teamTrialResults(legacyGame.teams[0])).length === 0 &&
+        Object.keys(legacyTeamDirect.toJSON().trialResults).length === 0;
+
+      const mountPdc = () => {
+        G = gCReloaded;
+        ME = reloadedMe;
+        MYTEAM = reloadedTeam;
+        S = {
+          ...savedS,
+          email: "pdc@icstars.org",
+          code: "CYCLE60",
+          name: ME.name,
+          type: ME.type.key,
+          arrived: true,
+          step: 9,
+          maxStep: 9,
+          found: { L: 1 },
+        };
+        resetRoundUI();
+        render();
+      };
+      mountPdc();
+
+      const pdcText = document.querySelector("#stage").textContent;
+      const resPanel = [...document.querySelectorAll("#stage .panel")].find(p => p.textContent.includes("Your trial results"));
+      const resRows = resPanel ? [...resPanel.querySelectorAll(".row")] : [];
+      const exactHistoryRendered = resRows.length === 3 &&
+        resRows[0].textContent.includes("Level 1") && resRows[0].textContent.includes("WIN") &&
+        resRows[1].textContent.includes("Level 2") && resRows[1].textContent.includes("LOSS") &&
+        resRows[2].textContent.includes("Level 3") && resRows[2].textContent.includes("WIN");
+      const attrPanel = [...document.querySelectorAll("#stage .panel")].find(p => p.textContent.includes("Your 5 attributes"));
+      const attrTxt = attrPanel ? attrPanel.textContent : "";
+      const attrIdx = ATTR_ORDER.map(n => attrTxt.indexOf(n));
+      const attrsOrdered = attrIdx.every((p, i) => p >= 0 && (i === 0 || p > attrIdx[i - 1])) &&
+        ATTR_KEYS.every((k, i) => attrTxt.includes(ATTR_ORDER[i]) && attrTxt.includes(String(ME.attrs[k])));
+      const standings = gCReloaded.teamStandings();
+      const sRows = [...document.querySelectorAll("#stage table.levels tbody tr")];
+      const standingsOk = sRows.length === standings.length &&
+        sRows.every((tr, i) => tr.children[0].textContent === String(standings[i].place) &&
+          tr.children[1].textContent.includes(standings[i].team.name) &&
+          tr.children[2].textContent.trim() === standings[i].wins + " / 3");
+      const lockedBox = document.querySelector("#stage .locked");
+      pdcCoreOk = pdcText.includes("Presentation Day Complete") &&
+        exactHistoryRendered &&
+        pdcText.includes("Hearts: " + ME.hearts.count + "/3") &&
+        pdcText.includes("Glitches: " + ME.glitches + "/2") &&
+        pdcText.includes(ME.boardStatus()) &&
+        attrsOrdered &&
+        pdcText.includes(MYTEAM.name) &&
+        pdcText.includes("2 / 3 trial wins") &&
+        standingsOk &&
+        !!lockedBox && lockedBox.textContent.includes("Level 4 locked") && !/Initiative/i.test(lockedBox.textContent) &&
+        !!document.querySelector("#replay") && !!document.querySelector("#restart") &&
+        !document.querySelector("#nextLevel") &&
+        document.querySelector("#navNext").disabled &&
+        document.querySelector("#navNext").textContent.includes("Level 4 locked");
+      pdcNoLeakOk = !LEAK_RE.test(pdcText) && !HARDCODED_TEAMS_RE.test(pdcText) && !/bot/i.test(pdcText);
+
+      // Check every boardStatus() state renders cleanly (Active, At risk, Glitching, Idle, Stuck; never OK)
+      const origGlitches = ME.glitches, origIdle = ME.idle, origAttrs = { ...ME.attrs }, origHearts = ME.hearts.count;
+      const seenFlags = {};
+      ME.glitches = 0; ME.idle = false; ME.setAttrsForTest({ focus: 4, collab: 4, initiative: 4, grit: 4, composure: 4 }); ME.hearts.refill(3); render();
+      seenFlags.Active = document.querySelector("#stage .flag").textContent.trim();
+      ME.setAttrsForTest({ focus: 1 }); ME.hearts.empty(); render();
+      seenFlags.Risk = document.querySelector("#stage .flag").textContent.trim();
+      ME.idle = true; render();
+      seenFlags.Idle = document.querySelector("#stage .flag").textContent.trim();
+      ME.setAttrsForTest({ focus: -1 }); ME.idle = false; render();
+      seenFlags.Glitching = document.querySelector("#stage .flag").textContent.trim();
+      ME.glitches = 2; render();
+      seenFlags.Stuck = document.querySelector("#stage .flag").textContent.trim();
+      ME.glitches = origGlitches; ME.idle = origIdle; ME.setAttrsForTest(origAttrs); ME.hearts.empty(); ME.hearts.refill(origHearts);
+      pdcStatusesOk = seenFlags.Active === "Active" && seenFlags.Risk === "At risk" &&
+        seenFlags.Idle === "Idle" && seenFlags.Glitching === "Glitching" && seenFlags.Stuck === "Stuck";
+
+      // Test Replay button from Presentation Day Complete
+      mountPdc();
+      document.querySelector("#replay").click();
+      replayWorksOk = G === null && S.step === 3 && S.name === reloadedMe.name && S.email === "pdc@icstars.org" &&
+        Object.keys(S.found).length === 0 && !!document.querySelector('[data-type="coop"]');
+
+      // Test Back to sign-in button from Presentation Day Complete
+      mountPdc();
+      document.querySelector("#restart").click();
+      signOutWorksOk = G === null && S.step === 0 && !!document.querySelector("#signForm") &&
+        savedName("pdc@icstars.org") === reloadedMe.name;
+    } finally {
+      if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+      G = savedG; ME = savedME; MYTEAM = savedMYTEAM;
+      S = savedS;
+      render();
+    }
+
+    return {
+      rankRowsMatch,
+      failedOtherShownPlainly,
+      tieLineOk,
+      sumA1Ok,
+      winLossA1Ok,
+      cleanA1,
+      ownLobbyFailOk,
+      zeroDancerSummaryOk,
+      attnZeroResultOk,
+      pdcSaveOk,
+      legacyNoTrialResultsOk,
+      pdcCoreOk,
+      pdcNoLeakOk,
+      pdcStatusesOk,
+      replayWorksOk,
+      signOutWorksOk,
+    };
+  })()`);
+
+  check("Level 3 result screen matches rules scores, exact attention, and ranking", res.rankRowsMatch && res.winLossA1Ok && res.cleanA1);
+  check("Level 3 result screen shows tie rule line", res.tieLineOk);
+  check("Level 3 result screen plainly shows lobby-failed teams (other and own)", res.failedOtherShownPlainly && res.ownLobbyFailOk);
+  check("Level 3 result screen team summary matches rules lobby, setup hiccups, and dance averages", res.sumA1Ok && res.zeroDancerSummaryOk);
+  check("Level 3 result screen shows ROOM EMPTIED when attention hits 0%", res.attnZeroResultOk);
+  check("Presentation Day Complete preserves exact L1-L3 history across save/load and renders all required sections", res.pdcSaveOk && res.pdcCoreOk && res.pdcNoLeakOk);
+  check("Team.fromJSON loads an older save without trialResults as empty", res.legacyNoTrialResultsOk);
+  check("Presentation Day Complete shows boardStatus() (Active, At risk, Idle, Glitching, Stuck) and never OK", res.pdcStatusesOk);
+  check("Presentation Day Complete Replay and Back to sign-in buttons reset session properly", res.replayWorksOk && res.signOutWorksOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -2495,6 +2990,8 @@ w.addEventListener("load", async () => {
     await mirrorStep6c2Cases();
     log("run 9: Mirror Step 6d Dance Crew rhythm lane");
     await mirrorStep6dCases();
+    log("run 10: Mirror Step 6e trial result and Presentation Day Complete");
+    await mirrorStep6eCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

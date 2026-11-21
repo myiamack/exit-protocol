@@ -479,3 +479,9 @@ body.menucur.curgl,body.menucur.curgl button,body.menucur.curgl input{cursor:var
 .dance-row-meta{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dance-prog{width:72px;height:10px;border-radius:6px;background:var(--edge);border:2px solid var(--edge);overflow:hidden;display:inline-block}
 .dance-prog i{display:block;height:100%;background:linear-gradient(90deg,var(--pink),var(--ok))}
+/* Presentation Day (Level 3, Step 6e: trial result) */
+.attn.final{grid-template-columns:auto minmax(0,1fr) auto}
+.mirror-row-fail{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;background:rgba(224,57,77,.2);border:1px solid var(--bad);color:var(--bad);font-family:var(--mono);font-size:.78rem;font-weight:700}
+.mirror-summary{display:grid;gap:6px;margin-top:4px}
+.mirror-summary-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;background:#141922;border:2px solid var(--edge);border-radius:8px;padding:6px 10px}
+.mirror-summary-row b{font-family:var(--mono);font-size:.9rem}

@@ -131,10 +131,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (124 passed, 0 failed, 0 console errors).
 - **Open issues:** Trial result detail tweaks and the "Presentation Day Complete" end screen remain deferred to Step 6e.
 
-### Step 6e: Screens - Trial result and Presentation Day Complete end screen (Effort: Medium) - TODO
+### Step 6e: Screens - Trial result and Presentation Day Complete end screen (Effort: Medium) - DONE
+- **Built:** Added `Team.trialResults` (recorded in `Trial.run()`, saved in `Team.toJSON()`/`fromJSON()` defaulting older saves to `{}`), read-only `Game.teamTrialResults(teamOrId)` and `Game.teamStandings()`, Presentation Day trial result screen in `mirror-view.js` (`renderResultHTML`, styled in `styles.css`), and shared `milestoneCompleteScreen()` in `game.js` for Sprint 1 Complete and Presentation Day Complete (`END_SCREENS[3]`), plus Run 10 tests in `Tests/check_screens.js`.
 - **Goal:** Build the Presentation Day trial result panel in `mirror-view.js` (attention %, fail note if locked out or attention 0%, team WIN/LOSS, score 0-7, full ranking, Focus cost reminder) and add "Presentation Day Complete" (`END_SCREENS[3]`) in `game.js` matching Sprint 1 Complete format (Levels 1-3 results, hearts, `x/2` glitches, `boardStatus()`, 5 attributes in canonical order, team wins out of 3, ranked teams, "Level 4 locked" with Replay/Sign-out; no work styles or secret paths).
 - **Done when:** Completing Level 3 Stats Update shows the Presentation Day Complete screen accurately with zero leaked work-style or secret-path info.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+- **Files changed:** `rules/Team.js`, `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `mirror-view.js`, `game.js`, `styles.css`, `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (136 passed, 0 failed, 0 console errors).
+- **Open issues:** None.
 
 ### Step 7: Dev jump (`Ctrl+Shift+1` to `7`) (Effort: Low) - TODO
 - **Goal:** Add `Ctrl+Shift+1` to `7` dev jump in `game.js`, always on in the prototype: jumping forward fast-forwards rounds to that level's briefing; jumping to the current or an earlier level starts a new game and fast-forwards to that level; resets round UI and timers cleanly.

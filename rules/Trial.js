@@ -34,6 +34,10 @@ class Trial {
     this.ranking = order.map((r, i) => {
       r.team.won = i < w;
       if (r.team.won) r.team.trialWins += 1;
+      if (round && round.n) {
+        if (!r.team.trialResults) r.team.trialResults = {};
+        r.team.trialResults[round.n] = r.team.won;
+      }
       return { ...r, place: i + 1, won: r.team.won };
     });
     return this.ranking;

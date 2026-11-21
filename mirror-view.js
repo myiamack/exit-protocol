@@ -92,6 +92,18 @@
     return Number.isInteger(val) ? String(val) : val.toFixed(1);
   }
 
+  function formatAtt(val) {
+    const n = Math.max(0, Math.min(100, typeof val === "number" && Number.isFinite(val) ? val : 0));
+    if (Math.abs(n - Math.round(n)) < 0.05) return String(Math.round(n));
+    return n.toFixed(1);
+  }
+
+  function countSetupHiccups(setup) {
+    if (!setup) return 0;
+    return setup.botHiccups + setup.cables.sparks + setup.sound.feedbacks + setup.mic.wrongs +
+      setup.deck.filesTried.length + setup.qa.wrong + setup.qa.timeouts;
+  }
+
   function resetShowtimeState(m) {
     const S = EP.MirrorData.sound;
     m.showtimeInit = false;
@@ -208,17 +220,82 @@ ${opts.sabotageAlert || ""}`;
     const renderResultHTML = () => {
       const rank = G.trialRanking();
       const maxScore = EP.Trial.MirrorTrial.MAX_SCORE;
-      const mine = rank.find(x => x.team === MYTEAM);
-      const shown = x => Math.min(maxScore, Math.max(0, Math.round(x)));
+      const mine = rank.find(x => x.team === MYTEAM) || null;
+      const mineWon = mine ? !!mine.won : !!MYTEAM.won;
+      const mineScore = mine ? mine.base : 0;
+      const mineAtt = mine ? mine.attention : (G.mirrorAttention(MYTEAM) || 0);
+      const mineAttClamped = Math.max(0, Math.min(100, mineAtt));
+      const mineFailReason = (mine && mine.failReason) || failReason;
+
+      const attnBarHTML = `<div class="attn final" id="mirrorAttnBar">
+  <span class="label">Audience attention</span>
+  <span class="atrk" id="attnBar"><i style="width:${mineAttClamped}%" class="${mineAttClamped <= 25 ? "low" : ""}"></i></span>
+  <span class="apct" id="attnPct">${formatAtt(mineAtt)}%</span>
+</div>`;
+
+      const failBannerHTML = mineFailReason === "lobby"
+        ? renderLobbyFailedHTML()
+        : mineFailReason === "attention"
+          ? `<div class="panel ready mirror-failed" id="mirrorAttnFailed">
+  <div class="readybig mirror-fail-title">ROOM EMPTIED</div>
+  <span class="failnote">TRIAL FAILED · Score 0</span>
+  <p>Audience attention hit 0% before the end.</p>
+</div>`
+          : "";
+
+      const rows = rank.map(r => {
+        const failTag = r.failReason === "lobby"
+          ? ' <span class="mirror-row-fail">Failed lobby</span>'
+          : r.failReason === "attention"
+            ? ' <span class="mirror-row-fail">Attention 0%</span>'
+            : "";
+        return `<tr data-team-id="${r.team.id}" data-place="${r.place}" data-fail-reason="${r.failReason || ""}"><td class="n">${r.place}</td><td>${esc(r.team.name)}${r.team === MYTEAM ? " (you)" : ""}${failTag}</td><td class="n">${formatAtt(r.attention)}%</td><td class="n">${r.base} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`;
+      }).join("");
+
+      const connectedCount = lobbyPlayers.filter(p => p.connected).length;
+      const totalLobby = lobbyPlayers.length;
+      const lobbySummary = (mineFailReason === "lobby" || (lobbyTeam && lobbyTeam.failed))
+        ? `Failed (${connectedCount} of ${totalLobby} connected before doors closed)`
+        : lobbyTeam
+          ? `Passed (${connectedCount} of ${totalLobby} connected)`
+          : "Passed";
+
+      const setupRes = G.mirrorSetupTeam(MYTEAM);
+      const totalSteps = EP.MirrorData.setupSteps.length;
+      let setupSummary;
+      if (setupRes) {
+        const stepsDone = setupRes.completedSteps.length;
+        const hiccups = countSetupHiccups(setupRes);
+        setupSummary = `${stepsDone} of ${totalSteps} steps done${setupRes.wrappedUp ? " (wrapped up)" : ""} · ${hiccups} hiccup${hiccups === 1 ? "" : "s"}${setupRes.penalties > 0 ? ` (−${setupRes.penalties} attention)` : ""}${setupRes.qaRecovered > 0 ? ` · +${setupRes.qaRecovered} Q&A recovery` : ""}`;
+      } else {
+        setupSummary = `0 of ${totalSteps} steps done · 0 hiccups (lobby failed)`;
+      }
+
+      const danceRes = G.mirrorDanceTeam(MYTEAM);
+      let danceSummary;
+      if (danceRes && danceRes.dancers.length) {
+        danceSummary = `${danceRes.dancers.length} dancer${danceRes.dancers.length === 1 ? "" : "s"} · +${formatBoost(danceRes.avgBoost)} / ${EP.MirrorData.dance.boostCap} boost avg · −${formatBoost(danceRes.avgPenalties)} penalty avg`;
+      } else if (danceRes) {
+        danceSummary = "0 dancers · +0 boost avg · −0 penalty avg";
+      } else {
+        danceSummary = "Not started (lobby failed)";
+      }
+
+      const summaryHTML = `<div class="panel mirror-summary" id="mirrorTeamSummary">
+  <span class="label">Your team summary · ${esc(MYTEAM.name)}</span>
+  <div class="mirror-summary-row" id="mirrorSumLobby"><span>Lobby</span><b>${esc(lobbySummary)}</b></div>
+  <div class="mirror-summary-row" id="mirrorSumSetup"><span>Setup Crew</span><b>${esc(setupSummary)}</b></div>
+  <div class="mirror-summary-row" id="mirrorSumDance"><span>Dance Crew</span><b>${esc(danceSummary)}</b></div>
+</div>`;
+
       const hint = opts.costHint ? `<span class="hint">${opts.costHint()}</span>` : "";
-      const rows = rank.map(r => `<tr><td class="n">${r.place}</td><td>${esc(r.team.name)}${r.team === MYTEAM ? " (you)" : ""}</td><td class="n">${shown(r.score)} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`).join("");
-      return `<div class="result"><b style="color:${MYTEAM.won ? "var(--ok)" : "var(--bad)"}">Team ${MYTEAM.won ? "WIN" : "LOSS"}. Score ${shown(mine ? mine.score : 0)} of ${maxScore}.</b><span class="hint">Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table>${hint}</div>`;
+      return `${attnBarHTML}${failBannerHTML}<div class="result" id="mirrorResult"><b style="color:${mineWon ? "var(--ok)" : "var(--bad)"}">Team ${mineWon ? "WIN" : "LOSS"}. Score ${mineScore} of ${maxScore}.</b><span class="hint">Final attention: ${formatAtt(mineAtt)}%. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win. Your team's ${esc(opts.attrName || "Focus")} can move the score a little.</span><span class="hint" id="mirrorTieRule">Ties: higher exact attention wins, then random.</span><table class="levels" id="mirrorRankTable"><thead><tr><th>Place</th><th>Team</th><th>Attention</th><th>Score</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table>${summaryHTML}${hint}</div>`;
     };
 
     let mountedRoot = null;
 
     if (done) {
-      const html = renderHeader() + (failReason === "lobby" ? renderLobbyFailedHTML() : "") + renderResultHTML();
+      const html = renderHeader() + renderResultHTML();
       return { html, bind: null, tick: null, waitHint: "Finish Presentation Day first" };
     }
 

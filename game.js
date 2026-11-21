@@ -309,6 +309,7 @@ function fwd(){
       if(G&&G.over)return{label:"Game complete",ok:false,cls:"soft"};
       if(R().isFinal){const ok=ME.isStuck()||placeLeft()===0;return{label:ME.isStuck()||ME.earned===0?"See final results ▶":"Lock in final points ▶",ok,cls:"green"}}
       if(roundDone()){
+        if(R().n===3)return{label:"Level 4 locked",ok:false,cls:"soft"};
         const nx=EP.Round.LEVELS[R().n]||null;
         return{label:`Start Level ${nx?nx.n:R().n+1} ▶`,ok:true,cls:"red"};
       }
@@ -326,16 +327,17 @@ function goForward(){
     case 5:if(G.step==="briefing")G.advance();go(R().isFinal?9:6);return;   /* Briefing > Open Floor or Graduation */
     case 6:applyOpenFloorEnd();go(7);return;
     case 7:payCost();go(8);return;
-    case 9:if(G&&G.over)return;if(!R().isFinal&&roundDone())startNextLevel();else lockPoints();return;
+    case 9:if(G&&G.over)return;if(R().n===3&&roundDone())return;if(!R().isFinal&&roundDone())startNextLevel();else lockPoints();return;
     default:go(S.step+1);
   }
 }
+const milestoneTitle=()=>R().n===2?"Sprint 1 Complete":R().n===3?"Presentation Day Complete":null;
 function updateNav(){
   const b=$("#navBack"),n=$("#navNext"),f=fwd();
   b.hidden=S.step===0;b.disabled=!canBack();
   b.textContent=S.step===1?"◀ Sign out":"◀ Back";
   n.textContent=f.label;n.disabled=!f.ok;n.className="btn "+f.cls;
-  const stepText=S.step===9&&R().isFinal?(G&&G.over?"Final Results":"Graduation"):S.step===9&&R().n===2&&roundDone()?"Sprint 1 Complete":STEPS[S.step];
+  const stepText=S.step===9&&R().isFinal?(G&&G.over?"Final Results":"Graduation"):S.step===9&&roundDone()&&milestoneTitle()?milestoneTitle():STEPS[S.step];
   const wait7=(currentTrialView&&currentTrialView.waitHint)||"Finish the trial first";
   $("#navMid").textContent=f.ok||S.step===9?stepText:({2:"Type a name to continue",3:"Pick a style and place all 15 points",7:wait7,8:"Finish the accusation and gift window"}[S.step]||stepText);
 }
@@ -353,8 +355,8 @@ function chrome(){
   $("#where").textContent=inGame?`Level ${R().n} · ${R().name}`:STEPS[S.step];
   $("#stage").classList.toggle("boxed",S.step>=3);
   $("#steps").hidden=S.step<=1||(S.step===4&&!S.arrived);
-  const stepLabel=S.step===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):S.step===9&&R().n===2&&roundDone()?"Sprint 1 Complete":STEPS[S.step];
-  $("#steps").innerHTML=STEPS.map((t,i)=>`<li class="${i===S.step?"on":i<S.step?"done":""}">${i===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):i===9&&R().n===2&&roundDone()?"Sprint 1 Complete":t}</li>`).join("");
+  const stepLabel=S.step===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):S.step===9&&roundDone()&&milestoneTitle()?milestoneTitle():STEPS[S.step];
+  $("#steps").innerHTML=STEPS.map((t,i)=>`<li class="${i===S.step?"on":i<S.step?"done":""}">${i===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):i===9&&roundDone()&&milestoneTitle()?milestoneTitle():t}</li>`).join("");
   $("#fac").innerHTML=`<span class="label">Host script · ${stepLabel}</span><ul>${facLines(S.step,R().n).map(l=>`<li>${esc(l)}</li>`).join("")}</ul>`;
   const bl=S.step===7?(G&&G.timer?"The Trial":null):S.step===8?(!accDone()?"Glitch Report":!gwClosed()?"Gift Window":null):S.step===9?(R().isFinal?(G&&G.over?null:"Graduation"):(roundDone()?null:"Stats Update")):BANNER[S.step];
   const cin=S.step===4&&!S.arrived;
@@ -620,26 +622,33 @@ function finalResultsScreen(){
   <div class="panel tw"><span class="label">Cohort endings</span><table class="levels"><thead><tr><th>Intern</th><th>Team</th><th>Outcome</th></tr></thead><tbody>${res.map(r=>`<tr><td>${esc(r.player.name)}${r.player===ME?" (you)":""}</td><td>${esc(G.teamOf(r.player).name)}</td><td>${esc(r.ending)}</td></tr>`).join("")}</tbody></table></div>
   <div class="row"><button class="btn blue" id="replay">Play again</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
 }
-function sprint1CompleteScreen(){
-  const lv2Win=!!MYTEAM.won;
-  const lv1Win=MYTEAM.trialWins-(lv2Win?1:0)>0;
-  const teams=[...G.teams].sort((a,b)=>b.trialWins-a.trialWins);
-  const nx=EP.Round.LEVELS[2];
-  return `<div><span class="chip g">Sprint 1 Complete</span><h2 style="margin-top:8px">Sprint 1 Complete, ${esc(S.name)}</h2></div>
+function milestoneCompleteScreen({title,levelCount,locked,nextDetail}){
+  const res=G.teamTrialResults(MYTEAM);
+  const rows=EP.Round.LEVELS.slice(0,levelCount).map(lv=>{
+    const win=res[lv.n]!==undefined?!!res[lv.n]:(lv.n===R().n?!!MYTEAM.won:false);
+    return `<div class="row" style="justify-content:space-between"><span>Level ${lv.n} · ${esc(lv.name)}</span><b style="color:${win?"var(--ok)":"var(--bad)"}">${win?"WIN":"LOSS"}</b></div>`;
+  }).join("");
+  const standings=G.teamStandings();
+  const nx=EP.Round.LEVELS[levelCount];
+  const nextCard=locked
+    ?`<div class="locked"><div><span class="label">Next · Level ${nx.n}</span><h3>Level ${nx.n} locked</h3><span class="hint">${esc(nextDetail)}</span></div><span class="tag">LOCKED</span></div>
+  <div class="row"><button class="btn blue" id="replay">Replay</button><button class="btn soft" id="restart">Back to sign-in</button></div>`
+    :`<div class="locked" style="border-style:solid;border-color:var(--ok)"><div><span class="label">Next · Level ${nx.n}</span><h3>${esc(nx.name)}</h3><span class="hint">${esc(nextDetail)}</span></div><span class="tag" style="background:var(--ok)">READY</span></div>
+  <div class="row"><button class="btn red" id="nextLevel">Start Level ${nx.n} ▶</button><button class="btn blue" id="replay">Replay</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
+  return `<div><span class="chip g">${esc(title)}</span><h2 style="margin-top:8px">${esc(title)}, ${esc(S.name)}</h2></div>
   <div class="cols">
-    <div class="panel"><span class="label">Your trial results</span><div class="row" style="justify-content:space-between"><span>Level 1 · Boot Up</span><b style="color:${lv1Win?"var(--ok)":"var(--bad)"}">${lv1Win?"WIN":"LOSS"}</b></div><div class="row" style="justify-content:space-between"><span>Level 2 · Sprint 1</span><b style="color:${lv2Win?"var(--ok)":"var(--bad)"}">${lv2Win?"WIN":"LOSS"}</b></div></div>
+    <div class="panel"><span class="label">Your trial results</span>${rows}</div>
     <div class="panel"><span class="label">Your status</span><span class="hint">Hearts: ${ME.hearts.count}/${EP.Hearts.CAP} · Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}</span>${flag(status())}</div>
     <div class="panel"><span class="label">Your 5 attributes</span>${A.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
   </div>
-  <div class="panel"><span class="label">Your team</span><p><b>${esc(MYTEAM.name)}</b> · ${MYTEAM.trialWins} / 2 trial wins</p></div>
-  <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${teams.map((tm,i)=>`<tr><td class="n">${i+1}</td><td>${esc(tm.name)}${tm===MYTEAM?" (you)":""}</td><td class="n">${tm.trialWins} / 2</td></tr>`).join("")}</tbody></table></div>
-  <div class="locked" style="border-style:solid;border-color:var(--ok)"><div><span class="label">Next · Level ${nx.n}</span><h3>${esc(nx.name)}</h3><span class="hint">Oct 1 · Trial cost ${nx.cost} · Attribute revealed at the briefing</span></div><span class="tag" style="background:var(--ok)">READY</span></div>
-  <div class="row"><button class="btn red" id="nextLevel">Start Level ${nx.n} ▶</button><button class="btn blue" id="replay">Replay</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
+  <div class="panel"><span class="label">Your team</span><p><b>${esc(MYTEAM.name)}</b> · ${MYTEAM.trialWins} / ${levelCount} trial wins</p></div>
+  <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${standings.map(s=>`<tr><td class="n">${s.place}</td><td>${esc(s.team.name)}${s.team===MYTEAM?" (you)":""}</td><td class="n">${s.wins} / ${levelCount}</td></tr>`).join("")}</tbody></table></div>
+  ${nextCard}`;
 }
 const END_SCREENS={
   1:()=>nextLevelCard(1,"Sep 8–25 · Trial cost 3 · Attribute revealed at the briefing"),
-  2:()=>sprint1CompleteScreen(),
-  3:()=>nextLevelCard(3,"Oct 5–9 · Trial cost 4 · Attribute revealed at the briefing"),
+  2:()=>milestoneCompleteScreen({title:"Sprint 1 Complete",levelCount:2,locked:false,nextDetail:`Oct 1 · Trial cost ${EP.Round.LEVELS[2].cost} · Attribute revealed at the briefing`}),
+  3:()=>milestoneCompleteScreen({title:"Presentation Day Complete",levelCount:3,locked:true,nextDetail:"Geek Week (Oct 5–9) · Coming next."}),
   4:()=>nextLevelCard(4,"Oct 5–30 · Trial cost 4 · Attribute revealed at the briefing"),
   5:()=>nextLevelCard(5,"Nov 2–27 · Trial cost 5 · Attribute revealed at the briefing"),
   6:()=>nextLevelCard(6,"Nov 30 – Dec 1 · Final Performance Review · Trial cost 0"),
@@ -648,7 +657,7 @@ const END_SCREENS={
 function pointBuyHTML(){return `<div class="buy">${A.map(a=>{const v=ME.attrs[a.k]+(ME.draft[a.k]||0);return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?'<span class="tag b">bonus</span>':""}</span><span class="step"><button class="minus" data-pdec="${a.k}" aria-label="Remove from ${a.n}" ${!ME.canUnplace(ME.draft,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-pinc="${a.k}" aria-label="Add to ${a.n}" ${!ME.canPlace(ME.draft,a.k)?"disabled":""}>+</button></span><span class="fin">max ${maxOf(a.k)}</span></div>`}).join("")}</div>`}
 V[9]=()=>{
   if(G&&G.over)return END_SCREENS[7]();
-  if(R().n===2&&roundDone())return END_SCREENS[2]();
+  if((R().n===2||R().n===3)&&roundDone())return END_SCREENS[R().n]();
   const left=placeLeft();const t=T();const got=roundDone()?ME.placedThisRound:ME.earned;const nx=EP.Round.LEVELS[R().n]||null;
   if(R().isFinal){
     return `<div><span class="chip g">Graduation</span><h2 style="margin-top:8px">Final Performance Review, ${esc(S.name)}</h2></div>

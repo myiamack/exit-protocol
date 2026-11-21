@@ -614,6 +614,8 @@ class Game {
   mirrorSetupTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupTeamState(teamOrId) : null; }
   mirrorDanceTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceTeamState(teamOrId) : null; }
   trialRanking() { return (this.round && this.round.trial && this.round.trial.ranking) || []; }
+  teamTrialResults(teamOrId) { const t = typeof teamOrId === "object" && teamOrId ? teamOrId : this.teams.find(x => x.id === teamOrId); return t ? { ...t.trialResults } : {}; }
+  teamStandings() { return [...this.teams].sort((a, b) => b.trialWins - a.trialWins).map((team, i) => ({ place: i + 1, team, wins: team.trialWins })); }
   mirrorCheckAttention(teamOrId, now = this.now()) {
     return this._mirrorCall(t => {
       const res = t.checkAttention(teamOrId, this.mirrorShowtimeSecondsLeft(now));

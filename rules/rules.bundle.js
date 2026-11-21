@@ -844,6 +844,7 @@ class Team {
     this.members = [];
     this.won = null;   // trial result this round: true, false, or null (not set)
     this.trialWins = 0;   // trials won so far this game (Progress board)
+    this.trialResults = {};   // level number -> boolean (trial won/lost per level)
     members.forEach(p => this.add(p));
   }
   add(p) { p.teamId = this.id; this.members.push(p); }
@@ -855,12 +856,13 @@ class Team {
   resetRound() { this.won = null; }
 
   /* Save (Part 13): members by player id. */
-  toJSON() { return { id: this.id, name: this.name, members: this.members.map(p => p.id), won: this.won, trialWins: this.trialWins }; }
+  toJSON() { return { id: this.id, name: this.name, members: this.members.map(p => p.id), won: this.won, trialWins: this.trialWins, trialResults: { ...this.trialResults } }; }
   /* Load. byId: player id -> Player. Members keep their saved order. */
   static fromJSON(data, byId) {
     const t = new Team({ id: data.id, name: data.name, members: data.members.map(id => byId.get(id)) });
     t.won = data.won;
     t.trialWins = data.trialWins;
+    t.trialResults = data.trialResults ? { ...data.trialResults } : {};
     return t;
   }
 }
@@ -3176,6 +3178,10 @@ class Trial {
     this.ranking = order.map((r, i) => {
       r.team.won = i < w;
       if (r.team.won) r.team.trialWins += 1;
+      if (round && round.n) {
+        if (!r.team.trialResults) r.team.trialResults = {};
+        r.team.trialResults[round.n] = r.team.won;
+      }
       return { ...r, place: i + 1, won: r.team.won };
     });
     return this.ranking;
@@ -5318,6 +5324,8 @@ class Game {
   mirrorSetupTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupTeamState(teamOrId) : null; }
   mirrorDanceTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceTeamState(teamOrId) : null; }
   trialRanking() { return (this.round && this.round.trial && this.round.trial.ranking) || []; }
+  teamTrialResults(teamOrId) { const t = typeof teamOrId === "object" && teamOrId ? teamOrId : this.teams.find(x => x.id === teamOrId); return t ? { ...t.trialResults } : {}; }
+  teamStandings() { return [...this.teams].sort((a, b) => b.trialWins - a.trialWins).map((team, i) => ({ place: i + 1, team, wins: team.trialWins })); }
   mirrorCheckAttention(teamOrId, now = this.now()) {
     return this._mirrorCall(t => {
       const res = t.checkAttention(teamOrId, this.mirrorShowtimeSecondsLeft(now));
