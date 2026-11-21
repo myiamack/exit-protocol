@@ -206,6 +206,9 @@ async function fullSevenLevelGame() {
       break;
     }
 
+    if (lv === 3) {
+      w.eval('window._mirSimNow = Date.now(); G._timer.clock = () => window._mirSimNow;');
+    }
     next(); await sleep(30); // Open Floor -> Trial
     const kind = w.eval("R().trialKind");
     if (kind === "sop") {
@@ -323,27 +326,86 @@ async function fullSevenLevelGame() {
       await sleep(20);
       check("Split Brief closes on timer and shows team score and rank", doneState.done && doneState.hasTable && !$("#navNext").disabled);
     } else if (kind === "mirror") {
-      const trialText0 = $("#stage").textContent;
+      const lobbyText0 = $("#stage").textContent;
       check(
-        "Level 3 Trial shows Step 6a placeholder without leaking work style or secret path",
-        trialText0.includes("Presentation Day: coming in Step 6b") && !!$("#runMirrorPlaceholder") && !LEAK_RE.test(trialText0)
+        "Level 3 Lobby shows Presentation Day banner, 30s countdown, signal-grab tile, and no leaks",
+        lobbyText0.includes("PRESENTATION DAY") &&
+          ($("#lobbyCd") || {}).textContent === "30s" &&
+          !!$("#mirrorSignalBtn") &&
+          !!$("#mirrorSigCursor") &&
+          !/bot/i.test(lobbyText0) &&
+          !LEAK_RE.test(lobbyText0) &&
+          noOkFlags()
       );
       const hostHiddenAtTrial = $("#facBtn").hidden && $("#fac").hidden;
       toggleHost(); await sleep(10);
       $("#facBtn").click(); await sleep(10);
       const lobbyPhaseOk = w.eval('G.mirrorPhase() === "lobby"');
       const lobbyScriptOk = $("#fac").textContent.includes("Doors open. Connect to the call in the next 30 seconds. Anyone left outside, the whole team fails.");
-      w.eval('(() => { if (!ME.isStuck()) G.mirrorConnect(ME); if (G.timer && G.timer.name === "mirrorLobby") afterClose(G.tick(G.timer.deadline)); if (G.timer && G.timer.name === "mirrorReveal") afterClose(G.tick(G.timer.deadline)); })()');
+
+      // Step cursor to an out-of-band position and verify a miss does not connect and speeds up the tile
+      const missBefore = w.eval('(() => { for (let i = 0; i < 60; i++) { const c = document.querySelector("#mirrorSigCursor"); if (c && !c.classList.contains("hot")) break; drawTimer(); } const p = G.mirrorLobbyTeam(MYTEAM).players.find(x => x.playerId === ME.id); return { misses: p.misses, speed: p.speed, hot: document.querySelector("#mirrorSigCursor").classList.contains("hot") }; })()');
+      $("#mirrorSignalBtn").click(); await sleep(10);
+      const missAfter = w.eval('(() => { const p = G.mirrorLobbyTeam(MYTEAM).players.find(x => x.playerId === ME.id); return { connected: p.connected, misses: p.misses, speed: p.speed, phase: G.mirrorPhase() }; })()');
+      const missMsg = ($("#mirrorMsg") || {}).textContent || "";
+      check(
+        "Signal-grab miss does not connect, speeds up tile by +2, and shows wobble message",
+        !missBefore.hot && !missAfter.connected && missAfter.misses === missBefore.misses + 1 &&
+          missAfter.speed === Math.min(16, missBefore.speed + 2) && missAfter.phase === "lobby" &&
+          missMsg.includes("lost the signal"),
+        "speed " + missBefore.speed + " -> " + missAfter.speed
+      );
+
+      // Advance 16s via rules clock so all bots connect (3-15s) and countdown updates from rules Timer
+      w.eval('window._mirSimNow += 16000; const closed = G.tick(); if (closed.length) afterClose(closed); else drawTimer();');
+      await sleep(10);
+      const botMates = $$('[data-lobby-player]');
+      const allBotMatesConnected = botMates.length === 3 && botMates.every(el => el.classList.contains("in") && el.textContent.includes("IN THE CALL"));
+      check(
+        "Lobby countdown reads from rules timer and bots show as connected",
+        ($("#lobbyCd") || {}).textContent === "14s" && allBotMatesConnected && !/bot/i.test($("#stage").textContent),
+        ($("#lobbyCd") || {}).textContent + ", mates=" + botMates.length
+      );
+
+      // Step cursor into the green band and tap to connect, closing lobby into Crew Reveal
+      const hitPrep = w.eval('(() => { for (let i = 0; i < 80; i++) { const c = document.querySelector("#mirrorSigCursor"); if (c && c.classList.contains("hot")) break; drawTimer(); } return document.querySelector("#mirrorSigCursor").classList.contains("hot"); })()');
+      $("#mirrorSignalBtn").click(); await sleep(10);
+      const revealState = w.eval('({ phase: G.mirrorPhase(), slots: G.mirrorSetupSlots(MYTEAM), crew: G.mirrorCrew(MYTEAM) })');
+      const revealText = $("#stage").textContent;
+      const revealSetupRows = $$('[data-setup-slot]');
+      const revealDanceRows = $$('[data-dance-player]');
+      const stepLabels = { cables: "Cables", sound: "Sound", mic: "Mic", deck: "Deck", qa: "Q&A" };
+      const slotsMatch = revealState.slots.length === 2 &&
+        revealSetupRows.length === 2 &&
+        revealState.slots.every((sl, i) => revealSetupRows[i].textContent.includes(sl.name) && sl.steps.every(st => revealSetupRows[i].textContent.includes(stepLabels[st])));
+      const dancersMatch = revealState.crew && revealState.crew.danceIds.length === 2 && revealDanceRows.length === 2;
+      check(
+        "Signal-grab hit connects player and opens Crew Reveal with setup step owners and dance crew",
+        hitPrep && revealState.phase === "reveal" && revealText.includes("CREW LOCKED") && slotsMatch && dancersMatch &&
+          !LEAK_RE.test(revealText) && noOkFlags()
+      );
+
+      // Advance past 1s mirrorReveal deadline into showtime placeholder
+      w.eval('window._mirSimNow = G.timer.deadline; afterClose(G.tick());');
       await sleep(10);
       const showtimePhaseOk = w.eval('G.mirrorPhase() === "showtime"');
       const showtimeScriptOk = $("#fac").textContent.includes("Crews are locked. Setup, work your steps in order. Dancers, keep the room awake. Attention is draining. Go.");
       toggleHost(); await sleep(10);
       const hostRehiddenAtTrial = $("#facBtn").hidden && $("#fac").hidden;
+      const placeholderText = $("#stage").textContent;
       check(
         "Level 3 Trial host script is hidden from non-host players and updates from lobby to showtime",
         hostHiddenAtTrial && lobbyPhaseOk && lobbyScriptOk && showtimePhaseOk && showtimeScriptOk && hostRehiddenAtTrial
       );
-      $("#runMirrorPlaceholder").click(); await sleep(20);
+      check(
+        "Crew Reveal advances into Step 6b showtime placeholder without leaks",
+        placeholderText.includes("Setup and Dance: coming in Steps 6c and 6d") &&
+          !!$("#finishMirrorPlaceholder") && !LEAK_RE.test(placeholderText)
+      );
+
+      // Restore real clock before finishing trial and advancing to Glitch Report
+      w.eval('G._timer.clock = () => Date.now(); G.activity(ME);');
+      $("#finishMirrorPlaceholder").click(); await sleep(20);
       check("Level 3 Trial placeholder finishes cleanly without leaks", w.eval('G.didRun("runTrial")') && !LEAK_RE.test($("#stage").textContent));
     } else if (kind === "auto") {
       check("Level " + lv + " renders AutoTrial placeholder", !!$("#runAuto"));
@@ -494,6 +556,280 @@ async function voteTestPage() {
   vtDom.window.close();
 }
 
+async function mirrorStep6bCases() {
+  const res = w.eval(`(() => {
+    const LEAK_RE = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i;
+    const STEP_LABELS = { cables: "Cables", sound: "Sound", mic: "Mic", deck: "Deck", qa: "Q&A" };
+    const parseDoc = html => {
+      const box = document.createElement("div");
+      box.innerHTML = html;
+      return {
+        box,
+        text: box.textContent || "",
+        flags: [...box.querySelectorAll(".flag")].map(el => el.textContent.trim()),
+        setupRows: [...box.querySelectorAll("[data-setup-slot]")],
+        danceRows: [...box.querySelectorAll("[data-dance-player]")],
+        lobbyMates: [...box.querySelectorAll("[data-lobby-player]")],
+        signalBtn: box.querySelector("#mirrorSignalBtn"),
+        inactiveNotice: box.querySelector("#mirrorInactiveNotice"),
+        failedBox: box.querySelector("#mirrorLobbyFailed"),
+      };
+    };
+
+    const advanceToLv3Trial = (game, onOpenFloor) => {
+      for (let round = 1; round <= 2; round++) {
+        game.startNextRound();
+        game.advance(); // briefing -> openFloor
+        game.advance(); // openFloor -> trial
+        game.runTrial();
+        game.endTrial(); // payTrialCosts -> glitchReport
+        game.endGlitchReport();
+        game.advance(); // glitchReport -> giftWindow
+        game.advance(); // giftWindow -> lockIn
+        game.lockIn();
+        game.advance(); // lockIn -> statsUpdate
+        game.computeEarnings();
+        game.placeAllRemaining();
+        game.finishRound();
+      }
+      game.startNextRound(); // level 3 briefing
+      game.advance(); // openFloor
+      if (onOpenFloor) onOpenFloor(game);
+      game.advance(); // trial (starts MirrorLobby)
+    };
+
+    const makeTeam = (tid, size, { allHumans = false, startId = tid * 10 + 1 } = {}) => {
+      const members = [];
+      for (let i = 0; i < size; i++) {
+        members.push(new EP.Player({
+          id: startId + i,
+          name: "T" + tid + "P" + (i + 1),
+          type: "coop",
+          spend: EP.Bots.typicalSpend("coop"),
+          isBot: !allHumans && i > 0,
+        }));
+      }
+      return new EP.Team({ id: tid, name: "Unit " + tid, members });
+    };
+
+    // 1a. Lobby deadline closes at 30s (2 human teams: Team 1 fails lobby, Team 2 passes) -> shown plainly on Reveal
+    let tNow = 1000000;
+    const t1 = makeTeam(1, 3, { allHumans: false });
+    const t2 = makeTeam(2, 3, { allHumans: false });
+    const t3 = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "Bot3_" + i, "indep")) });
+    const t4 = new EP.Team({ id: 4, name: "Unit 4", members: [0, 1, 2].map(i => EP.Bots.makePlayer(41 + i, "Bot4_" + i, "contra")) });
+    const gDeadline = new EP.Game({ teams: [t1, t2, t3, t4], rng: EP.Rng.seeded(101), clock: () => tNow, hooks: EP.Bots.hooks });
+    advanceToLv3Trial(gDeadline);
+    gDeadline.start();
+    // Connect Team 2's human at 1s; leave Team 1's human unconnected; advance to 29s (still open), then 30s (closed)
+    tNow += 1000;
+    gDeadline.tick();
+    gDeadline.mirrorConnect(t2.members[0]);
+    tNow += 28000; // 29s elapsed
+    gDeadline.tick();
+    const stillOpenAt29 = gDeadline.mirrorPhase() === "lobby";
+    tNow += 1000; // exact 30s deadline
+    gDeadline.tick();
+    const closedAt30 = gDeadline.mirrorPhase() === "reveal" && gDeadline.mirrorFailReason(t1) === "lobby" && gDeadline.mirrorFailReason(t2) === null;
+    const failRevealDom = parseDoc(MirrorView.screen({
+      game: gDeadline, me: t1.members[0], team: t1, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "", onRender: () => {},
+    }).html);
+    const failRevealOk = !!failRevealDom.failedBox &&
+      failRevealDom.text.includes("LOBBY FAILED") &&
+      failRevealDom.text.includes("Score 0") &&
+      failRevealDom.text.includes("doors closed with you still outside") &&
+      !LEAK_RE.test(failRevealDom.text) &&
+      failRevealDom.flags.every(f => f !== "OK");
+
+    // 1b. Solo human team fails lobby at 30s deadline -> trial closes with score 0 and shows LOBBY FAILED plainly
+    let sNow = 2000000;
+    const st1 = makeTeam(1, 4, { allHumans: false });
+    const st2 = new EP.Team({ id: 2, name: "Unit 2", members: [0, 1, 2, 3].map(i => EP.Bots.makePlayer(21 + i, "BotB_" + i, "coop")) });
+    const st3 = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2, 3].map(i => EP.Bots.makePlayer(31 + i, "BotC_" + i, "indep")) });
+    const st4 = new EP.Team({ id: 4, name: "Unit 4", members: [0, 1, 2, 3].map(i => EP.Bots.makePlayer(41 + i, "BotD_" + i, "contra")) });
+    const gSoloFail = new EP.Game({ teams: [st1, st2, st3, st4], rng: EP.Rng.seeded(202), clock: () => sNow, hooks: EP.Bots.hooks });
+    advanceToLv3Trial(gSoloFail);
+    gSoloFail.start();
+    sNow += 30000;
+    gSoloFail.tick();
+    const soloFailDom = parseDoc(MirrorView.screen({
+      game: gSoloFail, me: st1.members[0], team: st1, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "Cost hint", onRender: () => {},
+    }).html);
+    const soloFailOk = gSoloFail.didRun("runTrial") &&
+      gSoloFail.mirrorFailReason(st1) === "lobby" &&
+      !!soloFailDom.failedBox &&
+      soloFailDom.text.includes("LOBBY FAILED") &&
+      soloFailDom.text.includes("Score 0 of 7") &&
+      !LEAK_RE.test(soloFailDom.text);
+
+    // 2. Crew Reveal split and step owners for team sizes 3, 4, and 5
+    const splitResults = {};
+    for (const sz of [3, 4, 5]) {
+      let cNow = 3000000;
+      const teamA = makeTeam(1, sz, { allHumans: true });
+      const teamB = new EP.Team({ id: 2, name: "Unit 2", members: [0, 1, 2].map(i => EP.Bots.makePlayer(21 + i, "BotX_" + i, "coop")) });
+      const teamC = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "BotY_" + i, "indep")) });
+      const gSz = new EP.Game({ teams: [teamA, teamB, teamC], rng: EP.Rng.seeded(300 + sz), clock: () => cNow, hooks: EP.Bots.hooks });
+      advanceToLv3Trial(gSz);
+      gSz.start();
+      cNow += 16000;
+      gSz.tick();
+      for (const p of teamA.members) gSz.mirrorConnect(p);
+      const view = MirrorView.screen({
+        game: gSz, me: teamA.members[0], team: teamA, state: {}, attrName: "Focus",
+        sabotageAlert: "", costHint: () => "", onRender: () => {},
+      });
+      const dom = parseDoc(view.html);
+      const slots = gSz.mirrorSetupSlots(teamA);
+      const crew = gSz.mirrorCrew(teamA);
+      const setupNamesAndStepsOk = dom.setupRows.length === slots.length &&
+        slots.every((sl, i) => {
+          const rowText = dom.setupRows[i].textContent;
+          const expectedSteps = sl.steps.map(k => STEP_LABELS[k]).join(", ");
+          return rowText.includes(sl.name) && rowText.includes(expectedSteps);
+        });
+      const danceNamesOk = dom.danceRows.length === crew.danceIds.length &&
+        crew.danceIds.every((pid, i) => {
+          const pl = teamA.members.find(m => m.id === pid);
+          return pl && dom.danceRows[i].textContent.includes(pl.name);
+        });
+      splitResults[sz] = {
+        phase: gSz.mirrorPhase(),
+        setupCount: dom.setupRows.length,
+        danceCount: dom.danceRows.length,
+        slotSteps: slots.map(s => s.steps.join("+")),
+        setupNamesAndStepsOk,
+        danceNamesOk,
+        clean: !LEAK_RE.test(dom.text) && !/bot/i.test(dom.text) && dom.flags.every(f => f !== "OK"),
+      };
+    }
+
+    // 3. Stuck and Idle teammates left out of lobby & reveal; boardStatus() shown (Active, At risk, Glitching)
+    let fNow = 4000000;
+    const fTeam = makeTeam(1, 5, { allHumans: true });
+    const [pMe, pStuck, pIdle, pRisk, pGlitch] = fTeam.members;
+    const fBotB = new EP.Team({ id: 2, name: "Unit 2", members: [0, 1, 2].map(i => EP.Bots.makePlayer(21 + i, "BotM_" + i, "coop")) });
+    const fBotC = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "BotN_" + i, "contra")) });
+    const gFilter = new EP.Game({ teams: [fTeam, fBotB, fBotC], rng: EP.Rng.seeded(404), clock: () => fNow, hooks: EP.Bots.hooks });
+    advanceToLv3Trial(gFilter, () => {
+      pStuck.glitches = 2;
+      pIdle.idle = true;
+      pRisk.setAttrsForTest({ focus: 1, collab: 5, initiative: 5, grit: 5, composure: 5 });
+      pRisk.hearts.empty();
+      pGlitch.setAttrsForTest({ focus: -1, collab: 5, initiative: 5, grit: 5, composure: 5 });
+    });
+    gFilter.start();
+    const lobbyDom = parseDoc(MirrorView.screen({
+      game: gFilter, me: pMe, team: fTeam, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "", onRender: () => {},
+    }).html);
+    const lobbyExcludesInactive = !!lobbyDom.signalBtn &&
+      lobbyDom.lobbyMates.length === 2 &&
+      !lobbyDom.text.includes(pStuck.name) &&
+      !lobbyDom.text.includes(pIdle.name) &&
+      lobbyDom.text.includes(pRisk.name) &&
+      lobbyDom.text.includes(pGlitch.name) &&
+      lobbyDom.flags.includes("Active") &&
+      lobbyDom.flags.includes("At risk") &&
+      lobbyDom.flags.includes("Glitching") &&
+      lobbyDom.flags.every(f => f !== "OK") &&
+      !LEAK_RE.test(lobbyDom.text);
+
+    fNow += 16000;
+    gFilter.tick();
+    gFilter.mirrorConnect(pMe);
+    gFilter.mirrorConnect(pRisk);
+    gFilter.mirrorConnect(pGlitch);
+    const revealFilterDom = parseDoc(MirrorView.screen({
+      game: gFilter, me: pMe, team: fTeam, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "", onRender: () => {},
+    }).html);
+    const revealExcludesInactive = gFilter.mirrorPhase() === "reveal" &&
+      revealFilterDom.setupRows.length === 2 &&
+      revealFilterDom.danceRows.length === 1 &&
+      !revealFilterDom.text.includes(pStuck.name) &&
+      !revealFilterDom.text.includes(pIdle.name) &&
+      revealFilterDom.flags.includes("Active") &&
+      revealFilterDom.flags.includes("At risk") &&
+      revealFilterDom.flags.includes("Glitching") &&
+      revealFilterDom.flags.every(f => f !== "OK") &&
+      !LEAK_RE.test(revealFilterDom.text);
+
+    // 4. Stuck ME gets no signal-grab tile and is excluded from lobby & reveal
+    let msNow = 5000000;
+    const msTeam = makeTeam(1, 4, { allHumans: true });
+    const msMe = msTeam.members[0];
+    const msBotB = new EP.Team({ id: 2, name: "Unit 2", members: [0, 1, 2].map(i => EP.Bots.makePlayer(21 + i, "BotP_" + i, "coop")) });
+    const msBotC = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "BotQ_" + i, "indep")) });
+    const gMeStuck = new EP.Game({ teams: [msTeam, msBotB, msBotC], rng: EP.Rng.seeded(505), clock: () => msNow, hooks: EP.Bots.hooks });
+    advanceToLv3Trial(gMeStuck, () => { msMe.glitches = 2; });
+    gMeStuck.start();
+    const meStuckLobbyDom = parseDoc(MirrorView.screen({
+      game: gMeStuck, me: msMe, team: msTeam, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "", onRender: () => {},
+    }).html);
+    const meStuckLobbyOk = !meStuckLobbyDom.signalBtn &&
+      !!meStuckLobbyDom.inactiveNotice &&
+      meStuckLobbyDom.flags.includes("Stuck") &&
+      meStuckLobbyDom.lobbyMates.length === 3 &&
+      !meStuckLobbyDom.lobbyMates.some(el => el.textContent.includes(msMe.name)) &&
+      !LEAK_RE.test(meStuckLobbyDom.text);
+    msNow += 16000;
+    gMeStuck.tick();
+    for (const p of msTeam.members.slice(1)) gMeStuck.mirrorConnect(p);
+    const meStuckRevealDom = parseDoc(MirrorView.screen({
+      game: gMeStuck, me: msMe, team: msTeam, state: {}, attrName: "Focus",
+      sabotageAlert: "", costHint: () => "", onRender: () => {},
+    }).html);
+    const meStuckRevealOk = gMeStuck.mirrorPhase() === "reveal" &&
+      meStuckRevealDom.setupRows.length === 2 &&
+      meStuckRevealDom.danceRows.length === 1 &&
+      !meStuckRevealDom.setupRows.some(el => el.textContent.includes(msMe.name)) &&
+      !meStuckRevealDom.danceRows.some(el => el.textContent.includes(msMe.name)) &&
+      meStuckRevealDom.text.includes("You are Stuck and not in the crews.") &&
+      !LEAK_RE.test(meStuckRevealDom.text);
+
+    return {
+      stillOpenAt29,
+      closedAt30,
+      failRevealOk,
+      soloFailOk,
+      splitResults,
+      lobbyExcludesInactive,
+      revealExcludesInactive,
+      meStuckLobbyOk,
+      meStuckRevealOk,
+    };
+  })()`);
+
+  check("Mirror lobby stays open before 30s and closes at 30s deadline", res.stillOpenAt29 && res.closedAt30);
+  check("Lobby-failed team is shown plainly on Crew Reveal without leaks", res.failRevealOk);
+  check("Solo team lobby fail at 30s deadline scores 0 and shows LOBBY FAILED plainly", res.soloFailOk);
+  check(
+    "Crew Reveal size 3 splits 2 Setup (Cables, Sound, Mic; Deck, Q&A) and 1 Dance",
+    res.splitResults[3].phase === "reveal" && res.splitResults[3].setupCount === 2 && res.splitResults[3].danceCount === 1 &&
+      JSON.stringify(res.splitResults[3].slotSteps) === '["cables+sound+mic","deck+qa"]' &&
+      res.splitResults[3].setupNamesAndStepsOk && res.splitResults[3].danceNamesOk && res.splitResults[3].clean
+  );
+  check(
+    "Crew Reveal size 4 splits 2 Setup (Cables, Sound, Mic; Deck, Q&A) and 2 Dance",
+    res.splitResults[4].phase === "reveal" && res.splitResults[4].setupCount === 2 && res.splitResults[4].danceCount === 2 &&
+      JSON.stringify(res.splitResults[4].slotSteps) === '["cables+sound+mic","deck+qa"]' &&
+      res.splitResults[4].setupNamesAndStepsOk && res.splitResults[4].danceNamesOk && res.splitResults[4].clean
+  );
+  check(
+    "Crew Reveal size 5 splits 3 Setup (Cables, Sound; Mic, Deck; Q&A) and 2 Dance",
+    res.splitResults[5].phase === "reveal" && res.splitResults[5].setupCount === 3 && res.splitResults[5].danceCount === 2 &&
+      JSON.stringify(res.splitResults[5].slotSteps) === '["cables+sound","mic+deck","qa"]' &&
+      res.splitResults[5].setupNamesAndStepsOk && res.splitResults[5].danceNamesOk && res.splitResults[5].clean
+  );
+  check("Stuck and Idle teammates are excluded from Mirror lobby and boardStatus() shows", res.lobbyExcludesInactive);
+  check("Stuck and Idle teammates are excluded from Crew Reveal and boardStatus() shows", res.revealExcludesInactive);
+  check("Stuck player sees no signal-grab tile and is excluded from lobby and Crew Reveal", res.meStuckLobbyOk && res.meStuckRevealOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -521,6 +857,8 @@ w.addEventListener("load", async () => {
     await fullSevenLevelGame();
     log("run 5: pages/vote-test.html");
     await voteTestPage();
+    log("run 6: Mirror Step 6b lobby and crew reveal edge cases");
+    await mirrorStep6bCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

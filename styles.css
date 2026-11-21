@@ -354,3 +354,37 @@ body.menucur.curgl,body.menucur.curgl button,body.menucur.curgl input{cursor:var
 .sb-twist-pop{max-width:540px;border-color:var(--pink);box-shadow:inset 0 0 0 3px var(--pink),0 0 32px rgba(255,79,163,.35)}
 .sb-twist-text{font-size:1.1rem;line-height:1.45}
 .sb-confirm{border-color:var(--gold);background:#261f12}
+/* Presentation Day (Level 3, Step 6b: Lobby & Crew Reveal) */
+.preshead{display:grid;gap:8px;justify-items:center;text-align:center}
+.presday{font-family:var(--px);font-weight:700;font-size:clamp(2rem,6vw,3.4rem);letter-spacing:.06em;color:var(--gold);-webkit-text-stroke:2px #6b4a08;text-shadow:0 4px 0 #6b4a08,0 0 26px rgba(242,184,75,.45);animation:presflick 5s infinite steps(1)}
+@keyframes presflick{0%,93%{opacity:1}94%{opacity:.4}95%{opacity:1}97%{opacity:.6}98%{opacity:1}}
+.atrk{height:18px;border-radius:9px;background:var(--edge);border:2px solid var(--edge);overflow:hidden}
+.lobby{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:8px}
+.ltile{display:grid;gap:6px;justify-items:center;text-align:center;border:3px solid var(--edge);border-radius:12px;background:var(--frame);padding:10px;color:var(--ink)}
+.ltile .mname{font-family:var(--cond);font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:1.05rem}
+.ltile.in{background:var(--blue2)}
+.ltile .lstat{font-family:var(--mono);font-size:.85rem;color:var(--bad)}
+.ltile.in .lstat{color:var(--ok)}
+.ltile:disabled{cursor:default}
+.ltile.sig{gap:8px}
+.ltile.wobble{animation:mirwobble .28s ease}
+@keyframes mirwobble{0%,100%{transform:none}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.atrk.sig{position:relative;width:100%;height:14px;overflow:visible}
+.atrk.sig .zn{position:absolute;top:-3px;bottom:-3px;border:2px dashed var(--ok);border-radius:6px;pointer-events:none}
+.atrk.sig i{position:absolute;top:-2px;bottom:-2px;width:6px;margin-left:-3px;border-radius:3px;background:linear-gradient(180deg,var(--sky),#bfe3ff)}
+.atrk.sig i.hot{background:linear-gradient(180deg,var(--ok2),var(--ok));box-shadow:0 0 8px var(--ok)}
+.ltile.in .atrk.sig i{display:none}
+.ltile.in .atrk.sig .zn{border-style:solid}
+.mmsg{font-family:var(--code);font-size:1.15rem;color:var(--pink)}
+.panel.ready{text-align:center;padding:18px}
+.readybig{font-family:var(--px);font-weight:700;font-size:2rem;letter-spacing:.08em;color:var(--gold);animation:rpulse .5s infinite}
+@keyframes rpulse{0%,100%{opacity:1}50%{opacity:.45}}
+.rdots{display:inline-block;animation:rpulse 1s infinite}
+.panel.ready.mirror-failed{border-color:var(--bad)}
+.mirror-fail-title{color:var(--bad);animation:none}
+.failnote{display:block;font-family:var(--px);font-weight:700;color:var(--bad);margin-bottom:6px}
+.mirror-crews{text-align:left}
+.mirror-crew-list{display:grid;gap:6px}
+.mirror-slot,.mirror-dancer-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:#141922;border:2px solid var(--edge);border-radius:8px;padding:6px 10px}
+.mirror-slot-who{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mirror-slot-steps{font-family:var(--mono);font-size:.85rem;color:var(--sky)}

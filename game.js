@@ -517,13 +517,14 @@ ${trialDone()?trialResultHTML(EP.Trial.MAX_BASE,rank,"AutoTrial placeholder: ran
   return {html,bind,waitHint:"Run the trial first"};
 }
 function trialMirrorScreen(){
-  const rank=G.trialRanking();
-  const html=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>
-${sabotageAlertHTML()}
-${trialDone()?trialResultHTML(EP.Trial.MirrorTrial.MAX_SCORE,rank,"Presentation Day: coming in Step 6b.")
-:`<div class="panel"><span class="label">Placeholder trial</span><p>Presentation Day: coming in Step 6b.</p><div class="row"><button class="btn green" id="runMirrorPlaceholder">Finish placeholder trial</button></div></div>`}`;
-  const bind=()=>{on("#runMirrorPlaceholder",()=>{if(!trialDone()){G.closeMirror();render()}})};
-  return {html,bind,waitHint:"Finish the trial first"};
+  const view=MirrorView.screen({
+    game:G,me:ME,team:MYTEAM,state:S.trialUI,
+    attrName:AN[R().attr],
+    sabotageAlert:sabotageAlertHTML(),
+    costHint:()=>`Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.`,
+    onRender:render,
+  });
+  return {html:view.html,bind:view.bind?()=>view.bind(document):null,tick:view.tick||null,waitHint:view.waitHint};
 }
 function trialJudgedScreen(){
   const view=JudgedView.screen({
