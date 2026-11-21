@@ -62,6 +62,8 @@ async function fullscreen() {
 }
 
 const ATTR_ORDER = ["Focus", "Collaboration", "Initiative", "Grit", "Composure"];
+const LEAK_RE = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i;
+const toggleHost = () => w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "H", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
 const noOkFlags = () => $$(".flag").every(el => el.textContent.trim() !== "OK");
 async function creation(type = "coop") {
   $('[data-type="' + type + '"]').click(); await sleep(30);
@@ -132,9 +134,60 @@ async function fullSevenLevelGame() {
         'teaHint().startsWith("On my first sprint, we committed to a plan on day one.")'
       );
       check("Level 2 switches to Level 2 ghost and tea hints", level2HintsOk);
+    } else if (lv === 3) {
+      const expectedMemo = "Today you present to Medline. The call opens in 30 seconds. Every active member must connect before the doors close, or the room empties and your team scores zero. Once you're in, crews are drawn at random. Setup Crew runs the steps in order: cables, sound, mic, deck, Q&A. Dance Crew keeps the audience awake. Attention drains from the moment showtime starts. Finish fast and finish clean.";
+      const lv3Meta = w.eval('({ name: ME.name, team: MYTEAM.name, focus: ME.attrs.focus })');
+      const panels = $$("#stage .cols .panel");
+      const hasFocusCard = panels.some(p => p.textContent.includes("This trial tests") && p.textContent.includes("Focus"));
+      const hasCostCard = panels.some(p => p.textContent.includes("Cost for every player") && p.textContent.includes("3 points"));
+      const hasMyFocusCard = panels.some(p => p.textContent.includes("Your Focus") && p.textContent.includes(String(lv3Meta.focus)));
+      check(
+        "Level 3 briefing shows exact approved header, title, memo, and Focus cards without leaks",
+        stageText.includes("System Briefing · Level 3") &&
+          stageText.includes("The Mirror: Presentation Day") &&
+          stageText.includes("To: " + lv3Meta.name + ", " + lv3Meta.team) &&
+          stageText.includes(expectedMemo) &&
+          hasFocusCard && hasCostCard && hasMyFocusCard &&
+          !LEAK_RE.test(stageText)
+      );
+      const hostHiddenAtBrief = $("#facBtn").hidden && $("#fac").hidden;
+      toggleHost(); await sleep(10);
+      const hostShownAtBrief = !$("#facBtn").hidden && $("#fac").hidden;
+      $("#facBtn").click(); await sleep(10);
+      const briefHostOk = hostHiddenAtBrief && hostShownAtBrief && !$("#fac").hidden &&
+        $("#fac").textContent.includes("Level 3. Presentation Day. Read the memo. You present to the Medline client today.");
+      toggleHost(); await sleep(10);
+      const hostRehiddenAtBrief = $("#facBtn").hidden && $("#fac").hidden;
+      check("Level 3 Briefing host script is hidden from non-host players and shows exact approved line to host", briefHostOk && hostRehiddenAtBrief);
     }
 
     next(); await sleep(30); // -> Open Floor (1-6) or Graduation (7)
+
+    if (lv === 3) {
+      const expUser = "The doors closed with one of us still outside. They don't wait for stragglers. Neither does the client.";
+      const expAttempt = "I grabbed the first deck I saw. Draft. Wrong version. The client only trusts what they signed.";
+      const expNull = "Seventy to eighty-five. Louder is not better. When the crowd roars, pull the sound down.";
+      const expTea = "My first client demo, the projector cable didn't fit. We had tested everything except the room. Now I check the setup first, I keep the signed version of the deck in one place, and I know the client's problem cold before anyone asks me a question. A presentation fails in the setup long before it fails on stage.";
+      const hintsTableOk = w.eval(
+        `ghostHint("USER_???") === ${JSON.stringify(expUser)} && ` +
+        `ghostHint("ATTEMPT_01") === ${JSON.stringify(expAttempt)} && ` +
+        `ghostHint("NULL") === ${JSON.stringify(expNull)} && ` +
+        `teaHint() === ${JSON.stringify(expTea)}`
+      );
+      w.eval('S.room = "hightea"; S.panel = "room"; render();'); await sleep(10);
+      const teaPanelText = ($(".wpanel") || {}).textContent || "";
+      const teaPanelOk = teaPanelText.includes(expTea) && !LEAK_RE.test(teaPanelText);
+      const ghostTexts = [];
+      for (let gi = 0; gi < 3; gi++) {
+        w.eval(`S.panel = "ghost"; S.nearGhost = ${gi}; render();`); await sleep(10);
+        ghostTexts.push(($(".wpanel") || {}).textContent || "");
+      }
+      w.eval('S.panel = false; S.room = "studio"; render();'); await sleep(10);
+      const joinedGhosts = ghostTexts.join("\n");
+      const ghostPanelsOk = joinedGhosts.includes(expUser) && joinedGhosts.includes(expAttempt) &&
+        joinedGhosts.includes(expNull) && !LEAK_RE.test(joinedGhosts);
+      check("Level 3 hint table has exact approved ghost hints and tea guest story", hintsTableOk && teaPanelOk && ghostPanelsOk);
+    }
 
     if (lv === 7) {
       check("Level 7 reaches Graduation screen", w.eval('S.step === 9 && G.step === "graduation"') && $("#stage").textContent.includes("Graduation check"));
@@ -269,6 +322,29 @@ async function fullSevenLevelGame() {
       const doneState = w.eval('(() => { const closed = G.tick(G.timer.deadline); afterClose(closed); return { done: G.didRun("runTrial"), hasTable: !!document.querySelector("table.levels") }; })()');
       await sleep(20);
       check("Split Brief closes on timer and shows team score and rank", doneState.done && doneState.hasTable && !$("#navNext").disabled);
+    } else if (kind === "mirror") {
+      const trialText0 = $("#stage").textContent;
+      check(
+        "Level 3 Trial shows Step 6a placeholder without leaking work style or secret path",
+        trialText0.includes("Presentation Day: coming in Step 6b") && !!$("#runMirrorPlaceholder") && !LEAK_RE.test(trialText0)
+      );
+      const hostHiddenAtTrial = $("#facBtn").hidden && $("#fac").hidden;
+      toggleHost(); await sleep(10);
+      $("#facBtn").click(); await sleep(10);
+      const lobbyPhaseOk = w.eval('G.mirrorPhase() === "lobby"');
+      const lobbyScriptOk = $("#fac").textContent.includes("Doors open. Connect to the call in the next 30 seconds. Anyone left outside, the whole team fails.");
+      w.eval('(() => { if (!ME.isStuck()) G.mirrorConnect(ME); if (G.timer && G.timer.name === "mirrorLobby") afterClose(G.tick(G.timer.deadline)); if (G.timer && G.timer.name === "mirrorReveal") afterClose(G.tick(G.timer.deadline)); })()');
+      await sleep(10);
+      const showtimePhaseOk = w.eval('G.mirrorPhase() === "showtime"');
+      const showtimeScriptOk = $("#fac").textContent.includes("Crews are locked. Setup, work your steps in order. Dancers, keep the room awake. Attention is draining. Go.");
+      toggleHost(); await sleep(10);
+      const hostRehiddenAtTrial = $("#facBtn").hidden && $("#fac").hidden;
+      check(
+        "Level 3 Trial host script is hidden from non-host players and updates from lobby to showtime",
+        hostHiddenAtTrial && lobbyPhaseOk && lobbyScriptOk && showtimePhaseOk && showtimeScriptOk && hostRehiddenAtTrial
+      );
+      $("#runMirrorPlaceholder").click(); await sleep(20);
+      check("Level 3 Trial placeholder finishes cleanly without leaks", w.eval('G.didRun("runTrial")') && !LEAK_RE.test($("#stage").textContent));
     } else if (kind === "auto") {
       check("Level " + lv + " renders AutoTrial placeholder", !!$("#runAuto"));
       $("#runAuto").click(); await sleep(20);
@@ -320,19 +396,24 @@ async function fullSevenLevelGame() {
         statusOk && attrOrderOk &&
         s1Text.includes(s1.myTeam) && s1Text.includes(s1.wins + " / 2 trial wins") &&
         s1.teams.every(name => s1Text.includes(name)) && rankedOk &&
-        s1Text.includes("Level 3 locked") &&
+        !s1Text.includes("Level 3 locked") &&
+        s1Text.includes("The Mirror") &&
+        !!$("#nextLevel") && /Start Level 3/.test($("#nextLevel").textContent) &&
         !!$("#replay") && $("#replay").textContent.includes("Replay") &&
         !!$("#restart") && $("#restart").textContent.includes("Back to sign-in") &&
-        $("#navNext").disabled && /Level 3 locked/.test($("#navNext").textContent);
-      check("Sprint 1 Complete screen appears after Level 2 Stats Update", hasSprint1);
-      const leaksTypeOrPath = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i.test(s1Text);
+        !$("#navNext").disabled && /Start Level 3/.test($("#navNext").textContent);
+      check("Sprint 1 Complete screen appears after Level 2 Stats Update with Start Level 3 unlocked", hasSprint1);
+      const leaksTypeOrPath = LEAK_RE.test(s1Text);
       check("Sprint 1 Complete screen hides work style and secret path", !leaksTypeOrPath, leaksTypeOrPath ? "leaked" : "clean");
+      const nextCardText = ($("#stage .locked") || {}).textContent || "";
+      check("Sprint 1 Complete Level 3 card hides tested attribute before briefing", !/Focus/i.test(nextCardText));
       w.eval("ME.idle = true; render();");
       const idleText = $("#stage").textContent;
       check("Idle player shows Idle (not Active) on Sprint 1 Complete screen", idleText.includes("Idle") && !/\bActive\b/.test(idleText));
       w.eval("ME.idle = false; render();");
       if (!noOkFlags()) anyOkFlag = true;
-      w.eval("startNextLevel()"); await sleep(30); // -> Level 3 Briefing
+      $("#nextLevel").click(); await sleep(30); // -> Level 3 Briefing
+      check("Start Level 3 button moves into Level 3 Briefing", w.eval('G.level === 3 && G.step === "briefing" && S.step === 5'));
     } else {
       if (!noOkFlags()) anyOkFlag = true;
       check("Level " + lv + " unlocks Level " + (lv + 1), new RegExp("Start Level " + (lv + 1)).test($("#navNext").textContent) && !$("#navNext").disabled);

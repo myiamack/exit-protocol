@@ -86,10 +86,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed, 604 assertions across 14 assertion suites plus `check_bundle` and 4 simulation checks), and fixed-clock SHA-256 snapshots at Level 1 and Level 2 matched identically across seeds `[1, 2, 3, 7, 11]`.
 - **Open issues:** None (Step 6a begins screen wiring in `game.js`).
 
-### Step 6a: Screens - Level 3 flow, Briefing, Host Script, Hint Table, and Sprint 1 Complete unlock (Effort: Medium) - TODO
+### Step 6a: Screens - Level 3 flow, Briefing, Host Script, Hint Table, and Sprint 1 Complete unlock (Effort: Medium) - DONE
+- **Built:** Added read-only `Game.mirrorPhase()` and `Game.trialRanking()` pass-throughs in `rules/Game.js` (rebuilt `rules/rules.bundle.js`); updated `BRIEFINGS[3]`, `LEVEL_HINTS[3]`, and phase-aware `FAC_BY_LEVEL[3]` / `facLines()` in `game.js` with exact approved `CLAUDE.md` text; unlocked `Sprint 1 Complete` -> `Start Level 3 ▶` (`#nextLevel`, `fwd()`, `goForward()`); removed hardcoded `"Team Kestrel"` fallback in `V[5]`; added Step 6a placeholder `trialMirrorScreen()` (`"Presentation Day: coming in Step 6b."`) registered under `TRIAL_SCREENS.mirror`; extended `Tests/check_screens.js` to verify all Step 6a screens, Host Script host-only visibility, hint panels, and no work-style/secret-path leaks.
 - **Goal:** Update `game.js` with the exact Level 3 `BRIEFINGS[3]`, `LEVEL_HINTS[3]` (ghost hints and tea guest story), and `FAC_BY_LEVEL[3]` (Briefing, Trial lobby, Trial showtime); replace "Level 3 locked" on Sprint 1 Complete with a "Start Level 3" button and wire Level 2 -> Level 3 progression; register `mirror` in `TRIAL_SCREENS`; ensure zero hardcoded team names.
 - **Done when:** Player can advance from Sprint 1 Complete into Level 3 Briefing and Open Floor and see the exact Level 3 hints, memo, and host script lines.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+- **Files changed:** `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (76 passed, 0 failed, 0 console errors).
+- **Open issues:** `trialMirrorScreen()` uses a plain `"Presentation Day: coming in Step 6b."` placeholder until `mirror-view.js` is built in Steps 6b–6e.
 
 ### Step 6b: Screens - Presentation Day Lobby and Crew Reveal (`mirror-view.js`) (Effort: Medium) - TODO
 - **Goal:** Create `mirror-view.js` (loaded in `index.html`) and add styles in `styles.css` for the Presentation Day header, sabotage alert, 30-second lobby countdown, active-player signal-grab tile (moving sweep 0 to 100, green band width 14, miss wobble and speed-up), live bot connects, doors-close fail state, and 1-second `CREW LOCKED` reveal showing Setup Crew slot order and Dance Crew rosters. Wire `mirror-view.js` into `game.js` 250ms tick.

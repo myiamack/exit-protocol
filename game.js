@@ -77,8 +77,8 @@ const BRIEFINGS={
   },
   3:{
     header:"System Briefing · Level 3",
-    title:"The Mirror: Q&A Gauntlet",
-    memo:"Time to present to Medline. They will test what your team actually understands about the problem, with no tablets to hide behind. Stay sharp and answer as one team.",
+    title:"The Mirror: Presentation Day",
+    memo:"Today you present to Medline. The call opens in 30 seconds. Every active member must connect before the doors close, or the room empties and your team scores zero. Once you're in, crews are drawn at random. Setup Crew runs the steps in order: cables, sound, mic, deck, Q&A. Dance Crew keeps the audience awake. Attention drains from the moment showtime starts. Finish fast and finish clean.",
     phase:"Week 5 (Oct 1): Medline presentation and Q&A feedback",
     workshops:"Q&A prep · Presentation review",
   },
@@ -130,11 +130,11 @@ const LEVEL_HINTS={
   },
   3:{
     ghosts:{
-      "USER_???":"Read the room, not your script.",
-      "ATTEMPT_01":"The Mirror shows what you skipped in Week 2.",
-      "NULL":"Watch who asks the hard follow-up.",
+      "USER_???":"The doors closed with one of us still outside. They don't wait for stragglers. Neither does the client.",
+      "ATTEMPT_01":"I grabbed the first deck I saw. Draft. Wrong version. The client only trusts what they signed.",
+      "NULL":"Seventy to eighty-five. Louder is not better. When the crowd roars, pull the sound down.",
     },
-    tea:"When we presented halfway through Cycle 60, reading off a tablet hid nothing. Know the problem in your own words before you walk in.",
+    tea:"My first client demo, the projector cable didn't fit. We had tested everything except the room. Now I check the setup first, I keep the signed version of the deck in one place, and I know the client's problem cold before anyone asks me a question. A presentation fails in the setup long before it fails on stage.",
   },
   4:{
     ghosts:{
@@ -179,8 +179,11 @@ const FAC_BY_LEVEL={
     7:["Teams play Split Brief (Collaboration, cost 3). Each player gets private brief cards and can share up to 3 team notes (80 characters max).","Teams pick 2 tasks in order on the board. Halfway through the 180-second timer (at 90s), one active player per team gets a twist card.","Post-twist scoring is out of 5. Ties after influence break to the earliest Lock In after the twist fired, then random. Top half win."],
   },
   3:{
-    5:["Reveal: The Mirror tests Focus. Every player pays 3 Focus after the trial."],
-    7:["Placeholder AutoTrial (Focus, cost 3). Teams run the trial for a random 0 to 7 score plus light stat influence. Top half win."],
+    5:["Level 3. Presentation Day. Read the memo. You present to the Medline client today."],
+    7:{
+      lobby:["Doors open. Connect to the call in the next 30 seconds. Anyone left outside, the whole team fails."],
+      showtime:["Crews are locked. Setup, work your steps in order. Dancers, keep the room awake. Attention is draining. Go."],
+    },
   },
   4:{
     5:["Reveal: Geek Week tests Initiative. Every player pays 4 Initiative after the trial."],
@@ -202,7 +205,7 @@ const FAC_BY_LEVEL={
 const currentLevel=()=>G&&G.round?G.round.n:1;
 function ghostHint(name){const h=LEVEL_HINTS[currentLevel()]||LEVEL_HINTS[1];return (h.ghosts&&h.ghosts[name])||LEVEL_HINTS[1].ghosts[name]||"";}
 function teaHint(){const h=LEVEL_HINTS[currentLevel()]||LEVEL_HINTS[1];return h.tea||LEVEL_HINTS[1].tea;}
-function facLines(step,level){const byLv=FAC_BY_LEVEL[level];return (byLv&&byLv[step])||FAC[step]||[];}
+function facLines(step,level,phase){const byLv=FAC_BY_LEVEL[level],entry=byLv&&byLv[step];if(entry&&!Array.isArray(entry)){const p=phase||(G&&G.mirrorPhase?G.mirrorPhase():null);if(p==="lobby")return entry.lobby;if(p==="reveal"||p==="showtime")return entry.showtime;return [...entry.lobby,...entry.showtime]}return entry||FAC[step]||[];}
 
 /* ---------- state ---------- */
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
@@ -306,7 +309,6 @@ function fwd(){
       if(G&&G.over)return{label:"Game complete",ok:false,cls:"soft"};
       if(R().isFinal){const ok=ME.isStuck()||placeLeft()===0;return{label:ME.isStuck()||ME.earned===0?"See final results ▶":"Lock in final points ▶",ok,cls:"green"}}
       if(roundDone()){
-        if(R().n===2)return{label:"Level 3 locked",ok:false,cls:"soft"};
         const nx=EP.Round.LEVELS[R().n]||null;
         return{label:`Start Level ${nx?nx.n:R().n+1} ▶`,ok:true,cls:"red"};
       }
@@ -324,7 +326,7 @@ function goForward(){
     case 5:if(G.step==="briefing")G.advance();go(R().isFinal?9:6);return;   /* Briefing > Open Floor or Graduation */
     case 6:applyOpenFloorEnd();go(7);return;
     case 7:payCost();go(8);return;
-    case 9:if(G&&G.over)return;if(R().n===2&&roundDone())return;if(!R().isFinal&&roundDone())startNextLevel();else lockPoints();return;
+    case 9:if(G&&G.over)return;if(!R().isFinal&&roundDone())startNextLevel();else lockPoints();return;
     default:go(S.step+1);
   }
 }
@@ -464,8 +466,8 @@ const shownScore=(x,max=EP.Trial.MAX_BASE)=>Math.min(max,Math.max(0,Math.round(x
 function gradChecks(){const c=ME.gradChecks(),GT=EP.Player.GRAD_TOTAL,GM=EP.Player.GRAD_MIN;
   return `<div class="check"><span class="${c.totalOk?"y":"x"}">${c.totalOk?"✓":"✗"}</span><span>Total points ${c.total} (need ${GT}+)</span></div><div class="check"><span class="${c.lowestOk?"y":"x"}">${c.lowestOk?"✓":"✗"}</span><span>Lowest attribute ${c.lowest} (need ${GM}+)</span></div><div class="check"><span class="${c.glitchesOk?"y":"x"}">${c.glitchesOk?"✓":"✗"}</span><span>Glitches ${c.glitches} (stuck at ${EP.Player.STUCK_AT})</span></div>`}
 
-V[5]=()=>{const b=BRIEFINGS[R().n]||BRIEFINGS[1];return `<div><span class="chip r">${esc(b.header)}</span><h2 style="margin-top:8px">${esc(b.title)}</h2></div>
-<div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}, ${esc(MYTEAM?MYTEAM.name:"Team Kestrel")}</p><p>${esc(b.memo)}</p></div>
+V[5]=()=>{const b=BRIEFINGS[R().n]||BRIEFINGS[1],tm=(G&&ME?G.teamOf(ME):null)||MYTEAM;return `<div><span class="chip r">${esc(b.header)}</span><h2 style="margin-top:8px">${esc(b.title)}</h2></div>
+<div class="memo"><span class="label">Interoffice memo</span><p><b>To:</b> ${esc(S.name)}${tm?`, ${esc(tm.name)}`:""}</p><p>${esc(b.memo)}</p></div>
 ${R().attr?`<div class="cols"><div class="panel"><span class="label">This trial tests</span><h3>${AN[R().attr]}</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>${R().cost} points</h3></div><div class="panel"><span class="label">Your ${AN[R().attr]}</span><h3>${ME.attrs[R().attr]}${isBonus(R().attr)?' <span class="tag b">bonus</span>':""}</h3><span class="hint">${ME.coversFromPoints(R().attr,R().cost)?"You can cover this.":"You'll need hearts to cover this."}</span></div></div>`
 :`<div class="cols"><div class="panel"><span class="label">This review checks</span><h3>All 5 attributes</h3></div><div class="panel"><span class="label">Cost for every player</span><h3>0 points</h3></div><div class="panel"><span class="label">Final points</span><h3>+${EP.Game.POINTS.final} points</h3><span class="hint">${ME.isStuck()?"You are Stuck (spectator).":ME.graduates()?"You currently meet the graduation numbers.":"Place your final points on the next screen."}</span></div></div>`}
 <div class="cols"><div class="panel"><span class="label">Real phase</span><span>${esc(b.phase)}</span></div><div class="panel"><span class="label">Workshops</span><span>${esc(b.workshops)}</span></div></div>`};
@@ -514,6 +516,15 @@ ${trialDone()?trialResultHTML(EP.Trial.MAX_BASE,rank,"AutoTrial placeholder: ran
   const bind=()=>{on("#runAuto",()=>{if(!trialDone()){G.runTrial();render()}})};
   return {html,bind,waitHint:"Run the trial first"};
 }
+function trialMirrorScreen(){
+  const rank=G.trialRanking();
+  const html=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>
+${sabotageAlertHTML()}
+${trialDone()?trialResultHTML(EP.Trial.MirrorTrial.MAX_SCORE,rank,"Presentation Day: coming in Step 6b.")
+:`<div class="panel"><span class="label">Placeholder trial</span><p>Presentation Day: coming in Step 6b.</p><div class="row"><button class="btn green" id="runMirrorPlaceholder">Finish placeholder trial</button></div></div>`}`;
+  const bind=()=>{on("#runMirrorPlaceholder",()=>{if(!trialDone()){G.closeMirror();render()}})};
+  return {html,bind,waitHint:"Finish the trial first"};
+}
 function trialJudgedScreen(){
   const view=JudgedView.screen({
     game:G,me:ME,team:MYTEAM,state:S.trialUI,
@@ -529,6 +540,7 @@ function trialJudgedScreen(){
 const TRIAL_SCREENS={
   sop:trialSopScreen,
   splitBrief:trialSplitBriefScreen,
+  mirror:trialMirrorScreen,
   auto:trialAutoScreen,
   judged:trialJudgedScreen,
 };
@@ -610,6 +622,7 @@ function sprint1CompleteScreen(){
   const lv2Win=!!MYTEAM.won;
   const lv1Win=MYTEAM.trialWins-(lv2Win?1:0)>0;
   const teams=[...G.teams].sort((a,b)=>b.trialWins-a.trialWins);
+  const nx=EP.Round.LEVELS[2];
   return `<div><span class="chip g">Sprint 1 Complete</span><h2 style="margin-top:8px">Sprint 1 Complete, ${esc(S.name)}</h2></div>
   <div class="cols">
     <div class="panel"><span class="label">Your trial results</span><div class="row" style="justify-content:space-between"><span>Level 1 · Boot Up</span><b style="color:${lv1Win?"var(--ok)":"var(--bad)"}">${lv1Win?"WIN":"LOSS"}</b></div><div class="row" style="justify-content:space-between"><span>Level 2 · Sprint 1</span><b style="color:${lv2Win?"var(--ok)":"var(--bad)"}">${lv2Win?"WIN":"LOSS"}</b></div></div>
@@ -618,8 +631,8 @@ function sprint1CompleteScreen(){
   </div>
   <div class="panel"><span class="label">Your team</span><p><b>${esc(MYTEAM.name)}</b> · ${MYTEAM.trialWins} / 2 trial wins</p></div>
   <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${teams.map((tm,i)=>`<tr><td class="n">${i+1}</td><td>${esc(tm.name)}${tm===MYTEAM?" (you)":""}</td><td class="n">${tm.trialWins} / 2</td></tr>`).join("")}</tbody></table></div>
-  <div class="locked"><div><span class="label">Next · Level 3</span><h3>Level 3 locked</h3><span class="hint">The Mirror (Oct 1) · Coming next.</span></div><span class="tag">LOCKED</span></div>
-  <div class="row"><button class="btn blue" id="replay">Replay</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
+  <div class="locked" style="border-style:solid;border-color:var(--ok)"><div><span class="label">Next · Level ${nx.n}</span><h3>${esc(nx.name)}</h3><span class="hint">Oct 1 · Trial cost ${nx.cost} · Attribute revealed at the briefing</span></div><span class="tag" style="background:var(--ok)">READY</span></div>
+  <div class="row"><button class="btn red" id="nextLevel">Start Level ${nx.n} ▶</button><button class="btn blue" id="replay">Replay</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
 }
 const END_SCREENS={
   1:()=>nextLevelCard(1,"Sep 8–25 · Trial cost 3 · Attribute revealed at the briefing"),
