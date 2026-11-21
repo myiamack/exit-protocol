@@ -509,15 +509,18 @@ class SplitBriefTrial extends Trial {
 
 const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
 
-/* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup (and later #dance).
+/* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup, and #dance.
    Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
 class MirrorTrial extends Trial {
   #lobby;
   #setup;
+  #dance;
   #teams = [];
   #teamIds = [];
   #phase = "idle";         // "idle" | "lobby" | "reveal" | "showtime" | "failed"
   #failedTeams = new Set();
+  #botOnlyTeams = new Set();
+  #botAttention = new Map(); // teamId -> rolled 0..100 attention for bot-only teams
   #crews = new Map();      // teamId -> { setupIds: [], danceIds: [] }
 
   constructor(rng) {
@@ -525,6 +528,7 @@ class MirrorTrial extends Trial {
     super(rng);
     this.#lobby = new MirrorParts.MirrorLobby(rng);
     this.#setup = new MirrorParts.SetupCrew(rng);
+    this.#dance = new MirrorParts.DanceCrew(rng);
   }
 
   get kind() { return "mirror"; }
@@ -532,11 +536,11 @@ class MirrorTrial extends Trial {
   get lobbyStarted() { return this.#lobby.started; }
   get lobbyClosed() { return this.#lobby.closed; }
   get setupStarted() { return this.#setup.started; }
+  get danceStarted() { return this.#dance.started; }
 
   /* Setup Crew gets half of connected active players rounded up, capped at 3. */
   static setupCrewSize(activeCount) {
-    if (activeCount <= 0) return 0;
-    return Math.min(MirrorData.scoring.maxSetupCrew, Math.ceil(activeCount / 2));
+    return MirrorParts.SetupCrew.crewSize(activeCount);
   }
 
   #shuffle(list) {
@@ -558,6 +562,10 @@ class MirrorTrial extends Trial {
     if (this.#lobby.started) throw new Error("Mirror lobby already started.");
     this.#teams = teams.slice();
     this.#teamIds = this.#teams.map(t => t.id);
+    this.#botOnlyTeams = new Set(
+      this.#teams.filter(t => t.members.length > 0 && t.members.every(p => p.isBot)).map(t => t.id)
+    );
+    this.#botAttention.clear();
     this.#phase = "lobby";
     return this.#lobby.start(this.#teams);
   }
@@ -571,7 +579,7 @@ class MirrorTrial extends Trial {
   botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
   allConnected() { return this.#lobby.allConnected(); }
 
-  /* Close lobby doors, fail incomplete teams, deal Setup vs Dance crews, and start SetupCrew. */
+  /* Close lobby doors, fail incomplete teams, deal Setup vs Dance crews, and start SetupCrew + DanceCrew. */
   closeDoors() {
     const res = this.#lobby.closeDoors();
     if (res.alreadyClosed) return { ...res, phase: this.#phase, crews: this.allCrews() };
@@ -591,6 +599,9 @@ class MirrorTrial extends Trial {
         };
       });
       this.#setup.start(setupDeals, { shuffleSlots: false });
+      this.#dance.start(this.#setup, {
+        playerLookup: pid => this.#lobby.playerState(pid),
+      });
     }
     this.#phase = res.passedTeams.length > 0 ? "reveal" : "failed";
     return { ...res, phase: this.#phase, crews: this.allCrews() };
@@ -599,8 +610,15 @@ class MirrorTrial extends Trial {
   startShowtime() {
     if (this.#phase === "showtime") return { ok: false, alreadyStarted: true, phase: this.#phase };
     if (this.#phase !== "reveal") throw new Error("Showtime can only start after crew reveal.");
+    const min = MirrorData.scoring.attentionMin;
+    const max = MirrorData.scoring.attentionMax;
+    for (const teamId of this.#teamIds) {
+      if (!this.#failedTeams.has(teamId) && this.#botOnlyTeams.has(teamId)) {
+        this.#botAttention.set(teamId, min + Math.floor(this.rng() * (max - min + 1)));
+      }
+    }
     this.#phase = "showtime";
-    return { ok: true, phase: this.#phase, setup: this.#setup.state() };
+    return { ok: true, phase: this.#phase, setup: this.#setup.state(), dance: this.#dance.state() };
   }
 
   cableHit(playerId, port, opts) {
@@ -652,6 +670,27 @@ class MirrorTrial extends Trial {
     return why ? { ok: false, reason: why } : this.#setup.advanceBotSetup(teamOrId, elapsedSeconds, opts);
   }
 
+  danceHit(playerId, quality, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.noteHit(playerId, quality, opts);
+  }
+  danceMiss(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.noteMiss(playerId, opts);
+  }
+  danceStray(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.strayPress(playerId, opts);
+  }
+  applyBotDanceBoost(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.applyBotBoost(playerId, opts);
+  }
+  advanceBotDance(teamOrId, elapsedSeconds, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.advanceBotDance(teamOrId, elapsedSeconds, opts);
+  }
+
   setupSlots(teamOrId) { return this.#setup.slotsFor(teamOrId); }
   setupSlotOf(playerOrId) { return this.#setup.slotOf(playerOrId); }
   setupStep(teamOrId) { return this.#setup.currentStep(teamOrId); }
@@ -666,6 +705,38 @@ class MirrorTrial extends Trial {
   botSetupDueAt(teamOrId, opts) { return this.#setup.botStepDueAt(teamOrId, opts); }
   setupTeamState(teamOrId) { return this.#setup.teamState(teamOrId); }
   setupState() { return this.#setup.state(); }
+
+  dancersFor(teamOrId) { return this.#dance.dancersFor(teamOrId); }
+  dancerIdsFor(teamOrId) { return this.#dance.dancerIdsFor(teamOrId); }
+  dancerState(playerOrId) { return this.#dance.dancerState(playerOrId); }
+  danceBoostFor(teamOrId) { return this.#dance.avgBoostFor(teamOrId); }
+  dancePenaltiesFor(teamOrId) { return this.#dance.avgPenaltiesFor(teamOrId); }
+  botDanceNextAt(playerOrId) { return this.#dance.botNextBoostAt(playerOrId); }
+  botDanceNextsFor(teamOrId = null) { return this.#dance.botNextBoostsFor(teamOrId); }
+  danceTeamState(teamOrId) { return this.#dance.teamState(teamOrId); }
+  danceState() { return this.#dance.state(); }
+  isBotOnlyTeam(teamOrId) { return this.#botOnlyTeams.has(mirrorIdOf(teamOrId)); }
+  botAttentionFor(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#botAttention.has(tid) ? this.#botAttention.get(tid) : null;
+  }
+
+  /* Current team attention (0..100). Attention drains only during showtime, never in lobby/reveal. */
+  attentionFor(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#failedTeams.has(tid)) return MirrorData.scoring.attentionMin;
+    if (this.#phase !== "showtime") return MirrorData.scoring.attentionMax;
+    if (this.#botOnlyTeams.has(tid)) {
+      return this.#botAttention.has(tid) ? this.#botAttention.get(tid) : MirrorData.scoring.attentionMin;
+    }
+    const maxSec = MirrorData.timers.showtimeSeconds;
+    const sec = typeof showtimeSecondsLeft === "number" && Number.isFinite(showtimeSecondsLeft)
+      ? Math.max(0, Math.min(maxSec, showtimeSecondsLeft))
+      : maxSec;
+    const base = (sec / maxSec) * MirrorData.scoring.attentionMax;
+    const raw = base + this.#dance.avgBoostFor(tid) - this.#setup.penaltiesFor(tid) - this.#dance.avgPenaltiesFor(tid);
+    return Math.max(MirrorData.scoring.attentionMin, Math.min(MirrorData.scoring.attentionMax, raw));
+  }
 
   isTeamFailed(teamOrId) { return this.#failedTeams.has(mirrorIdOf(teamOrId)); }
   failedTeamIds() { return [...this.#failedTeams]; }
@@ -699,7 +770,10 @@ class MirrorTrial extends Trial {
       teamIds: this.#teamIds.slice(),
       lobby: this.#lobby.toJSON(),
       setup: this.#setup.toJSON(),
+      dance: this.#dance.toJSON(),
       failedTeams: [...this.#failedTeams],
+      botOnlyTeams: [...this.#botOnlyTeams],
+      botAttention: [...this.#botAttention],
       crews: [...this.#crews].map(([teamId, deal]) => [
         teamId,
         { setupIds: deal.setupIds.slice(), danceIds: deal.danceIds.slice() },
@@ -716,7 +790,10 @@ class MirrorTrial extends Trial {
     t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
     if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng });
     if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng });
+    if (data.dance) t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng });
     t.#failedTeams = new Set(data.failedTeams || []);
+    t.#botOnlyTeams = new Set(data.botOnlyTeams || []);
+    t.#botAttention = new Map(data.botAttention || []);
     t.#crews = new Map((data.crews || []).map(([teamId, deal]) => [
       teamId,
       {

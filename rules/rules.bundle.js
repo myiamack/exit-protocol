@@ -2494,6 +2494,11 @@ class SetupCrew {
     return ts ? ts.slots.map(s => ({ ...s, steps: s.steps.slice() })) : [];
   }
 
+  danceIdsFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.danceIds.slice() : [];
+  }
+
   slotOf(playerOrId) {
     const entry = this.#lookupPlayer(playerOrId);
     if (!entry) return null;
@@ -2731,7 +2736,409 @@ class SetupCrew {
   }
 }
 
-const MirrorParts = { MirrorLobby, SetupCrew };
+/* Dance Crew state for Presentation Day: dancer roster taken from SetupCrew's crew split,
+   results-based note hits (cap 45), misses/strays, averaged boosts and penalties across dancers,
+   bot dance boost timing (+1 every 1.5 to 2.5 seconds, no misses), and toJSON/fromJSON.
+   Outside code calls MirrorTrial only. */
+class DanceCrew {
+  #rng;
+  #started = false;
+  #teams = new Map();       // teamId -> { teamId, order: playerId[], dancers: Map<playerId, rec> }
+  #playerIndex = new Map(); // playerId -> { teamId, rec }
+
+  constructor(rng, entries = null, options = {}) {
+    if (typeof rng !== "function") throw new Error("DanceCrew requires a seeded rng.");
+    this.#rng = rng;
+    if (entries !== null) this.start(entries, options);
+  }
+
+  get started() { return this.#started; }
+
+  #lookupPlayer(playerOrId) {
+    const id = idOf(playerOrId);
+    if (id === null || id === undefined) return null;
+    return this.#playerIndex.get(id) || null;
+  }
+
+  #rollBotInterval() {
+    const tickSec = MirrorData.timers.tickMs / 1000;
+    const minTicks = Math.round(MirrorData.bots.danceMinSeconds / tickSec);
+    const maxTicks = Math.round(MirrorData.bots.danceMaxSeconds / tickSec);
+    return (minTicks + Math.floor(this.#rng() * (maxTicks - minTicks + 1))) * tickSec;
+  }
+
+  #makeDancerRecord(p) {
+    const playerId = p.playerId !== undefined ? p.playerId : p.id;
+    const name = p.name !== undefined ? p.name : String(playerId);
+    const isBot = !!p.isBot;
+    return {
+      playerId,
+      name,
+      isBot,
+      boost: 0,
+      penalties: 0,
+      combo: 0,
+      maxCombo: 0,
+      perfects: 0,
+      goods: 0,
+      misses: 0,
+      strays: 0,
+      botBoosts: 0,
+      lastActionAt: 0,
+      lastBotAt: 0,
+      nextBotBoostAt: isBot ? this.#rollBotInterval() : null,
+    };
+  }
+
+  #checkDancer(playerOrId) {
+    if (!this.#started) return { ok: false, reason: "Dance Crew has not started." };
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return { ok: false, reason: "Player is not on the Dance Crew." };
+    return { ok: true, ts: this.#teams.get(entry.teamId), rec: entry.rec };
+  }
+
+  /* Initialize Dance Crew strictly from SetupCrew's crew split (or pre-split entries). */
+  start(source, options = {}) {
+    if (this.#started) throw new Error("Dance Crew already started.");
+
+    if (source instanceof SetupCrew) {
+      if (!source.started) throw new Error("SetupCrew must be started before DanceCrew.");
+      const teams = Array.isArray(options) ? options : (options && options.teams) || null;
+      const playerLookup = !Array.isArray(options) && options ? options.playerLookup || null : null;
+      const playerById = new Map();
+      if (Array.isArray(teams)) {
+        for (const t of teams) {
+          for (const p of (t.members || [])) playerById.set(p.id, p);
+        }
+      }
+      const resolvePlayer = pid =>
+        (playerLookup && playerLookup(pid)) ||
+        playerById.get(pid) ||
+        { playerId: pid, name: String(pid), isBot: false };
+
+      for (const teamId of source.teamIds()) {
+        const danceIds = source.danceIdsFor(teamId);
+        const ts = { teamId, order: [], dancers: new Map() };
+        for (const pid of danceIds) {
+          const rec = this.#makeDancerRecord(resolvePlayer(pid));
+          ts.order.push(rec.playerId);
+          ts.dancers.set(rec.playerId, rec);
+          this.#playerIndex.set(rec.playerId, { teamId, rec });
+        }
+        this.#teams.set(teamId, ts);
+      }
+    } else if (Array.isArray(source)) {
+      if (source.some(item => item && typeof item.active === "function")) {
+        throw new Error("DanceCrew uses SetupCrew's crew split; pass a SetupCrew instance or pre-split dancer entries.");
+      }
+      for (const item of source) {
+        if (!item || item.teamId === undefined || item.teamId === null) {
+          throw new Error("DanceCrew requires a SetupCrew instance or pre-split dancer entries.");
+        }
+        const ts = { teamId: item.teamId, order: [], dancers: new Map() };
+        for (const p of (item.players || [])) {
+          const rec = this.#makeDancerRecord(p);
+          ts.order.push(rec.playerId);
+          ts.dancers.set(rec.playerId, rec);
+          this.#playerIndex.set(rec.playerId, { teamId: item.teamId, rec });
+        }
+        this.#teams.set(item.teamId, ts);
+      }
+    } else {
+      throw new Error("DanceCrew requires a SetupCrew instance or pre-split dancer entries.");
+    }
+
+    this.#started = true;
+    return this.state();
+  }
+
+  /* Record a note hit ("perfect" +3 or "good" +2), capped at 45 boost per dancer. */
+  noteHit(playerOrId, quality, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    if (quality !== "perfect" && quality !== "good") {
+      return { ok: false, reason: "Hit quality must be perfect or good." };
+    }
+    const { ts, rec } = chk;
+    const D = MirrorData.dance;
+    const rawGain = quality === "perfect" ? D.perfectBoost : D.goodBoost;
+    const before = rec.boost;
+    rec.boost = Math.min(D.boostCap, rec.boost + rawGain);
+    const boostAdded = rec.boost - before;
+    rec.combo += 1;
+    if (rec.combo > rec.maxCombo) rec.maxCombo = rec.combo;
+    if (quality === "perfect") rec.perfects += 1;
+    else rec.goods += 1;
+    if (rec.boost >= D.boostCap) rec.nextBotBoostAt = null;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      rec.lastActionAt = elapsedSeconds;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      quality,
+      boostAdded,
+      boost: rec.boost,
+      capped: rec.boost >= D.boostCap,
+      combo: rec.combo,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Record a missed note costing 2 attention (averaged across dancers) and resetting combo. */
+  noteMiss(playerOrId, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    const { ts, rec } = chk;
+    const penaltyAdded = MirrorData.dance.missPenalty;
+    rec.penalties += penaltyAdded;
+    rec.misses += 1;
+    rec.combo = 0;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      rec.lastActionAt = elapsedSeconds;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      miss: true,
+      penaltyAdded,
+      penalties: rec.penalties,
+      combo: 0,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Record an off-beat stray key press costing 1 attention (averaged across dancers) and resetting combo. */
+  strayPress(playerOrId, { elapsedSeconds = null } = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    const { ts, rec } = chk;
+    const penaltyAdded = MirrorData.dance.strayPenalty;
+    rec.penalties += penaltyAdded;
+    rec.strays += 1;
+    rec.combo = 0;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      rec.lastActionAt = elapsedSeconds;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      stray: true,
+      penaltyAdded,
+      penalties: rec.penalties,
+      combo: 0,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Bot or autoPilot dancer gains +1 boost (up to 45), no misses, then schedules next 1.5..2.5s tick. */
+  applyBotBoost(playerOrId, { elapsedSeconds = null, autoPilot = false } = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    const { ts, rec } = chk;
+    if (!rec.isBot && !autoPilot) return { ok: false, reason: "Player is not a bot." };
+    const cap = MirrorData.dance.boostCap;
+    if (rec.boost >= cap) return { ok: false, reason: "Dancer boost is already at cap." };
+
+    const at = (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds))
+      ? elapsedSeconds
+      : (rec.nextBotBoostAt !== null ? rec.nextBotBoostAt : rec.lastActionAt + this.#rollBotInterval());
+    const before = rec.boost;
+    rec.boost = Math.min(cap, rec.boost + MirrorData.bots.danceBoostStep);
+    const boostAdded = rec.boost - before;
+    rec.botBoosts += 1;
+    rec.lastBotAt = at;
+    const moves = MirrorData.flavor.danceMoves;
+    const move = moves[(rec.botBoosts - 1) % moves.length];
+    rec.nextBotBoostAt = rec.boost >= cap ? null : at + this.#rollBotInterval();
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      at,
+      boostAdded,
+      boost: rec.boost,
+      capped: rec.boost >= cap,
+      move,
+      nextBoostAt: rec.nextBotBoostAt,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Advance all due bot (or autoPilot human) dancer boosts on a team up to elapsedSeconds. */
+  advanceBotDance(teamOrId, elapsedSeconds, { autoPilotIds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Dance Crew has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Dance Crew." };
+    if (typeof elapsedSeconds !== "number" || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
+      return { ok: false, reason: "Invalid elapsedSeconds." };
+    }
+    const isAuto = id => !!(autoPilotIds && (autoPilotIds instanceof Set
+      ? autoPilotIds.has(id)
+      : Array.isArray(autoPilotIds) && autoPilotIds.includes(id)));
+    const cap = MirrorData.dance.boostCap;
+
+    const events = [];
+    for (const pid of ts.order) {
+      const rec = ts.dancers.get(pid);
+      const auto = isAuto(pid);
+      if ((!rec.isBot && !auto) || rec.boost >= cap) continue;
+      if (rec.nextBotBoostAt === null) {
+        rec.nextBotBoostAt = rec.lastActionAt + this.#rollBotInterval();
+      }
+      while (rec.boost < cap && rec.nextBotBoostAt !== null && elapsedSeconds >= rec.nextBotBoostAt) {
+        const ev = this.applyBotBoost(pid, { elapsedSeconds: rec.nextBotBoostAt, autoPilot: auto });
+        if (!ev.ok) break;
+        events.push(ev);
+      }
+    }
+    events.sort((a, b) => a.at - b.at);
+
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      events,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  teamIds() { return [...this.#teams.keys()]; }
+  hasPlayer(playerOrId) { return !!this.#lookupPlayer(playerOrId); }
+
+  dancerIdsFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.order.slice() : [];
+  }
+
+  dancersFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return [];
+    return ts.order.map(id => ({ ...ts.dancers.get(id), teamId: ts.teamId }));
+  }
+
+  dancerState(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    return entry ? { ...entry.rec, teamId: entry.teamId } : null;
+  }
+
+  boostFor(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    return entry ? entry.rec.boost : 0;
+  }
+
+  penaltiesForPlayer(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    return entry ? entry.rec.penalties : 0;
+  }
+
+  avgBoostFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || ts.order.length === 0) return 0;
+    let total = 0;
+    for (const id of ts.order) total += ts.dancers.get(id).boost;
+    return total / ts.order.length;
+  }
+
+  avgPenaltiesFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || ts.order.length === 0) return 0;
+    let total = 0;
+    for (const id of ts.order) total += ts.dancers.get(id).penalties;
+    return total / ts.order.length;
+  }
+
+  botNextBoostAt(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    return entry ? entry.rec.nextBotBoostAt : null;
+  }
+
+  botNextBoostsFor(teamOrId = null) {
+    const tids = teamOrId === null || teamOrId === undefined ? [...this.#teams.keys()] : [idOf(teamOrId)];
+    const out = [];
+    for (const tid of tids) {
+      const ts = this.#teams.get(tid);
+      if (!ts) continue;
+      for (const id of ts.order) {
+        const rec = ts.dancers.get(id);
+        if (rec.isBot) out.push({ playerId: rec.playerId, teamId: ts.teamId, seconds: rec.nextBotBoostAt });
+      }
+    }
+    return out;
+  }
+
+  teamState(teamOrId) {
+    const tid = idOf(teamOrId);
+    const ts = this.#teams.get(tid);
+    if (!ts) return null;
+    return {
+      teamId: ts.teamId,
+      dancerIds: ts.order.slice(),
+      dancers: this.dancersFor(tid),
+      avgBoost: this.avgBoostFor(tid),
+      avgPenalties: this.avgPenaltiesFor(tid),
+    };
+  }
+
+  state() {
+    return {
+      started: this.#started,
+      teams: [...this.#teams.keys()].map(id => this.teamState(id)),
+    };
+  }
+
+  toJSON() {
+    return {
+      started: this.#started,
+      teams: [...this.#teams.values()].map(ts => ({
+        teamId: ts.teamId,
+        dancers: ts.order.map(id => ({ ...ts.dancers.get(id) })),
+      })),
+    };
+  }
+
+  static fromJSON(data, { rng } = {}) {
+    if (!data || typeof data !== "object") throw new Error("Invalid DanceCrew save data.");
+    const dc = new DanceCrew(rng);
+    dc.#started = !!data.started;
+    for (const td of (data.teams || [])) {
+      const ts = { teamId: td.teamId, order: [], dancers: new Map() };
+      for (const d of (td.dancers || [])) {
+        const rec = {
+          playerId: d.playerId,
+          name: d.name,
+          isBot: !!d.isBot,
+          boost: d.boost || 0,
+          penalties: d.penalties || 0,
+          combo: d.combo || 0,
+          maxCombo: d.maxCombo || 0,
+          perfects: d.perfects || 0,
+          goods: d.goods || 0,
+          misses: d.misses || 0,
+          strays: d.strays || 0,
+          botBoosts: d.botBoosts || 0,
+          lastActionAt: d.lastActionAt || 0,
+          lastBotAt: d.lastBotAt || 0,
+          nextBotBoostAt: d.nextBotBoostAt ?? null,
+        };
+        ts.order.push(rec.playerId);
+        ts.dancers.set(rec.playerId, rec);
+        dc.#playerIndex.set(rec.playerId, { teamId: ts.teamId, rec });
+      }
+      dc.#teams.set(ts.teamId, ts);
+    }
+    return dc;
+  }
+}
+
+const MirrorParts = { MirrorLobby, SetupCrew, DanceCrew };
 return MirrorParts;
 })();
 
@@ -3244,15 +3651,18 @@ class SplitBriefTrial extends Trial {
 
 const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
 
-/* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup (and later #dance).
+/* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup, and #dance.
    Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
 class MirrorTrial extends Trial {
   #lobby;
   #setup;
+  #dance;
   #teams = [];
   #teamIds = [];
   #phase = "idle";         // "idle" | "lobby" | "reveal" | "showtime" | "failed"
   #failedTeams = new Set();
+  #botOnlyTeams = new Set();
+  #botAttention = new Map(); // teamId -> rolled 0..100 attention for bot-only teams
   #crews = new Map();      // teamId -> { setupIds: [], danceIds: [] }
 
   constructor(rng) {
@@ -3260,6 +3670,7 @@ class MirrorTrial extends Trial {
     super(rng);
     this.#lobby = new MirrorParts.MirrorLobby(rng);
     this.#setup = new MirrorParts.SetupCrew(rng);
+    this.#dance = new MirrorParts.DanceCrew(rng);
   }
 
   get kind() { return "mirror"; }
@@ -3267,11 +3678,11 @@ class MirrorTrial extends Trial {
   get lobbyStarted() { return this.#lobby.started; }
   get lobbyClosed() { return this.#lobby.closed; }
   get setupStarted() { return this.#setup.started; }
+  get danceStarted() { return this.#dance.started; }
 
   /* Setup Crew gets half of connected active players rounded up, capped at 3. */
   static setupCrewSize(activeCount) {
-    if (activeCount <= 0) return 0;
-    return Math.min(MirrorData.scoring.maxSetupCrew, Math.ceil(activeCount / 2));
+    return MirrorParts.SetupCrew.crewSize(activeCount);
   }
 
   #shuffle(list) {
@@ -3293,6 +3704,10 @@ class MirrorTrial extends Trial {
     if (this.#lobby.started) throw new Error("Mirror lobby already started.");
     this.#teams = teams.slice();
     this.#teamIds = this.#teams.map(t => t.id);
+    this.#botOnlyTeams = new Set(
+      this.#teams.filter(t => t.members.length > 0 && t.members.every(p => p.isBot)).map(t => t.id)
+    );
+    this.#botAttention.clear();
     this.#phase = "lobby";
     return this.#lobby.start(this.#teams);
   }
@@ -3306,7 +3721,7 @@ class MirrorTrial extends Trial {
   botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
   allConnected() { return this.#lobby.allConnected(); }
 
-  /* Close lobby doors, fail incomplete teams, deal Setup vs Dance crews, and start SetupCrew. */
+  /* Close lobby doors, fail incomplete teams, deal Setup vs Dance crews, and start SetupCrew + DanceCrew. */
   closeDoors() {
     const res = this.#lobby.closeDoors();
     if (res.alreadyClosed) return { ...res, phase: this.#phase, crews: this.allCrews() };
@@ -3326,6 +3741,9 @@ class MirrorTrial extends Trial {
         };
       });
       this.#setup.start(setupDeals, { shuffleSlots: false });
+      this.#dance.start(this.#setup, {
+        playerLookup: pid => this.#lobby.playerState(pid),
+      });
     }
     this.#phase = res.passedTeams.length > 0 ? "reveal" : "failed";
     return { ...res, phase: this.#phase, crews: this.allCrews() };
@@ -3334,8 +3752,15 @@ class MirrorTrial extends Trial {
   startShowtime() {
     if (this.#phase === "showtime") return { ok: false, alreadyStarted: true, phase: this.#phase };
     if (this.#phase !== "reveal") throw new Error("Showtime can only start after crew reveal.");
+    const min = MirrorData.scoring.attentionMin;
+    const max = MirrorData.scoring.attentionMax;
+    for (const teamId of this.#teamIds) {
+      if (!this.#failedTeams.has(teamId) && this.#botOnlyTeams.has(teamId)) {
+        this.#botAttention.set(teamId, min + Math.floor(this.rng() * (max - min + 1)));
+      }
+    }
     this.#phase = "showtime";
-    return { ok: true, phase: this.#phase, setup: this.#setup.state() };
+    return { ok: true, phase: this.#phase, setup: this.#setup.state(), dance: this.#dance.state() };
   }
 
   cableHit(playerId, port, opts) {
@@ -3387,6 +3812,27 @@ class MirrorTrial extends Trial {
     return why ? { ok: false, reason: why } : this.#setup.advanceBotSetup(teamOrId, elapsedSeconds, opts);
   }
 
+  danceHit(playerId, quality, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.noteHit(playerId, quality, opts);
+  }
+  danceMiss(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.noteMiss(playerId, opts);
+  }
+  danceStray(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.strayPress(playerId, opts);
+  }
+  applyBotDanceBoost(playerId, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.applyBotBoost(playerId, opts);
+  }
+  advanceBotDance(teamOrId, elapsedSeconds, opts) {
+    const why = this.#showtimeWhy();
+    return why ? { ok: false, reason: why } : this.#dance.advanceBotDance(teamOrId, elapsedSeconds, opts);
+  }
+
   setupSlots(teamOrId) { return this.#setup.slotsFor(teamOrId); }
   setupSlotOf(playerOrId) { return this.#setup.slotOf(playerOrId); }
   setupStep(teamOrId) { return this.#setup.currentStep(teamOrId); }
@@ -3401,6 +3847,38 @@ class MirrorTrial extends Trial {
   botSetupDueAt(teamOrId, opts) { return this.#setup.botStepDueAt(teamOrId, opts); }
   setupTeamState(teamOrId) { return this.#setup.teamState(teamOrId); }
   setupState() { return this.#setup.state(); }
+
+  dancersFor(teamOrId) { return this.#dance.dancersFor(teamOrId); }
+  dancerIdsFor(teamOrId) { return this.#dance.dancerIdsFor(teamOrId); }
+  dancerState(playerOrId) { return this.#dance.dancerState(playerOrId); }
+  danceBoostFor(teamOrId) { return this.#dance.avgBoostFor(teamOrId); }
+  dancePenaltiesFor(teamOrId) { return this.#dance.avgPenaltiesFor(teamOrId); }
+  botDanceNextAt(playerOrId) { return this.#dance.botNextBoostAt(playerOrId); }
+  botDanceNextsFor(teamOrId = null) { return this.#dance.botNextBoostsFor(teamOrId); }
+  danceTeamState(teamOrId) { return this.#dance.teamState(teamOrId); }
+  danceState() { return this.#dance.state(); }
+  isBotOnlyTeam(teamOrId) { return this.#botOnlyTeams.has(mirrorIdOf(teamOrId)); }
+  botAttentionFor(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#botAttention.has(tid) ? this.#botAttention.get(tid) : null;
+  }
+
+  /* Current team attention (0..100). Attention drains only during showtime, never in lobby/reveal. */
+  attentionFor(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#failedTeams.has(tid)) return MirrorData.scoring.attentionMin;
+    if (this.#phase !== "showtime") return MirrorData.scoring.attentionMax;
+    if (this.#botOnlyTeams.has(tid)) {
+      return this.#botAttention.has(tid) ? this.#botAttention.get(tid) : MirrorData.scoring.attentionMin;
+    }
+    const maxSec = MirrorData.timers.showtimeSeconds;
+    const sec = typeof showtimeSecondsLeft === "number" && Number.isFinite(showtimeSecondsLeft)
+      ? Math.max(0, Math.min(maxSec, showtimeSecondsLeft))
+      : maxSec;
+    const base = (sec / maxSec) * MirrorData.scoring.attentionMax;
+    const raw = base + this.#dance.avgBoostFor(tid) - this.#setup.penaltiesFor(tid) - this.#dance.avgPenaltiesFor(tid);
+    return Math.max(MirrorData.scoring.attentionMin, Math.min(MirrorData.scoring.attentionMax, raw));
+  }
 
   isTeamFailed(teamOrId) { return this.#failedTeams.has(mirrorIdOf(teamOrId)); }
   failedTeamIds() { return [...this.#failedTeams]; }
@@ -3434,7 +3912,10 @@ class MirrorTrial extends Trial {
       teamIds: this.#teamIds.slice(),
       lobby: this.#lobby.toJSON(),
       setup: this.#setup.toJSON(),
+      dance: this.#dance.toJSON(),
       failedTeams: [...this.#failedTeams],
+      botOnlyTeams: [...this.#botOnlyTeams],
+      botAttention: [...this.#botAttention],
       crews: [...this.#crews].map(([teamId, deal]) => [
         teamId,
         { setupIds: deal.setupIds.slice(), danceIds: deal.danceIds.slice() },
@@ -3451,7 +3932,10 @@ class MirrorTrial extends Trial {
     t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
     if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng });
     if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng });
+    if (data.dance) t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng });
     t.#failedTeams = new Set(data.failedTeams || []);
+    t.#botOnlyTeams = new Set(data.botOnlyTeams || []);
+    t.#botAttention = new Map(data.botAttention || []);
     t.#crews = new Map((data.crews || []).map(([teamId, deal]) => [
       teamId,
       {

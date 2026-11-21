@@ -1,0 +1,34 @@
+-- 1. Construction, exports, privacy, and guard rails
+PASS  DanceCrew rejects missing rng, raw Team objects, unstarted SetupCrew, and keeps fields private
+PASS  Round.LEVELS[2] stays auto until Step 5 and MirrorParts uses no Math.random or hardcoded team names
+-- 2. Dance Crew roster (team sizes 3, 4, 5, 6 and Stuck or Idle exclusions)
+PASS  Dance roster size 3 active -> 1 dancer
+PASS  Dance roster size 4 active -> 2 dancers
+PASS  Dance roster size 5 active -> 2 dancers
+PASS  Dance roster size 6 active -> 3 dancers
+PASS  Dance roster size 5 with 1 Stuck -> 2 dancers
+PASS  Dance roster size 5 with 1 Stuck + 1 Idle -> 1 dancer
+PASS  Dance roster size 4 with 2 Stuck -> 1 dancer
+PASS  Dance roster size 3 with 2 Idle -> 0 dancers
+-- 3. Results-based note hits, misses, stray presses, and boost cap at 45
+PASS  noteHit/noteMiss/strayPress reject invalid callers and track +3/+2 boost, +1/+2 penalty, and combo
+PASS  Dancer boost caps strictly at 45 (partial gain at cap, 0 gain past cap)
+-- 4. Averaging across 1, 2, 3 dancers and 0 dancers
+PASS  Average across 1 dancer equals that dancer's boost and penalty
+PASS  Average across 2 dancers averages capped boosts and fractional penalties accurately  -> avgBoost=30 avgPen=1.5
+PASS  Average across 3 dancers averages boosts and penalties accurately  -> avgBoost=4 avgPen=2
+PASS  Team with 0 dancers returns 0 avgBoost, 0 avgPenalties, no NaN, and empty bot dance advance
+-- 5. Attention drains only in showtime (75s), formula, and 0..100 clamp
+PASS  Attention stays 100 in lobby and reveal, drains only in showtime, fails locked team at 0, and clamps 0..100
+-- 6. Bot dance timing (+1 every 1.5..2.5s, cap 45, no misses) and idle human autoPilot
+PASS  Bot dancers gain +1 every 1.5..2.5s up to 45 with zero misses, repeat on same seed, and vary across seeds
+PASS  Human dancer is skipped without autoPilot and gains idle autoPilot boosts from lastActionAt onward
+-- 7. Bot-only team random attention with fixed seed
+PASS  Bot-only team stays 100 before showtime, rolls fixed integer attention 0..100 at showtime, repeats on seed, and varies  -> seed808=64, distinct=33
+-- 8. MirrorTrial gating for Dance Crew
+PASS  MirrorTrial gates dance actions to showtime (unclosed), rejects setup/idle, and routes valid dance actions
+-- 9. Save and load (DanceCrew direct and MirrorTrial / Trial.fromJSON)
+PASS  DanceCrew.fromJSON produces plain data and continues identically with synced Rng
+PASS  MirrorTrial mid-showtime save/load restores #lobby, #setup, #dance, bot attention, and continues identically
+
+23 passed, 0 failed.
