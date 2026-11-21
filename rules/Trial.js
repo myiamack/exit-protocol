@@ -1009,7 +1009,20 @@ class MirrorTrial extends Trial {
         this.#lockTeamAttention(t.id, showtimeSecondsLeft);
       }
     }
-    return this.runTrial(round, list);
+    const ranking = this.runTrial(round, list);
+    if (round) {
+      round.mirrorResults = {};
+      for (const r of ranking) {
+        round.mirrorResults[r.team.id] = {
+          attention: r.attention,
+          score: r.base,
+          failed: r.failed,
+          failReason: r.failReason,
+          botOnly: r.botOnly,
+        };
+      }
+    }
+    return ranking;
   }
 
   /* Rank by 0..7 score + light Focus influence, then higher exact attention, then Rng. */
@@ -1263,6 +1276,9 @@ SplitBriefTrial.MAX_BOARD_TASKS = 2;
 SplitBriefTrial.MAX_SCORE = 5;
 SplitBriefTrial.TRIAL_SECONDS = 180;
 SplitBriefTrial.TWIST_SECONDS = 90;
+MirrorTrial.LOBBY_SECONDS = MirrorData.timers.lobbySeconds;
+MirrorTrial.REVEAL_SECONDS = MirrorData.timers.revealSeconds;
+MirrorTrial.SHOWTIME_SECONDS = MirrorData.timers.showtimeSeconds;
 JudgedTrial.MAX_CHARS = 300;          // submission length
 JudgedTrial.MAX_PROMPT_CHARS = 200;   // custom host prompt length
 JudgedTrial.WRITING_SECONDS = 180;    // writing timer: 3 minutes

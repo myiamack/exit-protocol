@@ -88,7 +88,7 @@ class Round {
     if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
     if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
     if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
     return out;
   }
   /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
@@ -104,7 +104,7 @@ class Round {
     if (ts) r.trial = trialFromJSON(ts);
     if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
     if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
     return r;
   }
 }

@@ -1136,7 +1136,7 @@ class Round {
     if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
     if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
     if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
     return out;
   }
   /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
@@ -1152,7 +1152,7 @@ class Round {
     if (ts) r.trial = trialFromJSON(ts);
     if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
     if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
     return r;
   }
 }
@@ -4151,7 +4151,20 @@ class MirrorTrial extends Trial {
         this.#lockTeamAttention(t.id, showtimeSecondsLeft);
       }
     }
-    return this.runTrial(round, list);
+    const ranking = this.runTrial(round, list);
+    if (round) {
+      round.mirrorResults = {};
+      for (const r of ranking) {
+        round.mirrorResults[r.team.id] = {
+          attention: r.attention,
+          score: r.base,
+          failed: r.failed,
+          failReason: r.failReason,
+          botOnly: r.botOnly,
+        };
+      }
+    }
+    return ranking;
   }
 
   /* Rank by 0..7 score + light Focus influence, then higher exact attention, then Rng. */
@@ -4405,6 +4418,9 @@ SplitBriefTrial.MAX_BOARD_TASKS = 2;
 SplitBriefTrial.MAX_SCORE = 5;
 SplitBriefTrial.TRIAL_SECONDS = 180;
 SplitBriefTrial.TWIST_SECONDS = 90;
+MirrorTrial.LOBBY_SECONDS = MirrorData.timers.lobbySeconds;
+MirrorTrial.REVEAL_SECONDS = MirrorData.timers.revealSeconds;
+MirrorTrial.SHOWTIME_SECONDS = MirrorData.timers.showtimeSeconds;
 JudgedTrial.MAX_CHARS = 300;          // submission length
 JudgedTrial.MAX_PROMPT_CHARS = 200;   // custom host prompt length
 JudgedTrial.WRITING_SECONDS = 180;    // writing timer: 3 minutes
@@ -4744,19 +4760,26 @@ const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lock
 
 /* Step timers (Part 13). Game stores each running timer's end time (a deadline), never seconds left.
    Only these phases are timed; every other step waits for an explicit call (decided: untimed for now).
-     intermission  the first one only, before Level 1   ends: startNextRound
-     openFloor                                            ends: advance (unanswered gifts expire)
-     sop           Level 1 Trial, until the SOP is scored ends: closeSop (each board scored as it stands)
-     writing       Levels 5-6, while writing is open     ends: closeWriting
-     glitchReport  until accusations close                ends: closeGlitchReport
-     giftWindow                                           ends: closeGiftWindow (Lock-in, earnings)
-     statsUpdate   after earnings                         ends: unplaced points by the bot rule, finishRound
-     graduation    Level 7                                ends: unplaced points by the bot rule, results
+     intermission    the first one only, before Level 1     ends: startNextRound
+     openFloor                                              ends: advance (unanswered gifts expire)
+     sop             Level 1 Trial, until the SOP is scored ends: closeSop (each board scored as it stands)
+     splitBrief      Level 2 Trial, until locked or 180 s   ends: closeSplitBrief (fires twist first if needed)
+     mirrorLobby     Level 3 Trial, 30 s connect lobby      ends: closeMirrorLobby
+     mirrorReveal    Level 3 Trial, 1 s crew reveal         ends: startMirrorShowtime
+     mirrorShowtime  Level 3 Trial, 75 s presentation       ends: closeMirror
+     writing         Levels 5-6, while writing is open      ends: closeWriting
+     glitchReport    until accusations close                ends: closeGlitchReport
+     giftWindow                                             ends: closeGiftWindow (Lock-in, earnings)
+     statsUpdate     after earnings                         ends: unplaced points by the bot rule, finishRound
+     graduation      Level 7                                ends: unplaced points by the bot rule, results
    A timer that ends opens the next one from its own deadline (decided), so a game that slept
    catches up exactly as if it never stopped. */
 const TIMER_SECONDS = {
   intermission: STEP_SECONDS.intermission, openFloor: STEP_SECONDS.openFloor, sop: STEP_SECONDS.sopTrial,
   splitBrief: Trial.SplitBriefTrial.TRIAL_SECONDS,
+  mirrorLobby: Trial.MirrorTrial.LOBBY_SECONDS,
+  mirrorReveal: Trial.MirrorTrial.REVEAL_SECONDS,
+  mirrorShowtime: Trial.MirrorTrial.SHOWTIME_SECONDS,
   writing: Trial.JudgedTrial.WRITING_SECONDS, glitchReport: AUTO_ADVANCE_SECONDS.glitchReport,
   giftWindow: STEP_SECONDS.giftWindow, statsUpdate: AUTO_ADVANCE_SECONDS.statsUpdate, graduation: GRADUATION_PLACE_SECONDS,
 };
@@ -4780,6 +4803,7 @@ class Game {
     this.attendance = new Attendance(attendance);
     this.economy = new Economy();
     this.hooks = hooks;
+    this._closingPhase = null;
     this._timer = this._makeTimer(clock);
     this.syncAttendance();   // starts in intermission: paused
   }
@@ -4795,8 +4819,13 @@ class Game {
       },
       onClose: name => {
         if (name === "splitBrief") this._checkTwist(this.now());
-        if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
-        this._closeTimerPhase(name);
+        this._closingPhase = name;
+        try {
+          if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
+          this._closeTimerPhase(name);
+        } finally {
+          this._closingPhase = null;
+        }
       },
     });
   }
@@ -4815,6 +4844,12 @@ class Game {
       const t = this.round.trial;
       if (t instanceof Trial.SopTrial && !this.didRun("runTrial")) return "sop";
       if (t instanceof Trial.SplitBriefTrial && !this.didRun("runTrial")) return "splitBrief";
+      if (t instanceof Trial.MirrorTrial && !this.didRun("runTrial")) {
+        if (t.phase === "lobby") return "mirrorLobby";
+        if (t.phase === "reveal") return "mirrorReveal";
+        if (t.phase === "showtime") return "mirrorShowtime";
+        return null;
+      }
       if (t instanceof Trial.JudgedTrial && t.writing === "open") return "writing";
       return null;
     }
@@ -4851,6 +4886,8 @@ class Game {
     const closed = this._timer.tick(now);
     this._checkTwist(now);
     if (this.hooks.onTick) this.hooks.onTick(this, now);
+    const hadShowtimeTimer = this.running && this._timer.current && this._timer.current.name === "mirrorShowtime";
+    if (this._checkMirrorShowtime(now) && hadShowtimeTimer) closed.push("mirrorShowtime");
     return closed;
   }
   closeTimer(now) { return this._timer.close(now); }
@@ -4861,6 +4898,9 @@ class Game {
       case "openFloor": this.advance(); break;
       case "sop": this.closeSop(); break;
       case "splitBrief": this.closeSplitBrief(); break;
+      case "mirrorLobby": this.closeMirrorLobby(); break;
+      case "mirrorReveal": this.startMirrorShowtime(); break;
+      case "mirrorShowtime": this.closeMirror(); break;
       case "writing": this.closeWriting(); break;
       case "glitchReport": this.closeGlitchReport(); break;
       case "giftWindow": this.closeGiftWindow(); break;
@@ -4979,6 +5019,9 @@ class Game {
       if (!this.round.trial.dealt) this.round.trial.deal(this.teams);
       this._wireSplitBrief(this.round.trial);
     }
+    if (step === "trial" && this.round.trial instanceof Trial.MirrorTrial) {
+      if (!this.round.trial.lobbyStarted) this.round.trial.startLobby(this.teams);
+    }
     this.syncAttendance();
     this.refreshTimer();
     return step;
@@ -4989,6 +5032,10 @@ class Game {
     if (this.step === "trial" && trial instanceof Trial.SplitBriefTrial) {
       if (!trial.dealt) trial.deal(this.teams);
       this._wireSplitBrief(trial);
+      this.refreshTimer();
+    }
+    if (this.step === "trial" && trial instanceof Trial.MirrorTrial) {
+      if (!trial.lobbyStarted) trial.startLobby(this.teams);
       this.refreshTimer();
     }
   }
@@ -5100,6 +5147,182 @@ class Game {
     const ranking = this.splitBrief().closeSplitBrief(this.round, this.teams);
     this.refreshTimer();
     return ranking;
+  }
+  _mirrorWhy() {
+    return this.wrongStep("trial") || (!(this.round.trial instanceof Trial.MirrorTrial) ? "This level has no Mirror trial." : null);
+  }
+  mirrorLobbyElapsed(now = this.now()) {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial) || t.phase !== "lobby") return null;
+    const cur = this._timer.current;
+    if (cur && cur.name === "mirrorLobby") {
+      const left = Math.max(0, Math.min(Trial.MirrorTrial.LOBBY_SECONDS, (cur.deadline - now) / 1000));
+      return Trial.MirrorTrial.LOBBY_SECONDS - left;
+    }
+    return 0;
+  }
+  mirrorShowtimeSecondsLeft(now = this.now()) {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial)) return null;
+    if (t.phase === "lobby" || t.phase === "reveal") return Trial.MirrorTrial.SHOWTIME_SECONDS;
+    if (t.phase !== "showtime") return 0;
+    const cur = this._timer.current;
+    if (cur && cur.name === "mirrorShowtime") {
+      return Math.max(0, Math.min(Trial.MirrorTrial.SHOWTIME_SECONDS, (cur.deadline - now) / 1000));
+    }
+    return Trial.MirrorTrial.SHOWTIME_SECONDS;
+  }
+  mirrorShowtimeElapsed(now = this.now()) {
+    const left = this.mirrorShowtimeSecondsLeft(now);
+    return left === null ? null : Trial.MirrorTrial.SHOWTIME_SECONDS - left;
+  }
+  _mirrorElapsedOpts(opts = {}) {
+    if (typeof opts.elapsedSeconds === "number" && Number.isFinite(opts.elapsedSeconds)) return opts;
+    const elapsed = this.mirrorShowtimeElapsed(this.now());
+    return elapsed === null ? opts : { ...opts, elapsedSeconds: elapsed };
+  }
+  _mirrorLeftOpts(opts = {}) {
+    if (typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)) return opts;
+    if (typeof opts.elapsedSeconds === "number" && Number.isFinite(opts.elapsedSeconds)) return opts;
+    const left = this.mirrorShowtimeSecondsLeft(this.now());
+    return left === null ? opts : { ...opts, showtimeSecondsLeft: left };
+  }
+  _allHumanMirrorTeamsDone(t) {
+    const humanTeams = this.teams.filter(team => !t.isBotOnlyTeam(team));
+    if (!humanTeams.length) return false;
+    return humanTeams.every(team => t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null);
+  }
+  _maybeCloseMirrorShowtime(now = this.now()) {
+    if (this.step !== "trial" || this.didRun("runTrial") || this._closingPhase === "mirrorShowtime") return false;
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial) || t.phase !== "showtime" || !this._allHumanMirrorTeamsDone(t)) return false;
+    if (this.running && this._timer.current && this._timer.current.name === "mirrorShowtime") {
+      this.closeTimer(now);
+    } else {
+      this.closeMirror({ showtimeSecondsLeft: this.mirrorShowtimeSecondsLeft(now) });
+    }
+    return true;
+  }
+  _checkMirrorShowtime(now = this.now()) {
+    if (this.step !== "trial" || this.didRun("runTrial")) return false;
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial) || t.phase !== "showtime") return false;
+    const left = this.mirrorShowtimeSecondsLeft(now);
+    for (const team of this.teams) {
+      if (!t.isBotOnlyTeam(team)) t.checkAttention(team, left);
+    }
+    return this._maybeCloseMirrorShowtime(now);
+  }
+  _afterMirrorAction(res, { checkAttention = false, checkClose = false } = {}) {
+    if (!res || !res.ok) return res;
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial)) return res;
+    const now = this.now();
+    if (checkAttention && res.teamId !== undefined) {
+      const att = t.checkAttention(res.teamId, this.mirrorShowtimeSecondsLeft(now));
+      if (att.failed) {
+        const closed = this._maybeCloseMirrorShowtime(now);
+        return {
+          ...res,
+          attention: att.attention,
+          score: att.score,
+          failed: true,
+          failReason: att.failReason,
+          ...(closed ? { closed: true } : {}),
+        };
+      }
+    }
+    if (checkClose) {
+      const closed = this._maybeCloseMirrorShowtime(now);
+      if (closed) return { ...res, closed: true };
+    }
+    return res;
+  }
+  _mirrorCall(fn, afterOpts = null) {
+    const why = this._mirrorWhy();
+    if (why) return { ok: false, reason: why };
+    const res = fn(this.round.trial);
+    return afterOpts ? this._afterMirrorAction(res, afterOpts) : res;
+  }
+  mirror() {
+    this.mustBe("trial");
+    if (!(this.round.trial instanceof Trial.MirrorTrial)) throw new Error("This level has no Mirror trial.");
+    return this.round.trial;
+  }
+  closeMirrorLobby() {
+    const t = this.mirror();
+    const res = t.closeDoors();
+    if (!this.didRun("runTrial") && (t.phase === "failed" || this._allHumanMirrorTeamsDone(t))) {
+      this.closeMirror({ showtimeSecondsLeft: 0 });
+      return { ...res, closed: true };
+    }
+    this.refreshTimer();
+    return res;
+  }
+  startMirrorShowtime() {
+    const res = this.mirror().startShowtime();
+    this.refreshTimer();
+    return res;
+  }
+  closeMirror(opts = {}) {
+    const t = this.mirror();
+    const sec = typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)
+      ? opts.showtimeSecondsLeft
+      : this.mirrorShowtimeSecondsLeft(this.now());
+    const ranking = t.closeMirror(this.round, this.teams, { showtimeSecondsLeft: sec });
+    this.refreshTimer();
+    return ranking;
+  }
+  mirrorConnect(playerOrId) {
+    return this._mirrorCall(t => {
+      const res = t.connect(playerOrId);
+      if (res.ok && res.allConnected && this._closingPhase !== "mirrorLobby") {
+        if (this.running && this._timer.current && this._timer.current.name === "mirrorLobby") {
+          this.closeTimer(this.now());
+        } else {
+          this.closeMirrorLobby();
+        }
+        return { ...res, closed: true, phase: t.phase };
+      }
+      return res;
+    });
+  }
+  mirrorMiss(playerOrId) { return this._mirrorCall(t => t.miss(playerOrId)); }
+  mirrorCableHit(playerOrId, port, opts) { return this._mirrorCall(t => t.cableHit(playerOrId, port, this._mirrorElapsedOpts(opts))); }
+  mirrorCableMiss(playerOrId, port, opts) { return this._mirrorCall(t => t.cableMiss(playerOrId, port, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorSoundHeld(playerOrId, opts) { return this._mirrorCall(t => t.soundHeld(playerOrId, this._mirrorElapsedOpts(opts))); }
+  mirrorSoundFeedback(playerOrId) { return this._mirrorCall(t => t.soundFeedback(playerOrId), { checkAttention: true }); }
+  mirrorMicTap(playerOrId, micNumber, opts) { return this._mirrorCall(t => t.micTap(playerOrId, micNumber, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorPickFile(playerOrId, fileIndexOrName, opts) { return this._mirrorCall(t => t.pickFile(playerOrId, fileIndexOrName, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorReshuffleDeck(teamOrId) { return this._mirrorCall(t => t.reshuffleDeck(teamOrId)); }
+  mirrorAnswerQa(playerOrId, answerIndex, opts) { return this._mirrorCall(t => t.answerQa(playerOrId, answerIndex, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorTimeoutQa(playerOrId, opts) { return this._mirrorCall(t => t.timeoutQa(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorWrapUp(playerOrId, opts = {}) { return this._mirrorCall(t => t.wrapUp(playerOrId, this._mirrorLeftOpts(opts)), { checkClose: true }); }
+  mirrorDanceHit(playerOrId, quality, opts) { return this._mirrorCall(t => t.danceHit(playerOrId, quality, this._mirrorElapsedOpts(opts))); }
+  mirrorDanceMiss(playerOrId, opts) { return this._mirrorCall(t => t.danceMiss(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorDanceStray(playerOrId, opts) { return this._mirrorCall(t => t.danceStray(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorAttention(teamOrId, now = this.now()) {
+    const t = this.round && this.round.trial;
+    return t instanceof Trial.MirrorTrial ? t.attentionFor(teamOrId, this.mirrorShowtimeSecondsLeft(now)) : null;
+  }
+  mirrorScore(teamOrId, now = this.now()) {
+    const t = this.round && this.round.trial;
+    return t instanceof Trial.MirrorTrial ? t.scoreFor(teamOrId, this.mirrorShowtimeSecondsLeft(now)) : null;
+  }
+  mirrorCheckAttention(teamOrId, now = this.now()) {
+    return this._mirrorCall(t => {
+      const res = t.checkAttention(teamOrId, this.mirrorShowtimeSecondsLeft(now));
+      if (res.failed) this._maybeCloseMirrorShowtime(now);
+      return { ok: true, ...res, closed: this.didRun("runTrial") };
+    });
+  }
+  mirrorFinishTeam(teamOrId, opts = {}) {
+    return this._mirrorCall(t => {
+      const sec = typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)
+        ? opts.showtimeSecondsLeft
+        : this.mirrorShowtimeSecondsLeft(this.now());
+      return t.finishTeam(teamOrId, sec);
+    }, { checkClose: true });
   }
   judged() {
     this.mustBe("trial");
@@ -5317,7 +5540,7 @@ class Game {
     Object.assign(g, {
       teams, players, rng, host: data.host, level: data.level, round: null,
       log: data.log.map(x => ({ ...x })), prompts: data.prompts.map(x => ({ ...x })), submissions: data.submissions.map(x => ({ ...x })),
-      attendance: new Attendance(data.attendance), economy: new Economy(), hooks,
+      attendance: new Attendance(data.attendance), economy: new Economy(), hooks, _closingPhase: null,
     });
     g._timer = g._makeTimer(clock);
     g._timer.restore({ running: data.running, timer: data.timer });

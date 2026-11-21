@@ -58,10 +58,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (17/17 checks passed; zero changes to the 16 existing baselines), and `node Tests/check_mirror_score.js` (15/15 assertions passed).
 - **Open issues:** None.
 
-### Step 3: Level 3 timers and `Game` integration (Effort: Medium) - TODO
+### Step 3: Level 3 timers and `Game` integration (Effort: Medium) - DONE
+- **Built:** Added deadline-based Level 3 timers (`mirrorLobby` 30s, `mirrorReveal` 1s, `mirrorShowtime` 75s), `Game` pass-throughs, `Round` `mirrorResults` persistence, `CLAUDE.md` lobby-fail ranking rule note, and `Tests/check_mirror_timing.js` (21/21 assertions).
 - **Goal:** Add deadline-based Level 3 timers in `rules/Game.js` (`mirrorLobby`: 30s, `mirrorReveal`: 1s, `mirrorShowtime`: 75s) so attention drains only during showtime; add `Game` pass-through methods for `MirrorTrial` lobby/setup/dance/wrap-up actions and mid-trial save/load catch-up; prepare `Round.toJSON`/`fromJSON` for `mirrorResults` (keeping `Round.LEVELS` row 3 on `auto` until Step 5). Add `Tests/check_mirror_timing.js` and register it in `tools/baseline.js`.
 - **Done when:** Timer transitions (30s lobby -> 1s reveal -> 75s showtime -> close) and mid-trial save/load work deterministically, `Tests/check_mirror_timing.js` passes, and existing baselines still pass.
 - **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_timing.js`
+- **Files changed:** `CLAUDE.md`, `rules/Trial.js`, `rules/Round.js`, `rules/Game.js`, `rules/rules.bundle.js`, `Tests/check_save.js`, `Tests/check_mirror_timing.js`, `Tests/baseline/check_mirror_timing.txt`, `tools/baseline.js`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Test results:** `npm run build` (23 modules), `npm test` (18/18 checks passed; zero changes to the 17 existing baselines), and `node Tests/check_mirror_timing.js` (21/21 assertions passed).
+- **Open issues:** None (`Tests/check_save.js` temporarily excludes `mirrorLobby`/`mirrorReveal`/`mirrorShowtime` from `ALL_TIMERS` until Step 5 switches `Round.LEVELS` row 3 to `"mirror"`).
 
 ### Step 4: Level 3 bots and idle auto-pilot (Effort: Medium) - TODO
 - **Goal:** Add Level 3 bot logic in `rules/bots.js` connected only through `Game` hooks (`onStart`, `onTick`, `beforeClose`): bots connect in lobby after a seeded random 3 to 15 seconds; bot setup slots finish each step after a set time with a 30% hiccup costing 3 attention and automatic wrap-up in the last slot; bot dancers gain +1 boost every 1.5 to 2.5 seconds up to 45 with no misses; bot-only teams roll a random attention 0 to 100 and score from it; idle humans follow the existing idle auto-pilot rule (bot rule plays their part). Add `Tests/check_mirror_bots.js` and register it in `tools/baseline.js`.

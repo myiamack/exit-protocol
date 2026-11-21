@@ -27,6 +27,7 @@ const TESTS = [
   "check_mirror_setup",
   "check_mirror_dance",
   "check_mirror_score",
+  "check_mirror_timing",
 ];
 
 function runTest(name) {

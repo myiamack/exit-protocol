@@ -530,6 +530,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - **Showtime:** Its own 75-second timer. Attention drains only during showtime.
 - **Attention:** `base (showtime seconds left / 75 * 100) + average dancer boost - setup penalties - average dancer penalties`, clamped 0 to 100. Attention 0 ends the trial with score 0.
 - **Score, ranking, and ties:** Score is `Math.round(attention / 100 * 7)`, 0 to 7. Ranking adds the usual light Focus influence (`rankWithInfluence`). Top half of teams win (`Trial.winners`), same as other trials. Ties break by higher exact attention first, then random (`Rng`).
+  A lobby-failed team's score of 0 still goes through `rankWithInfluence`, same as a 0 in Levels 1 and 2.
 - **Bots and Idle humans:**
   - Lobby: bots always connect after a random 3 to 15 seconds.
   - Setup slots: bot setup slots finish each step after a set time; each step has a 30% hiccup costing 3 attention; a bot in the last slot wraps up automatically.
