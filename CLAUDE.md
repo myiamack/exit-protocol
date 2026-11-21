@@ -110,7 +110,7 @@ Every import and export in `rules/*.js` must stay on one line, because `tools/bu
 
 - `rules/`: ES module rule classes (`index.js` exports all; `scenarios.js` holds Level 2 scenario data; `mirrorData.js` holds Level 3 data; `MirrorParts.js` holds `MirrorTrial` private parts; `rules.bundle.js` is built for the browser).
 - `pixel-art.js`: Pixel Intern sprite engine, SVG art, wardrobe tab icons, instructors, and tool icons.
-- `world-map.js`: walkable Floor 60 map (movement, collision, rooms, furniture, doors, ghosts, minimap, fog, room popups) and static office preview map.
+- `world-map.js`: walkable Floor 60 map (movement, collision, rooms, furniture, doors, ghosts, minimap, fog, room popups).
 - `game.js`: session, navigation, screens `V[0]` to `V[9]`, HUD, timers display, code rain, elevator cutscene, and button wiring.
 - `board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `mirror-view.js`, `mirror-dance-view.js`, `judged-view.js`: shared UI panels/buttons and trial views used by `index.html` and `pages/vote-test.html`.
 
@@ -279,8 +279,6 @@ Do these in order. Finish and test each before starting the next.
 4. **Connect the classes to the existing screens,** replacing the old rule logic. Keep the current look.
 5. **Add the vote screen** for levels 5 and 6.
 6. **Playtest checklist:** a short list of what I should watch for when I play.
-
-After each step: tell me what changed, then give me the exact git commands to commit it to the level2-split-brief branch.
 
 ## Refactor queue (Parts 1 to 13, decided)
 

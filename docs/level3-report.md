@@ -520,3 +520,11 @@ Counting rule: `Classes` = `class` declarations/expressions; `Subclasses` = clas
   - `README.md`: updated multiplayer line to say host is optional; updated Ben Coppage credit line to "which tuned the game to about 71% graduation (68.3% after rules v2)".
   - `docs/level3-progress.md`: added the Step 9d line under Step 9.
   - `docs/level3-report.md`: added this Step 9d section.
+
+## Step 9e: Final stale lines (branch `level3-mirror`)
+
+- **Files changed:**
+  - `CLAUDE.md`: removed the removed "static office preview map" mention on line 113 and removed the obsolete `level2-split-brief` commit reminder on line 283 (active branch rules live in lines 21 and 508).
+  - `docs/Game_Index.md`: updated Game deadline on line 3 from Nov 23, 2026 to Nov 30, 2026; changed line 8 heading to `## Prototype links` and added one line under it noting the newest version is `index.html` in this repo.
+  - `docs/level3-progress.md`: added the Step 9e line under Step 9.
+  - `docs/level3-report.md`: added this Step 9e section.

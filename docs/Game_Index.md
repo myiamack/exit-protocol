@@ -1,11 +1,12 @@
 # Exit_ProtocoL: game index (start here)
 
-Updated Nov 21, 2026. One place that points to everything about the game. Game deadline: **Nov 23, 2026**.
+Updated Nov 21, 2026. One place that points to everything about the game. Game deadline: **Nov 30, 2026**.
 
 ## What the game is
 "Performance_Review: Exit_ProtocoL" (title in use: **Exit_ProtocoL**, capital L on purpose). A multiplayer web game for 16 to 24 players in teams of 3 to 5, with an optional host (the System Administrator stays as a story role). Players are Pixel Interns trapped in an office simulation on Floor 60. Seven rounds follow the Cycle 60 journey: Boot Up → Sprint 1 → The Mirror → Geek Week → Sprint 2 → Sprint 3 → Graduation. Players graduate (exit) or get "contract renewed."
 
-## Live prototypes (always the newest version)
+## Prototype links
+The newest version is `index.html` in this repo.
 | What | Live link | In this repo |
 |---|---|---|
 | Playable prototype (start, login, menu, arrival, walkable floor, Levels 1 to 3) | https://claude.ai/artifact/24Vef8qcmejfTufk1CCcD3 | `index.html` |

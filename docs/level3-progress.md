@@ -169,6 +169,7 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - Step 9b: README.md, Game_Index.md, and remaining docs updated.
 - Step 9c: Game_Index.md rules and round map updated to current rules; README dev jump wording fixed.
 - Step 9d: CLAUDE.md dev jump wording, Game_Index.md and README.md stale lines, credits balance note.
+- Step 9e: final 4 stale lines (CLAUDE.md 113 and 283, Game_Index.md deadline and prototype heading).
 
 ### Step 10: QA run and manual playtest (Effort: Medium) - TODO
 - **Goal:** Run the full automated suite and complete a manual browser QA pass (lobby fail, 1/2/3 Setup splits, Dance Crew lane, Stuck/Idle exclusion, attention 0 fail, Presentation Day Complete, dev jump forward/backward). Carry forward or resolve any remaining Level 2 QA bugs only when explicitly scheduled.
