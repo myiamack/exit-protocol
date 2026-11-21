@@ -55,7 +55,7 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
    - Login uses Base44 auth. The `@icstars.org` rule is enforced by the actor rejecting connections from other emails (not yet confirmed that the actor can read the email; test this first).
    - Why: no rebuild of the game in Base44's editor, and almost no AI credits. The backend service is in beta and uses workspace integration credits.
    - v1 is real multiplayer on a Base44 actor.
-   - Base44 handoff checklist: remove or gate the dev jump (`Ctrl+Shift+1` to `7`) before live deployment.
+   - Base44 handoff checklist: dev jump (`Ctrl+Shift+1` to `7`), flag off in the real game, on in a test copy. The dev jump is not removed.
    - Open question: does the actor see the player's email (test this first).
 
 ### Multiplayer join, lobby, and bots (decided)
@@ -560,4 +560,4 @@ Level 6 prompts (Sprint 3, finishing and delivering):
   - Trial lobby: "Doors open. Connect to the call in the next 30 seconds. Anyone left outside, the whole team fails."
   - Trial showtime: "Crews are locked. Setup, work your steps in order. Dancers, keep the room awake. Attention is draining. Go."
 - **End screen:** After Level 3 Stats Update, show a "Presentation Day Complete" screen in the same format as Sprint 1 Complete (no work styles or secret paths). Sprint 1 Complete gets a "Start Level 3" button.
-- **Dev jump:** `Ctrl+Shift+1` to `7`, always on in the prototype. Jumping forward fast-forwards rounds. Jumping to the current or an earlier level starts a new game and fast-forwards to that level. Remove or gate the dev jump for Base44 handoff.
+- **Dev jump:** `Ctrl+Shift+1` to `7`, always on in the prototype. Jumping forward fast-forwards rounds. Jumping to the current or an earlier level starts a new game and fast-forwards to that level. For Base44 handoff: flag off in the real game, on in a test copy. The dev jump is not removed.

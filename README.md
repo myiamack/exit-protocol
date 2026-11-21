@@ -9,7 +9,7 @@ Players are Pixel Interns who wake up on Floor 60 of an office simulation. Each 
 - **On your computer:** download the repo and double-click `index.html` (Chrome or Edge). You need internet for the fonts.
 - **Demo sign-in:** any `@icstars.org` email, join code `CYCLE60`.
 
-This prototype is single-player with sample teammates. It covers sign-in, menu, wardrobe, work style, the elevator arrival, the walkable Floor 60, Level 1, Level 2 (Split Brief), and Level 3 (The Mirror: Presentation Day). Real multiplayer (16–24 players plus a host) is planned later using the Base44 backend service.
+This prototype is single-player with sample teammates. It covers sign-in, menu, wardrobe, work style, the elevator arrival, the walkable Floor 60, Level 1, Level 2 (Split Brief), and Level 3 (The Mirror: Presentation Day). Real multiplayer (16 to 24 players, host optional) is planned later using the Base44 backend service.
 
 ## Level 2: Split Brief
 - **What it is:** Level 2 (*Sprint 1: Back-Plan the Demo*, tests Collaboration, cost 3) deals 5 private brief cards round-robin to each team's active players, with per-game shuffled task letters (`A`–`D`) and card order. Teammates share up to 3 named notes per player (80 characters max), pick and order 2 of 4 backlog tasks on a shared board, and face a *Ghosted Teammate* twist card at 90 seconds before Lock In or the 180-second timer ends. Teams score 0–5 against the post-twist key (plus light Collaboration influence), ties break to earliest Lock In after the twist then random, and Stats Update leads to the *Sprint 1 Complete* screen.
@@ -55,7 +55,7 @@ Settings → Pages → Build and deployment → Deploy from a branch → `main` 
 
 ## Credits
 - **Myia Mack:** game concept, UI, art direction, the Pixel Intern character system, instructors, Floor 60, and the playable prototype.
-- **Ben Coppage:** game rules, points economy and balance testing. That includes the Character Proposal (Nov 4), the Economy Fix Proposal (Nov 4) and the Rules and Testing doc (Nov 5), which tuned the game to about 71% graduation. He also came up with the original title, *Performance_Review: Exit_ProtocoL*, and wrote the first brainstorm (`docs/ben-coppage/`).
+- **Ben Coppage:** game rules, points economy and balance testing. That includes the Character Proposal (Nov 4), the Economy Fix Proposal (Nov 4) and the Rules and Testing doc (Nov 5), which tuned the game to about 71% graduation (68.3% after rules v2). He also came up with the original title, *Performance_Review: Exit_ProtocoL*, and wrote the first brainstorm (`docs/ben-coppage/`).
 - **Hannah Ziegler:** Level 3 (*The Mirror: Presentation Day*) design and original prototype, rebuilt into the OOAD rules and screen structure.
 - **The Cycle 60 board game team:** design reviews and playtesting.
 - All art is original. The story is inspired by *Death Parade* and *Severance*, but nothing is copied from them.

@@ -1,14 +1,14 @@
 # Exit_ProtocoL: game index (start here)
 
-Updated Nov 8, 2026. One place that points to everything about the game. Game deadline: **Nov 23, 2026**.
+Updated Nov 21, 2026. One place that points to everything about the game. Game deadline: **Nov 23, 2026**.
 
 ## What the game is
-"Performance_Review: Exit_ProtocoL" (title in use: **Exit_ProtocoL**, capital L on purpose). A multiplayer web game for 16–24 players in teams of 4, run by a non-playing host (the System Administrator). Players are Pixel Interns trapped in an office simulation on Floor 60. Seven rounds follow the Cycle 60 journey: Boot Up → Sprint 1 → The Mirror → Geek Week → Sprint 2 → Sprint 3 → Graduation. Players graduate (exit) or get "contract renewed."
+"Performance_Review: Exit_ProtocoL" (title in use: **Exit_ProtocoL**, capital L on purpose). A multiplayer web game for 16 to 24 players in teams of 3 to 5, with an optional host (the System Administrator stays as a story role). Players are Pixel Interns trapped in an office simulation on Floor 60. Seven rounds follow the Cycle 60 journey: Boot Up → Sprint 1 → The Mirror → Geek Week → Sprint 2 → Sprint 3 → Graduation. Players graduate (exit) or get "contract renewed."
 
 ## Live prototypes (always the newest version)
 | What | Live link | In this repo |
 |---|---|---|
-| Playable prototype (start, login, menu, arrival, Level 1, walkable floor) | https://claude.ai/artifact/24Vef8qcmejfTufk1CCcD3 | `index.html` |
+| Playable prototype (start, login, menu, arrival, walkable floor, Levels 1 to 3) | https://claude.ai/artifact/24Vef8qcmejfTufk1CCcD3 | `index.html` |
 | Character system (Pixel Intern builder, instructors, tools, cursor, holograms + ghosts) | https://claude.ai/artifact/KmNvHPM9t5TCwa4N3cqBNZ | `pages/character-system.html` |
 | Character concepts (6 original directions) | https://claude.ai/artifact/RzYThjbpPVeRSHqhfVXmsc | `pages/character-concepts.html` |
 
@@ -56,7 +56,7 @@ Updated Nov 8, 2026. One place that points to everything about the game. Game de
   - `Tests/`: 20 JS files, 112 standalone functions, 10,690 lines (`npm test`: 19/19 baseline checks; `npm run test:screens`: 154 passed).
   - Grand total: 55 JS files, 30 classes (8 subclasses), 640 methods, 322 standalone functions, 20,668 lines.
 
-The .html copies are snapshots from Nov 8, 2026. Open a file in a browser to run it.
+`index.html` now runs Levels 1 to 3 in this repo (open it in a browser to run). The `pages/character-concepts.html` copy is still a snapshot from Nov 8, 2026, and `pages/character-system.html` (originally from Nov 8, 2026, updated Nov 14, 2026) still exists in `pages/`.
 
 ## Rules summary
 Updated Nov 21, 2026.
@@ -88,8 +88,8 @@ Updated Nov 21, 2026.
 
 ## Open items for the game
 - [ ] Ben: blueprint / floor layout. Myia: studio room photos. Then redraw Floor 60.
-- [ ] Approve tool abilities (playtest against the 71% graduation target).
-- [ ] Decide who hosts (a staff member or mentor, so all interns can play).
-- [ ] Soft cap of ~4 Contrarians; ask Ben to re-test if more.
+- [x] Approve tool abilities (playtest against the 71% graduation target). Resolved: graduation target replaced by the 1 to 3 point type-gap target (current typical graduation 68.3%, overall type gap 2.3 PASS per `Tests/baseline/check_balance.txt`); stat abilities are in `rules/` and special abilities are parked (`CLAUDE.md`).
+- [x] Decide who hosts (a staff member or mentor, so all interns can play). Resolved: host is optional (`CLAUDE.md`); no-host mode runs timers and uses player vote for judged trials, while the System Administrator stays as a story role.
+- [x] Soft cap of ~4 Contrarians; ask Ben to re-test if more. Resolved: no Contrarian cap in the code; players pick their work style freely with no type limits (`CLAUDE.md`, `rules/CharacterType.js`).
 - [ ] Decide if the Proficient Card replaces or guides host judgment.
 - [ ] Send the journey form Monday; fold answers into trial cards, ghost lines and the Graduation screen.
