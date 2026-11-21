@@ -171,7 +171,11 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - Step 9d: CLAUDE.md dev jump wording, Game_Index.md and README.md stale lines, credits balance note.
 - Step 9e: final 4 stale lines (CLAUDE.md 113 and 283, Game_Index.md deadline and prototype heading).
 
-### Step 10: QA run and manual playtest (Effort: Medium) - TODO
+### Step 10: QA run and manual playtest (Effort: Medium) - DONE
+- **Results:** Automated suites passed (`npm run build` 23 modules with zero bundle diff, `npm test` 19/19, `npm run test:screens` 154 passed / 0 failed / 0 console errors), plus jsdom QA verification of all Level 3 scenarios and read-only balance review; recorded 7 problems in `docs/level3-report.md` (Step 10) without changing code or tuning numbers.
 - **Goal:** Run the full automated suite and complete a manual browser QA pass (lobby fail, 1/2/3 Setup splits, Dance Crew lane, Stuck/Idle exclusion, attention 0 fail, Presentation Day Complete, dev jump forward/backward). Carry forward or resolve any remaining Level 2 QA bugs only when explicitly scheduled.
 - **Done when:** All automated checks pass and Ben confirms manual QA checks pass.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`, manual browser playtest.
+- **Files changed:** `docs/level3-progress.md`, `docs/level3-report.md` (no rules, screen, or test code changed).
+- **Test results:** `npm run build` (23 modules, zero bundle diff), `npm test` (19/19 passed), `npm run test:screens` (154 passed, 0 failed, 0 console errors).
+- **Open issues:** 7 Level 3 QA findings logged in `docs/level3-report.md` (Step 10); live Chrome/Edge browser playtest and Ben's manual sign-off remain pending.

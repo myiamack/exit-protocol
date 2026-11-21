@@ -528,3 +528,73 @@ Counting rule: `Classes` = `class` declarations/expressions; `Subclasses` = clas
   - `docs/Game_Index.md`: updated Game deadline on line 3 from Nov 23, 2026 to Nov 30, 2026; changed line 8 heading to `## Prototype links` and added one line under it noting the newest version is `index.html` in this repo.
   - `docs/level3-progress.md`: added the Step 9e line under Step 9.
   - `docs/level3-report.md`: added this Step 9e section.
+
+## Step 10: Level 3 QA (branch `level3-mirror`)
+
+- **Test counts:**
+  - `npm run build`: passed (`Wrote rules\rules.bundle.js from 23 modules.`, zero diff against committed bundle).
+  - `npm test`: `19/19` baseline checks passed (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`, `check_mirror_data`, `check_mirror_lobby`, `check_mirror_setup`, `check_mirror_dance`, `check_mirror_score`, `check_mirror_timing`, `check_mirror_bots`).
+  - `npm run test:screens`: `154 passed, 0 failed`, `no console errors -> none`.
+
+### Step 10 checks and results
+
+1. `npm run build`: **PASS** - Built `rules/rules.bundle.js` from 23 modules with zero git diff.
+2. `npm test`: **PASS** - All 19/19 baseline rule and simulation checks passed.
+3. `npm run test:screens`: **PASS** - All 154 jsdom screen checks passed with 0 console errors.
+4. Manual browser QA (Lobby fail): **PARTIAL** - Verified in jsdom (`LOBBY FAILED`, score `0`, All-hands unlocks, combined Host Script bug noted below); live browser check awaits Ben.
+5. Manual browser QA (1/2/3 Setup splits): **FAIL** - 1/2/3 splits and step turns work in jsdom, but `◀ Back` lets players exit Showtime and freeze Q&A countdown, cables belt clips left and uses `Math.random()`, and idle Setup calls still run.
+6. Manual browser QA (Dance Crew lane): **FAIL** - Hits, cap 45, combo, and bot wrap-up work, but idle dancers and players behind an open Progress Board still take `-2` miss penalties, `◀ Back` stays enabled, hit-frame visuals mismatch scoring windows and clip left, and note arrows use `Math.random()`.
+7. Manual browser QA (Stuck/Idle exclusion): **FAIL** - Pre-lobby `Team.active()` exclusion works, but returning from Idle mid-trial shows `"You are Active and not in the lobby or crews."`, mid-lobby idle humans connect at `0s` instead of `3-15s`, and mid-showtime idle dancers/setup still incur screen-driven miss/timeout penalties.
+8. Manual browser QA (Attention 0 fail): **PARTIAL** - Verified in jsdom that both penalty-driven and clock-drain 0% attention trigger `ROOM EMPTIED` and score `0` (note: a 1-bot dancer reaches `+45` boost, requiring >45 net drain to hit 0%); live browser check awaits Ben.
+9. Manual browser QA (Presentation Day Complete): **PARTIAL** - Verified in jsdom (Levels 1-3 win/loss, hearts, `x/2` glitches, `boardStatus()`, canonical 5 attributes, team wins out of 3, standings, `Level 4 locked` without Initiative, Replay/Sign-out, zero leaks); tied standings list sequential `1..4` places; live browser check awaits Ben.
+10. Manual browser QA (Dev jump forward/backward `Ctrl+Shift+1` to `7`): **PARTIAL** - Verified in jsdom across all 7 levels including backward/same-level jumps from mid-Level 3 Showtime; live browser keyboard feel awaits Ben.
+11. Ben confirms manual QA checks pass: **PARTIAL** - Requires Ben to playtest in a real browser and sign off.
+
+### Problems found (most severe first)
+
+1. **High: Idle human dancers (and players behind the Progress Board) still take `-2` miss penalties during Dance Showtime; idle Setup actions also accepted**
+   - **What happened:** When a Dance Crew human goes idle via Attendance (`ME.idle = true`), `Bots.mirror` applies bot boosts (`botBoosts = 5`), yet `mirror-dance-view.js` keeps running its `requestAnimationFrame` note spawner and calls `G.mirrorDanceMiss(ME)` for every unhit note (`missesWhileIdle = 1`, `penaltiesWhileIdle = 2` in jsdom), and `rules/` (`Game.mirrorDanceMiss`, `Trial.danceMiss`, `DanceCrew.noteMiss`) does not reject idle players. Similarly, opening the Progress Board (`BOARD.open()`, showing `.board-ov`) blocks arrow keys (`onKey` ignores input) while notes keep spawning and charging `-2` miss penalties (`missesWhileBoardOpen = 3`). On Setup Crew, `mirrorSoundFeedback` and `mirrorTimeoutQa` also accept idle players (`ok: true`).
+   - **Steps to repeat:** Start Level 3 Showtime on Dance Crew -> allow Attendance to miss so `ME.idle = true` (or open Progress Board while active) -> let notes pass the lane -> inspect `G.mirrorDanceTeam(MYTEAM)` (`misses` and `penalties` rise alongside bot boosts).
+   - **File and line:** `mirror-dance-view.js:370-386` (`stepMotion`), `mirror-dance-view.js:468-470` (`onKey`); `mirror-view.js:1181,1238`; `rules/Game.js:734,739,742`; `rules/Trial.js:770,790,859`; `rules/MirrorParts.js:550,789,1352`.
+
+2. **High: `◀ Back` button stays enabled during Level 3 Trial, letting a player leave Showtime and freeze screen-side timers**
+   - **What happened:** During `S.step === 7` (`trial`), `#navBack` is enabled (`disabled === false`). Clicking `◀ Back` navigates to `V[6]` (Open Floor), calling `render()` which tears down `currentTrialView` (`null`), stops Dance Crew note spawning/misses (`missesWhileAway = 0` while bot Setup Crew wraps up the trial), and freezes screen-side Setup timers such as Q&A (`ms.qa.tick` stayed at `10` with `19` ticks left while on `V[6]`).
+   - **Steps to repeat:** Enter Level 3 Showtime (Dance Crew or Setup Crew Q&A) -> click `◀ Back` (`#navBack`) -> observe screen returns to Open Floor (`S.step === 6`) while `G.step === "trial"` continues in the background.
+   - **File and line:** `game.js:296` (`canBack()`), `game.js:756` (`render()` cleanup), `game.js:871` (`#navBack.onclick`).
+
+3. **Medium: Hit-frame visuals mismatch scoring windows and clip notes/cables at the left edge**
+   - **What happened:** Both lanes render `leftPct = (1 - prog) * 100`, placing exact-hit time (`t0 + travelTicks`) at `left: 0%` (the clipped left border of `.lane { overflow: hidden }`) instead of centered inside the visual hit frame. On Dance Crew (`travelTicks = 10`, `perfect = 1`, `good = 2`, `.hitframe` `0%..25%`, `.perfect` `0%..12.5%`): a note at `left: 22%` (visually inside `.hitframe`) has `data-note-zone="incoming"` and pressing triggers `strayPress` (`-1`); a note at `left: 11%` (visually inside `.perfect`) scores only `"good"` (`+2`); and at `left: -6%` (clipped off-screen left) it still scores `"good"`. On Cables (`travelTicks = 11`, `hitWindowTicks = 2`, `.hitframe.plug` `0%..22%`): cables at `tick = t0 + 12` and `tick = t0 + 13` sit at `-9.1%` and `-14%` clipped off the left edge while still `data-in-frame="1"` and connectable.
+   - **Steps to repeat:** Advance Dance Crew to tick `7.8` (`left: 22%`), `8.9` (`left: 11%`), and `11.5` (`left: -6%`), or advance Cables belt to `13-14` ticks past spawn; inspect DOM `style.left` and trigger input.
+   - **File and line:** `mirror-dance-view.js:100-116` (`noteZone`, `laneHTML`), `mirror-view.js:641-650` (`rackLaneHTML`), `styles.css:409-413,449`.
+
+4. **Medium: Screen-side Level 3 randomness uses `Math.random()` instead of `G.rng`**
+   - **What happened:** `CLAUDE.md` specifies that all Level 3 randomness uses the seeded `Rng`, but 4 screen-side behaviors call `Math.random()` (`callsInLobbyInit = 2`, `callsInCableSpawn = 7`, `callsInDanceInit = 3` in jsdom), so lobby sweep start, cable bag shuffles, sound spikes/jitter, and dance note sequences are not reproducible from the game seed.
+   - **Steps to repeat:** Spy on `Math.random` while opening Level 3 Lobby, spawning Cables, running Sound check, and mounting Dance Crew.
+   - **File and line:** `mirror-view.js:32` (`shuffleArr`), `mirror-view.js:155-156` (lobby cursor `pos`/`dir`), `mirror-view.js:1170,1173,1174,1178` (sound spikes and jitter), `mirror-dance-view.js:53` (`nextArrowDir`); contrast `CLAUDE.md:539`.
+
+5. **Low: Returning from Idle mid-trial displays contradictory `"Active"` exclusion text**
+   - **What happened:** A player excluded from Level 3 at lobby start because `ME.idle === true` clears `ME.idle` on any click (`G.activity(ME)`). Re-rendering shows `"You are Active and not in the lobby or crews."`, `"You are Active and not in the crews."`, and `"You are Active and watching Presentation Day."`.
+   - **Steps to repeat:** Enter Level 3 Lobby with `ME.idle = true` -> trigger `G.activity(ME)` -> inspect `#mirrorInactiveNotice` and `#mirrorCrewReveal`.
+   - **File and line:** `mirror-view.js:313,457,832`.
+
+6. **Low: Mid-lobby idle human auto-connects immediately at elapsed `0s` instead of `3-15s`**
+   - **What happened:** `Bots.mirror` connects bots according to `botConnectTimes()` (`3-15s`), whereas any non-Stuck human with `p.idle === true` connects immediately on the first lobby tick (`elapsed = 0s`).
+   - **Steps to repeat:** Start Level 3 Lobby with an active human -> set `me.idle = true` at `elapsed = 0s` -> call `game.tick()` -> `me` connects immediately while bots wait `3-15s`.
+   - **File and line:** `rules/bots.js:273-281`.
+
+7. **Low: Minor display and ranking polish items**
+   - **Host Script on all-fail lobby (`game.js:208`):** `facLines(7, 3, "failed")` falls through the `"lobby"` and `"reveal"/"showtime"` branches and returns both lobby and showtime host lines combined.
+   - **Hidden Focus influence in `#mirrorRankTable` (`mirror-view.js:252`):** Rows are ordered by `G.trialRanking()` (which includes `Focus` influence on `base`), while the table shows `Place`, `Team`, `Attention`, `Score` (`base / 7`), and `Result` without showing the Focus influence delta.
+   - **Tied places in `teamStandings()` (`rules/Game.js:762`):** `teamStandings()` sorts by `b.trialWins - a.trialWins` and assigns `place: i + 1` sequentially (`1, 2, 3, 4` on four 2-win teams) in team-array order rather than sharing tie places.
+
+### Balance observations (read-only, no numbers tuned)
+
+- **`Tests/baseline/check_balance.txt`:** Typical spending averages `68.3%` graduation with an overall type gap of `2.3` (`PASS`): 16 players `2.4 PASS` (`61.0%` grad), 20 players `1.2 PASS` (`72.9%` grad), 24 players `3.8 FAIL` (`69.3%` grad). Aware spending still underperforms typical (`62.6%` grad, `8.2 FAIL` overall; 16p `11.9 FAIL`, 20p `8.2 FAIL`, 24p `7.0 FAIL`). Note also that `check_balance.txt:16` labels a `0.4` gap at 6 Contrarians as `FAIL` because the script checks `1 <= gap <= 3`.
+- **`Tests/baseline/check_cheese.txt`:** Flags all-Independent lobbies (`+5.4` at 16p, `+7.4` at 20p, `+6.6` at 24p `CHEESE?`), 16-player Contrarian switcher (`+3.5 CHEESE?`, accepted per `CLAUDE.md:326`), and 16-player 5-team split (`+8.7 CHEESE?`, parked per `CLAUDE.md:327`).
+- **Level 3 bot-only vs. human/bot attention (20-seed jsdom check):** Bot-only teams averaged `50.6%` attention (`n=60`, uniform `0..100`), while idle-autopilot mixed human+bot teams averaged `66.4%` attention (`58.2%..71.7%`, `n=20`), wrapping up around `34s` with ~`54.7%` base plus bot dance boosts minus setup hiccups.
+
+### What could not be done in this run
+
+- **Real-browser visual and feel playtest:** Automated checks run in Node/jsdom, which does not render CSS layout/paint, real-time 60fps animation smoothness, or physical keyboard timing in Chrome/Edge.
+- **Ben's manual QA sign-off:** Pending Ben's browser playtest.
+- **Level 2 QA bug carry-forward:** The 9 open Level 2 QA bugs on `level2-split-brief` stay deferred until scheduled (Step 10 forbids modifying code).
