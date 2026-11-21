@@ -5833,26 +5833,133 @@ const Bots = {
     }
   },
 
+  /* Level 3 (The Mirror: Presentation Day): bots connect at 3-15s in lobby, bot setup steps run
+     on schedule with 30% hiccups (-3 attention) and auto wrap-up, bot dancers boost +1 every
+     1.5-2.5s up to 45 with no misses, bot-only teams keep their seeded random 0-100 attention,
+     and idle humans follow the same bot behavior as auto-pilot. Calls MirrorTrial and Game only. */
+  mirror(game, now = game.now()) {
+    if (game.step !== "trial" || game.didRun("runTrial")) return;
+    const trial = game.round && game.round.trial;
+    if (!(trial instanceof Trial.MirrorTrial) || trial.ranking) return;
+
+    if (trial.phase === "lobby") {
+      const elapsed = game.mirrorLobbyElapsed(now);
+      if (elapsed === null) return;
+      const dueBots = trial.botConnectTimes()
+        .filter(e => e.seconds <= elapsed)
+        .sort((a, b) => a.seconds - b.seconds || a.playerId - b.playerId);
+      for (const entry of dueBots) {
+        if (trial.phase !== "lobby" || game.didRun("runTrial")) return;
+        const st = trial.lobbyPlayerState(entry.playerId);
+        if (!st || st.connected) continue;
+        game.mirrorConnect(entry.playerId);
+      }
+      for (const team of game.teams) {
+        for (const p of team.members) {
+          if (trial.phase !== "lobby" || game.didRun("runTrial")) return;
+          if (p.isBot || p.isStuck() || !p.idle) continue;
+          const st = trial.lobbyPlayerState(p.id);
+          if (!st || st.connected) continue;
+          game.mirrorConnect(p.id);
+        }
+      }
+      return;
+    }
+
+    if (trial.phase !== "showtime") return;
+    const elapsed = game.mirrorShowtimeElapsed(now);
+    if (elapsed === null) return;
+
+    const maxSec = Trial.MirrorTrial.SHOWTIME_SECONDS;
+    const boostCap = MirrorData.dance.boostCap;
+    const activeTeams = () => game.teams.filter(
+      team => !trial.isBotOnlyTeam(team) && !trial.isTeamFailed(team) && trial.lockedAttentionFor(team) === null
+    );
+    const autoIdsFor = team => new Set(
+      team.members.filter(p => !p.isBot && !p.isStuck() && p.idle).map(p => p.id)
+    );
+
+    // Prime newly idle human dancers so DanceCrew assigns their nextBotBoostAt via seeded Rng.
+    for (const team of activeTeams()) {
+      const autoIds = autoIdsFor(team);
+      if (!autoIds.size) continue;
+      const needsPrime = trial.dancersFor(team).some(
+        d => !d.isBot && autoIds.has(d.playerId) && d.boost < boostCap && d.nextBotBoostAt === null
+      );
+      if (needsPrime) trial.advanceBotDance(team, 0, { autoPilotIds: autoIds });
+    }
+
+    // Advance all active teams in strict chronological order so Rng draws match regardless of tick size.
+    const maxIter = Math.max(1000, game.players.length * 100);
+    let guard = 0;
+    while (trial.phase === "showtime" && !trial.ranking && !game.didRun("runTrial")) {
+      if (++guard > maxIter) throw new Error("Mirror bot loop.");
+      let nextAt = Infinity;
+      const teams = activeTeams();
+      const autoByTeam = new Map();
+
+      for (const team of teams) {
+        const autoIds = autoIdsFor(team);
+        autoByTeam.set(team.id, autoIds);
+        for (const d of trial.dancersFor(team)) {
+          if ((!d.isBot && !autoIds.has(d.playerId)) || d.boost >= boostCap || d.nextBotBoostAt === null) continue;
+          if (d.nextBotBoostAt <= elapsed && d.nextBotBoostAt < nextAt) nextAt = d.nextBotBoostAt;
+        }
+        const curPid = trial.setupCurrentPlayerId(team);
+        const setupDue = trial.botSetupDueAt(team, { autoPilot: curPid !== null && autoIds.has(curPid) });
+        if (setupDue !== null && setupDue <= elapsed && setupDue < nextAt) nextAt = setupDue;
+      }
+
+      if (!Number.isFinite(nextAt)) break;
+
+      const secLeftAt = Math.max(0, maxSec - nextAt);
+      for (const team of teams) {
+        if (trial.isTeamFailed(team) || trial.lockedAttentionFor(team) !== null) continue;
+        const autoIds = autoByTeam.get(team.id);
+        const preAtt = trial.checkAttention(team, secLeftAt);
+        if (preAtt.failed) continue;
+
+        const hasDanceDue = trial.dancersFor(team).some(
+          d => (d.isBot || autoIds.has(d.playerId)) && d.boost < boostCap && d.nextBotBoostAt !== null && d.nextBotBoostAt <= nextAt
+        );
+        if (hasDanceDue) trial.advanceBotDance(team, nextAt, { autoPilotIds: autoIds });
+
+        const curPid = trial.setupCurrentPlayerId(team);
+        const setupDue = trial.botSetupDueAt(team, { autoPilot: curPid !== null && autoIds.has(curPid) });
+        if (setupDue !== null && setupDue <= nextAt) {
+          trial.advanceBotSetup(team, nextAt, { autoPilotIds: autoIds });
+          if (trial.lockedAttentionFor(team) === null && !trial.isTeamFailed(team)) {
+            trial.checkAttention(team, secLeftAt);
+          }
+        }
+      }
+    }
+  },
+
   /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
      beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends;
-       Split Brief bots post any due notes before the trial closes.
-     onStart: bots gift when the gift window opens; place points when Stats Update or Graduation opens.
-     onTick: Split Brief bots post scheduled card and twist notes as time advances.
+       Split Brief bots post any due notes before the trial closes; Mirror bots finish any due connect/setup/dance.
+     onStart: Split Brief and Mirror initialize/process bot actions; bots gift when the gift window opens;
+       place points when Stats Update or Graduation opens.
+     onTick: Split Brief and Mirror bots advance scheduled actions as time passes.
      Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
   hooks: {
     beforeClose(game, name) {
       if (name === "openFloor") Bots.openFloor(game, game.rng);
       else if (name === "glitchReport") Bots.accusations(game, game.rng);
       else if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
     },
     onStart(game, name) {
       if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
       else if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
     },
     onTick(game, now) {
       Bots.splitBrief(game, now);
+      Bots.mirror(game, now);
     },
   },
 

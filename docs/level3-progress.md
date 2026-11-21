@@ -67,11 +67,15 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (18/18 checks passed; zero changes to the 17 existing baselines), and `node Tests/check_mirror_timing.js` (21/21 assertions passed).
 - **Open issues:** None (`Tests/check_save.js` temporarily excludes `mirrorLobby`/`mirrorReveal`/`mirrorShowtime` from `ALL_TIMERS` until Step 5 switches `Round.LEVELS` row 3 to `"mirror"`).
 
-### Step 4: Level 3 bots and idle auto-pilot (Effort: Medium) - TODO
+### Step 4: Level 3 bots and idle auto-pilot (Effort: Medium) - DONE
+- **Built:** Added `Bots.mirror` in `rules/bots.js` wired through `Bots.hooks` (`onStart`, `onTick`, `beforeClose`) calling `MirrorTrial` and `Game` pass-throughs chronologically (lobby 3 to 15s connects, bot setup milestones with ~30% -3 hiccups and wrap-up, bot dancer +1 boosts every 1.5 to 2.5s up to 45 with zero misses, bot-only random attention untouched, and idle human auto-pilot), plus `Tests/check_mirror_bots.js` (20/20 assertions).
 - **Goal:** Add Level 3 bot logic in `rules/bots.js` connected only through `Game` hooks (`onStart`, `onTick`, `beforeClose`): bots connect in lobby after a seeded random 3 to 15 seconds; bot setup slots finish each step after a set time with a 30% hiccup costing 3 attention and automatic wrap-up in the last slot; bot dancers gain +1 boost every 1.5 to 2.5 seconds up to 45 with no misses; bot-only teams roll a random attention 0 to 100 and score from it; idle humans follow the existing idle auto-pilot rule (bot rule plays their part). Add `Tests/check_mirror_bots.js` and register it in `tools/baseline.js`.
 - **Note:** `bots.js` hooks call the bot timing methods in `MirrorLobby`, `SetupCrew`, and `DanceCrew`. Do not duplicate the timing logic.
 - **Done when:** All bot and idle-human behaviors run cleanly via `Game` hooks with seeded `Rng`, `Tests/check_mirror_bots.js` passes, and existing baselines remain unchanged.
 - **Tests:** `npm run build`, `npm test`, `node Tests/check_mirror_bots.js`
+- **Files changed:** `rules/bots.js`, `rules/rules.bundle.js`, `Tests/check_mirror_bots.js`, `Tests/baseline/check_mirror_bots.txt`, `tools/baseline.js`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed; zero changes to the 18 existing baselines), and `node Tests/check_mirror_bots.js` (20/20 assertions passed).
+- **Open issues:** None.
 
 ### Step 5: Save/load update, wire Level 3 into `Round.LEVELS`, and baseline update (Effort: Medium) - TODO
 - **Goal:** Update `Tests/check_save.js` for mid-trial Level 3, switch `Round.LEVELS` row 3 to `trialName: "Presentation Day"`, `trialKind: "mirror"` (Focus, cost 3), confirm Level 1 and Level 2 snapshots do not change, explain Level 3+ baseline diffs, and run `npm run baseline`. No new rule test files in Step 5.
