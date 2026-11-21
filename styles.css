@@ -445,3 +445,37 @@ body.menucur.curgl,body.menucur.curgl button,body.menucur.curgl input{cursor:var
 .atrk.qacd{height:10px;margin:4px 0 8px}
 .atrk.qacd i{background:linear-gradient(90deg,var(--ok2),var(--gold))}
 .atrk.qacd i.low{background:linear-gradient(90deg,var(--red2),var(--bad))}
+/* Presentation Day (Level 3, Step 6d: Dance Crew rhythm lane) */
+.hitframe .perfect{position:absolute;left:0;top:0;bottom:0;width:50%;background:rgba(106,168,255,.15);border-right:2px solid var(--ok)}
+.note.jperfect{color:var(--ok);text-shadow:0 0 10px var(--ok)}
+.note.jgood{color:var(--gold)}
+.note.jmiss{color:var(--bad);opacity:.4}
+.dpad{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.dkey{width:52px;height:52px;border:3px solid var(--edge);border-radius:12px;background:var(--frame3);color:var(--ink);font-size:1.5rem;line-height:1}
+.dkey:hover:not(:disabled){filter:brightness(1.18)}
+.dkey.hit{border-color:var(--ok);color:var(--ok)}
+.combo{font-family:var(--px);font-weight:700;color:var(--gold)}
+.dance-stats{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.dance-stat{font-family:var(--mono);font-size:.85rem;color:var(--muted);background:#141922;border:2px solid var(--edge);border-radius:8px;padding:3px 8px}
+.dance-stat b{color:var(--ink)}
+.dancers{display:flex;gap:18px;justify-content:center;align-items:flex-end;min-height:112px;margin:8px 0;flex-wrap:wrap}
+.dancer{width:72px;display:grid;justify-items:center;gap:4px;animation:didle .9s infinite ease-in-out}
+.dancer svg{width:100%;height:auto;display:block}
+.dancer-name{font-family:var(--mono);font-size:.75rem;color:var(--muted);text-align:center}
+.dancer:nth-child(2){animation-delay:.12s}
+.dancer:nth-child(3){animation-delay:.24s}
+.dancer:nth-child(4){animation-delay:.36s}
+.dancer.mv-left{animation:dmvleft .55s infinite ease-in-out}
+.dancer.mv-up{animation:dmvup .55s infinite ease-in-out}
+.dancer.mv-right{animation:dmvright .55s infinite ease-in-out}
+.dancer.mv-down{animation:dmvdown .55s infinite ease-in-out}
+.dancer.stumble{animation:dstumble .4s infinite}
+@keyframes didle{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes dmvleft{0%,100%{transform:rotate(0) translateX(0)}50%{transform:rotate(-12deg) translateX(-10px)}}
+@keyframes dmvup{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-16px) scale(1.04)}}
+@keyframes dmvright{0%,100%{transform:rotate(0) translateX(0)}50%{transform:rotate(12deg) translateX(10px)}}
+@keyframes dmvdown{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.78) translateY(6px)}}
+@keyframes dstumble{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
+.dance-row-meta{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dance-prog{width:72px;height:10px;border-radius:6px;background:var(--edge);border:2px solid var(--edge);overflow:hidden;display:inline-block}
+.dance-prog i{display:block;height:100%;background:linear-gradient(90deg,var(--pink),var(--ok))}

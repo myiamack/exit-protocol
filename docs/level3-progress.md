@@ -122,10 +122,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (113 passed, 0 failed, 0 console errors).
 - **Open issues:** Dance Crew keeps its Step 6d placeholder (`"Dance lane: coming in Step 6d."`) until Step 6d.
 
-### Step 6d: Screens - Dance Crew rhythm lane (Effort: Medium) - TODO
+### Step 6d: Screens - Dance Crew rhythm lane (Effort: Medium) - DONE
+- **Built:** Created `mirror-dance-view.js` (loaded in `index.html`, styled in `styles.css`, routed from `mirror-view.js` with `cleanup` hooks in `game.js`, zero new `Game` pass-throughs) implementing Hannah's sliding arrow rhythm lane (`requestAnimationFrame` motion with cleanup on leave or showtime end, arrow keys and pad buttons respecting Attendance popups, hits/misses/strays/combo/boost/team averages/attention from rules, live teammate and bot dancer progress via `boardStatus()`, animated avatars, Setup Crew checklist, and 0-dancer fallback).
 - **Goal:** Build the Dance Crew rhythm lane in `mirror-view.js` and `styles.css`: sliding arrow notes, hit frame (PERFECT +3 / good +2), arrow key and pad button input (respecting Attendance popup focus/key rules), combo and boost (cap 45) display, animated dancer avatars from the live roster, and live Setup Crew status checklist.
 - **Done when:** Dance Crew players can hit notes via keyboard or buttons, misses and stray presses apply averaged dancer penalties via `G`, and trial ends when Setup Crew wraps up or attention hits 0.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+- **Files changed:** `mirror-dance-view.js`, `index.html`, `mirror-view.js`, `game.js`, `styles.css`, `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md` (no `rules/` or `Tests/baseline/` files changed).
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (124 passed, 0 failed, 0 console errors).
+- **Open issues:** Trial result detail tweaks and the "Presentation Day Complete" end screen remain deferred to Step 6e.
 
 ### Step 6e: Screens - Trial result and Presentation Day Complete end screen (Effort: Medium) - TODO
 - **Goal:** Build the Presentation Day trial result panel in `mirror-view.js` (attention %, fail note if locked out or attention 0%, team WIN/LOSS, score 0-7, full ranking, Focus cost reminder) and add "Presentation Day Complete" (`END_SCREENS[3]`) in `game.js` matching Sprint 1 Complete format (Levels 1-3 results, hearts, `x/2` glitches, `boardStatus()`, 5 attributes in canonical order, team wins out of 3, ranked teams, "Level 4 locked" with Replay/Sign-out; no work styles or secret paths).

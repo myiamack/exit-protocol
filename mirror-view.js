@@ -104,6 +104,7 @@
     m.lastDanceTotalBoost = 0;
     m.danceCamMsg = "";
     m.danceCamCount = 0;
+    m.dance = null;
     m.cables = { tick: 0, belt: [], bag: [], nextSpawn: 0, nextId: 1 };
     m.sound = { tick: 0, level: S.start, holdTicks: 0, spikeAt: 0 };
     m.mic = { tick: 0, hideAt: 0, flashKey: null };
@@ -148,6 +149,10 @@
       resetShowtimeState(state.mirror);
     }
     const ms = state.mirror;
+    if (ms._danceCleanup) {
+      ms._danceCleanup();
+      ms._danceCleanup = null;
+    }
 
     const lobbySecs = () => {
       const s = G.secondsLeft();
@@ -669,6 +674,44 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
 
     const msgHTML = `<div class="mmsg" id="mirrorMsg" ${ms.msg ? "" : "hidden"}>${ms.msg ? "&gt; " + esc(ms.msg) : ""}</div>`;
 
+    const syncSetupSnapshots = st => {
+      if (!st) return;
+      ms.lastStep = st.currentStep;
+      ms.lastOwnerId = st.currentPlayerId;
+      ms.lastCompletedCount = st.completedSteps.length;
+      ms.lastBotHiccups = st.botHiccups;
+      ms.lastWrappedUp = st.wrappedUp;
+      ms.lastProgressSig = setupProgressSig(st);
+    };
+
+    const checkSetupChange = st => {
+      if (!st) return false;
+      const newHiccups = st.botHiccups - ms.lastBotHiccups;
+      const newCompleted = st.completedSteps.length > ms.lastCompletedCount;
+      if (newCompleted || newHiccups > 0) {
+        const doneStep = st.completedSteps[st.completedSteps.length - 1];
+        const label = milestoneLabel(doneStep);
+        if (newHiccups > 0) {
+          ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.botSetupHiccup, { label });
+        } else if (ms.lastOwnerId !== ME.id) {
+          ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.botSetupStep, { label });
+        }
+      }
+      const sig = setupProgressSig(st);
+      if (
+        st.currentStep !== ms.lastStep ||
+        st.currentPlayerId !== ms.lastOwnerId ||
+        st.completedSteps.length !== ms.lastCompletedCount ||
+        st.botHiccups !== ms.lastBotHiccups ||
+        st.wrappedUp !== ms.lastWrappedUp ||
+        sig !== ms.lastProgressSig
+      ) {
+        syncSetupSnapshots(st);
+        return true;
+      }
+      return false;
+    };
+
     let bodyHTML;
     if (failReason === "lobby" || !setup) {
       bodyHTML = renderLobbyFailedHTML() + `<p class="hint">Waiting for other teams to finish showtime…</p>`;
@@ -679,10 +722,21 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
       bodyHTML = renderAttentionBarHTML() + renderSetupFrameHTML(setup) +
         `<div class="panel" id="mirrorWrappedWaiting"><span class="label">Setup complete</span><p>Presentation wrapped up. Waiting for other teams…</p></div>`;
     } else if (myRole === "dance") {
-      bodyHTML = renderAttentionBarHTML() +
-        `<div class="panel dpanel" id="mirrorDancePlaceholder"><span class="label">Dance Crew · Placeholder</span><p>Dance lane: coming in Step 6d.</p></div>` +
-        renderSetupFrameHTML(setup) +
-        msgHTML;
+      if (root.MirrorDanceView) {
+        return root.MirrorDanceView.screen({
+          game: G,
+          me: ME,
+          team: MYTEAM,
+          state: ms,
+          headerHTML: renderHeader(),
+          attentionBarHTML: renderAttentionBarHTML(),
+          renderSetupFrame: renderSetupFrameHTML,
+          checkSetupChange,
+          avatarFor: opts.avatarFor,
+          onRender: opts.onRender,
+        });
+      }
+      bodyHTML = renderAttentionBarHTML() + renderSetupFrameHTML(setup) + msgHTML;
     } else if (myRole === "setup") {
       let stepPanelHTML;
       if (setup.currentPlayerId === ME.id) {
@@ -703,16 +757,6 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
     }
 
     const html = renderHeader() + bodyHTML;
-
-    const syncSetupSnapshots = st => {
-      if (!st) return;
-      ms.lastStep = st.currentStep;
-      ms.lastOwnerId = st.currentPlayerId;
-      ms.lastCompletedCount = st.completedSteps.length;
-      ms.lastBotHiccups = st.botHiccups;
-      ms.lastWrappedUp = st.wrappedUp;
-      ms.lastProgressSig = setupProgressSig(st);
-    };
 
     const updateMsgEl = () => {
       if (!mountedRoot) return;
@@ -976,31 +1020,9 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
       const st = G.mirrorSetupTeam(MYTEAM);
       const dc = G.mirrorDanceTeam(MYTEAM);
 
-      if (st) {
-        const newHiccups = st.botHiccups - ms.lastBotHiccups;
-        const newCompleted = st.completedSteps.length > ms.lastCompletedCount;
-        if (newCompleted || newHiccups > 0) {
-          const doneStep = st.completedSteps[st.completedSteps.length - 1];
-          const label = milestoneLabel(doneStep);
-          if (newHiccups > 0) {
-            ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.botSetupHiccup, { label });
-          } else if (ms.lastOwnerId !== ME.id) {
-            ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.botSetupStep, { label });
-          }
-        }
-        const sig = setupProgressSig(st);
-        if (
-          st.currentStep !== ms.lastStep ||
-          st.currentPlayerId !== ms.lastOwnerId ||
-          st.completedSteps.length !== ms.lastCompletedCount ||
-          st.botHiccups !== ms.lastBotHiccups ||
-          st.wrappedUp !== ms.lastWrappedUp ||
-          sig !== ms.lastProgressSig
-        ) {
-          syncSetupSnapshots(st);
-          opts.onRender();
-          return;
-        }
+      if (checkSetupChange(st)) {
+        opts.onRender();
+        return;
       }
 
       if (dc && dc.dancers.length) {

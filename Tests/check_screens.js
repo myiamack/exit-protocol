@@ -406,8 +406,8 @@ async function fullSevenLevelGame() {
       const lv3Role = w.eval("G.mirrorRole(ME)");
       if (lv3Role === "dance") {
         check(
-          "Dance Crew player sees Step 6d placeholder during showtime",
-          !!$("#mirrorDancePlaceholder") && $("#mirrorDancePlaceholder").textContent.includes("Dance lane: coming in Step 6d")
+          "Dance Crew player sees Step 6d rhythm lane during showtime",
+          !!$("#mirrorDancePanel") && !!$("#lane") && !$("#mirrorDancePlaceholder")
         );
         for (let g = 0; g < 80 && !w.eval('G.didRun("runTrial")'); g++) {
           w.eval('window._mirSimNow += 1000; const cl = G.tick(); if (cl.length) afterClose(cl); else drawTimer();');
@@ -969,6 +969,7 @@ async function mirrorStep6c1Cases() {
       const box = document.createElement("div");
       let curView = null;
       const renderMount = () => {
+        if (curView && curView.cleanup) curView.cleanup();
         curView = MirrorView.screen({
           game, me, team, state, attrName: "Focus",
           sabotageAlert: "", costHint: () => "Cost hint", onRender: renderMount,
@@ -982,6 +983,7 @@ async function mirrorStep6c1Cases() {
         state,
         render: renderMount,
         tick: () => { if (curView && curView.tick) curView.tick(); },
+        cleanup: () => { if (curView && curView.cleanup) curView.cleanup(); },
         text: () => box.textContent || "",
         q: s => box.querySelector(s),
         qa: s => [...box.querySelectorAll(s)],
@@ -1131,10 +1133,11 @@ async function mirrorStep6c1Cases() {
       v0.q('[data-setup-step="mic"]').dataset.stepState === "live" &&
       !!v1.q('#mirrorMicStep');
 
-    // Dance Crew sees placeholder during showtime
+    // Dance Crew sees Step 6d rhythm lane during showtime
     const vDance = mountView(g3, d0, team3);
-    const dancePlaceholderOk = !!vDance.q("#mirrorDancePlaceholder") &&
-      vDance.q("#mirrorDancePlaceholder").textContent.includes("Dance lane: coming in Step 6d") &&
+    const danceLaneMountedOk = !!vDance.q("#mirrorDancePanel") &&
+      !!vDance.q("#lane") &&
+      !vDance.q("#mirrorDancePlaceholder") &&
       !!vDance.q("#attnBar") &&
       !!vDance.q("#mirrorSetupFrame") &&
       !vDance.q("#mirrorCablesStep") &&
@@ -1146,6 +1149,7 @@ async function mirrorStep6c1Cases() {
       !LEAK_RE.test(vDance.text()) &&
       !/bot/i.test(vDance.text()) &&
       vDance.flags().every(f => f !== "OK");
+    vDance.cleanup();
 
     // 5. Real mic, deck, Q&A, and wrapUp steps complete Level 3 across slots
     for (let k = 0; k < 100; k++) {
@@ -1238,7 +1242,7 @@ async function mirrorStep6c1Cases() {
       soundGateOk,
       soundMissOk,
       soundDoneAndHandoffOk,
-      dancePlaceholderOk,
+      danceLaneMountedOk,
       deckStepOk,
       qaHandoffOk,
       wrapStepOk,
@@ -1256,7 +1260,7 @@ async function mirrorStep6c1Cases() {
   check("Sound screen shows only for its owner and non-owners see waiting view", res.soundGateOk);
   check("Sound feedback miss reports penalty to rules and resets hold timer", res.soundMissOk);
   check("Sound 3s hold reports lock to rules and hands off to next owner", res.soundDoneAndHandoffOk);
-  check("Dance Crew player sees Step 6d placeholder during showtime without leaks", res.dancePlaceholderOk);
+  check("Dance Crew player sees Step 6d rhythm lane during showtime without leaks", res.danceLaneMountedOk);
   check("Mic, deck, Q&A, and wrapUp steps keep Setup flow going to end of Level 3", res.deckStepOk && res.qaHandoffOk && res.wrapStepOk && res.placeholderFlowEndOk);
   check(
     "Bot-owned setup step runs on schedule and bot hiccup shows its attention cost without bot tag",
@@ -1339,6 +1343,7 @@ async function mirrorStep6c2Cases() {
       const box = document.createElement("div");
       let curView = null;
       const renderMount = () => {
+        if (curView && curView.cleanup) curView.cleanup();
         curView = MirrorView.screen({
           game, me, team, state, attrName: "Focus",
           sabotageAlert: "", costHint: () => "Cost hint", onRender: renderMount,
@@ -1352,6 +1357,7 @@ async function mirrorStep6c2Cases() {
         state,
         render: renderMount,
         tick: () => { if (curView && curView.tick) curView.tick(); },
+        cleanup: () => { if (curView && curView.cleanup) curView.cleanup(); },
         text: () => box.textContent || "",
         q: s => box.querySelector(s),
         qa: s => [...box.querySelectorAll(s)],
@@ -1469,7 +1475,8 @@ async function mirrorStep6c2Cases() {
       v0.q("#mirrorWaitingView").textContent.includes(s1.name) &&
       v0.q("#mirrorWaitingView").textContent.includes("Mic") &&
       !v2.q("#mirrorMicStep") && !!v2.q("#mirrorWaitingView") &&
-      !!vD.q("#mirrorDancePlaceholder") && !vD.q("#mirrorMicStep");
+      !!vD.q("#mirrorDancePanel") && !!vD.q("#lane") && !vD.q("#mirrorMicStep");
+    vD.cleanup();
 
     // Flash lasts 9 ticks on round 1, then hides behind ? and enables buttons
     const seqR0 = g3.mirrorSetupTeam(team3).mic.sequence;
@@ -1855,6 +1862,604 @@ async function mirrorStep6c2Cases() {
   check("Bot-owned Q&A step runs with hiccup cost shown and bot wrap up finishes Level 3 cleanly", res.botQaCase && res.botQaCase.ok);
 }
 
+async function mirrorStep6dCases() {
+  const res = w.eval(`(() => {
+    const LEAK_RE = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i;
+    const HARDCODED_TEAMS_RE = /Team Kestrel|Team Wren|Team Finch|Team Heron/i;
+    const KEY_BY_DIR = { left: "ArrowLeft", up: "ArrowUp", right: "ArrowRight", down: "ArrowDown" };
+
+    const advanceToLv3Trial = (game, onOpenFloor) => {
+      for (let round = 1; round <= 2; round++) {
+        game.startNextRound();
+        game.advance();
+        game.advance();
+        game.runTrial();
+        game.endTrial();
+        game.endGlitchReport();
+        game.advance();
+        game.advance();
+        game.lockIn();
+        game.advance();
+        game.computeEarnings();
+        game.placeAllRemaining();
+        game.finishRound();
+      }
+      game.startNextRound();
+      game.advance();
+      if (onOpenFloor) onOpenFloor(game);
+      game.advance();
+    };
+
+    const finishLv3Round = game => {
+      game.endTrial();
+      game.endGlitchReport();
+      game.advance();
+      game.advance();
+      game.lockIn();
+      game.advance();
+      game.computeEarnings();
+      game.placeAllRemaining();
+      game.finishRound();
+    };
+
+    const makeTeam = (tid, size, { allHumans = false, startId = tid * 10 + 1 } = {}) => {
+      const members = [];
+      for (let i = 0; i < size; i++) {
+        members.push(new EP.Player({
+          id: startId + i,
+          name: "T" + tid + "P" + (i + 1),
+          type: "coop",
+          spend: EP.Bots.typicalSpend("coop"),
+          isBot: !allHumans && i > 0,
+        }));
+      }
+      return new EP.Team({ id: tid, name: "Unit " + tid, members });
+    };
+
+    const enterShowtime = (size, { allHumans = true, seed = 640 + size, onOpenFloor = null } = {}) => {
+      let simNow = 9000000 + size * 10000;
+      const t1 = makeTeam(1, size, { allHumans });
+      const t2 = new EP.Team({ id: 2, name: "Unit 2", members: [0, 1, 2].map(i => EP.Bots.makePlayer(21 + i, "BotB_" + i, "coop")) });
+      const t3 = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "BotC_" + i, "indep")) });
+      const t4 = new EP.Team({ id: 4, name: "Unit 4", members: [0, 1, 2].map(i => EP.Bots.makePlayer(41 + i, "BotD_" + i, "contra")) });
+      const game = new EP.Game({ teams: [t1, t2, t3, t4], rng: EP.Rng.seeded(seed), clock: () => simNow, hooks: EP.Bots.hooks });
+      advanceToLv3Trial(game, onOpenFloor);
+      game.start();
+      simNow += 16000;
+      game.tick();
+      for (const p of t1.active()) game.mirrorConnect(p);
+      simNow = game.timer.deadline;
+      game.tick();
+      return { game, team: t1, getNow: () => simNow, setNow: v => { simNow = v; }, advanceMs: ms => { simNow += ms; game.tick(); } };
+    };
+
+    const origRaf = window.requestAnimationFrame;
+    const origCancel = window.cancelAnimationFrame;
+    const prevRainOn = typeof rainOn === "boolean" ? rainOn : false;
+    if (typeof rainOn === "boolean") rainOn = false;
+    let nextRafId = 1;
+    const rafQueue = new Map();
+    let cancelCount = 0;
+
+    window.requestAnimationFrame = cb => {
+      if (cb && cb.name === "rainFrame") return 0;
+      const id = nextRafId++;
+      rafQueue.set(id, cb);
+      return id;
+    };
+    window.cancelAnimationFrame = id => {
+      if (rafQueue.delete(id)) cancelCount += 1;
+    };
+    const flushRaf = ts => {
+      const batch = [...rafQueue.entries()];
+      rafQueue.clear();
+      for (const [, cb] of batch) cb(ts);
+    };
+
+    const mountView = (game, me, team, state = {}) => {
+      const box = document.createElement("div");
+      let curView = null;
+      const renderMount = () => {
+        if (curView && curView.cleanup) curView.cleanup();
+        curView = MirrorView.screen({
+          game, me, team, state, attrName: "Focus",
+          sabotageAlert: "", costHint: () => "Cost hint", onRender: renderMount,
+        });
+        box.innerHTML = curView.html;
+        if (curView.bind) curView.bind(box);
+      };
+      renderMount();
+      return {
+        box,
+        state,
+        view: () => curView,
+        render: renderMount,
+        tick: () => { if (curView && curView.tick) curView.tick(); },
+        cleanup: () => { if (curView && curView.cleanup) curView.cleanup(); },
+        text: () => box.textContent || "",
+        q: s => box.querySelector(s),
+        qa: s => [...box.querySelectorAll(s)],
+        flags: () => [...box.querySelectorAll(".flag")].map(el => el.textContent.trim()),
+      };
+    };
+
+    const drivePerfectHits = (view, count) => {
+      let hits = 0;
+      for (let t = 0; t < 400 && hits < count; t++) {
+        const pNote = view.q('[data-note-zone="perfect"]');
+        if (pNote) {
+          view.view().handleInput(pNote.dataset.noteDir);
+          hits += 1;
+        } else {
+          view.view().stepMotion(1);
+        }
+      }
+      return hits;
+    };
+
+    try {
+      // 1. Role gating: Dance Crew sees rhythm lane, Setup Crew does not
+      const ctx1 = enterShowtime(4, { allHumans: true, seed: 640 });
+      const g1 = ctx1.game, t1 = ctx1.team;
+      const d0 = t1.members.find(p => g1.mirrorRole(p) === "dance");
+      const s0 = t1.members.find(p => g1.mirrorRole(p) === "setup");
+      const vSetup1 = mountView(g1, s0, t1);
+      const setupNoLaneOk = !vSetup1.q("#lane") && !vSetup1.q("#mirrorDancePanel") && !vSetup1.q("#dancePad") &&
+        !!vSetup1.q("#mirrorSetupFrame") && rafQueue.size === 0;
+      vSetup1.cleanup();
+
+      const vDance1 = mountView(g1, d0, t1);
+      const danceSeesLaneOk = !!vDance1.q("#mirrorDancePanel") && !!vDance1.q("#lane") &&
+        !!vDance1.q("#dancePad") && !!vDance1.q("#danceAvatars") &&
+        !!vDance1.q("#mirrorDanceRoster") && !!vDance1.q("#mirrorSetupFrame") &&
+        !vDance1.q("#mirrorCablesStep") && !vDance1.q("#mirrorSoundStep") &&
+        !vDance1.q("#mirrorDancePlaceholder") &&
+        vDance1.qa("[data-dancer]").length === 2 &&
+        vDance1.qa("[data-dancer] svg").length === 2 &&
+        rafQueue.size === 1 && vDance1.view().isLoopRunning();
+
+      // 2. Hits (keyboard PERFECT +3, button good +2), stray (-1), and miss (-2) report to rules and update UI
+      flushRaf(1000); // initialize rAF timestamp at ds.tick = 0
+      for (let i = 1; i <= 10; i++) flushRaf(1000 + i * 250); // ds.tick = 10 -> note 1 in perfect zone
+      const n1 = vDance1.q('[data-note-zone="perfect"]');
+      const dir1 = n1 ? n1.dataset.noteDir : null;
+      if (dir1) {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: KEY_BY_DIR[dir1], bubbles: true, cancelable: true }));
+      }
+      const rAfterPerf = g1.mirrorDanceTeam(t1);
+      const dAfterPerf = rAfterPerf.dancers.find(d => d.playerId === d0.id);
+      const attAfterPerf = Math.round(g1.mirrorAttention(t1));
+      const perfectHitOk = !!dir1 && dAfterPerf.perfects === 1 && dAfterPerf.boost === 3 && dAfterPerf.combo === 1 &&
+        vDance1.q("#danceHits").textContent === "1" &&
+        vDance1.q("#myDanceBoost").textContent.includes("+3 / 45") &&
+        vDance1.q("#comboN").textContent === "combo ×1" &&
+        vDance1.q("#teamDanceBoost").textContent === "1.5" &&
+        vDance1.q("#attnPct").textContent === attAfterPerf + "%";
+
+      for (let i = 11; i <= 14; i++) flushRaf(1000 + i * 250); // ds.tick = 14 -> note 2 (t0=6) in good zone
+      const n2 = vDance1.q('[data-note-zone="good"]');
+      const dir2 = n2 ? n2.dataset.noteDir : null;
+      if (dir2) vDance1.q('[data-dance="' + dir2 + '"]').click();
+      const dAfterGood = g1.mirrorDanceTeam(t1).dancers.find(d => d.playerId === d0.id);
+      const goodHitOk = !!dir2 && dAfterGood.goods === 1 && dAfterGood.boost === 5 && dAfterGood.combo === 2 &&
+        vDance1.q("#danceHits").textContent === "2" &&
+        vDance1.q("#myDanceBoost").textContent.includes("+5 / 45") &&
+        vDance1.q("#comboN").textContent === "combo ×2" &&
+        vDance1.q("#teamDanceBoost").textContent === "2.5";
+
+      // Stray press when no unjudged note is in the hit frame (note 3 at t0=12 has diff=8 at ds.tick=14)
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+      const dAfterStray = g1.mirrorDanceTeam(t1).dancers.find(d => d.playerId === d0.id);
+      const attAfterStray = Math.round(g1.mirrorAttention(t1));
+      const strayOk = dAfterStray.strays === 1 && dAfterStray.penalties === 1 && dAfterStray.combo === 0 &&
+        vDance1.q("#danceStrays").textContent === "1" &&
+        vDance1.q("#comboN").textContent === "combo ×0" &&
+        vDance1.q("#teamDancePen").textContent === "0.5" &&
+        vDance1.q("#attnPct").textContent === attAfterStray + "%";
+
+      // Miss note 3 (t0=12 -> misses once ds.tick > 24)
+      for (let i = 15; i <= 25; i++) flushRaf(1000 + i * 250);
+      const dAfterMiss = g1.mirrorDanceTeam(t1).dancers.find(d => d.playerId === d0.id);
+      const attAfterMiss = Math.round(g1.mirrorAttention(t1));
+      const missOk = dAfterMiss.misses === 1 && dAfterMiss.penalties === 3 && dAfterMiss.combo === 0 &&
+        vDance1.q("#danceMisses").textContent === "1" &&
+        vDance1.q("#teamDancePen").textContent === "1.5" &&
+        vDance1.q("#attnPct").textContent === attAfterMiss + "%" &&
+        vDance1.q("#danceCam").textContent.includes("missed note") &&
+        vDance1.q('[data-dancer="' + d0.id + '"]').classList.contains("stumble");
+      vDance1.cleanup();
+
+      // 3. Tempo ramp (6 -> 5 after 20 notes -> 4 after 40 notes) and max 2 identical arrows in a row
+      const ctxTempo = enterShowtime(4, { allHumans: true, seed: 641 });
+      const vTempo = mountView(ctxTempo.game, ctxTempo.team.members.find(p => ctxTempo.game.mirrorRole(p) === "dance"), ctxTempo.team);
+      const seenNotes = new Map();
+      for (const n of vTempo.state.mirror.dance.notes) seenNotes.set(n.id, { t0: n.t0, dir: n.dir });
+      for (let t = 0; t < 260; t++) {
+        vTempo.view().stepMotion(1);
+        for (const n of vTempo.state.mirror.dance.notes) {
+          if (!seenNotes.has(n.id)) seenNotes.set(n.id, { t0: n.t0, dir: n.dir });
+        }
+      }
+      const spawned = [...seenNotes.values()];
+      const gaps = [];
+      for (let i = 1; i < spawned.length; i++) gaps.push(spawned[i].t0 - spawned[i - 1].t0);
+      let noTripleSame = true;
+      for (let i = 2; i < spawned.length; i++) {
+        if (spawned[i].dir === spawned[i - 1].dir && spawned[i - 1].dir === spawned[i - 2].dir) noTripleSame = false;
+      }
+      const tempoRampOk = spawned.length > 42 &&
+        gaps[0] === EP.MirrorData.dance.gapInitialTicks &&
+        gaps[20] === EP.MirrorData.dance.gapMidTicks &&
+        gaps[40] === EP.MirrorData.dance.gapFastTicks &&
+        noTripleSame;
+      vTempo.cleanup();
+
+      // 4. Boost cap at 45 and 1-dancer average match
+      const ctxCap = enterShowtime(3, { allHumans: true, seed: 642 });
+      const gCap = ctxCap.game, tCap = ctxCap.team;
+      const dCap = tCap.members.find(p => gCap.mirrorRole(p) === "dance");
+      const vCap = mountView(gCap, dCap, tCap);
+      const hitsDriven = drivePerfectHits(vCap, 17); // 17 * 3 = 51 raw -> caps at 45
+      const dcCap = gCap.mirrorDanceTeam(tCap);
+      const boostCapOk = hitsDriven === 17 &&
+        dcCap.dancers.length === 1 &&
+        dcCap.dancers[0].boost === 45 &&
+        dcCap.avgBoost === 45 &&
+        vCap.q("#myDanceBoost").textContent.includes("+45 / 45") &&
+        vCap.q('[data-dance-boost="' + dCap.id + '"]').textContent.includes("+45 / 45") &&
+        vCap.q("#teamDanceBoost").textContent === "45";
+      vCap.cleanup();
+
+      // Team averaging for 1, 2, and 3 dancers
+      const ctxAvg1 = enterShowtime(3, { allHumans: true, seed: 643 });
+      const gA1 = ctxAvg1.game, tA1 = ctxAvg1.team;
+      const dA1 = tA1.members.find(p => gA1.mirrorRole(p) === "dance");
+      const vA1 = mountView(gA1, dA1, tA1);
+      drivePerfectHits(vA1, 2); // +6
+      gA1.mirrorDanceMiss(dA1); // +2 pen
+      vA1.tick();
+      const dcA1 = gA1.mirrorDanceTeam(tA1);
+      const avg1Ok = dcA1.dancers.length === 1 && dcA1.avgBoost === 6 && dcA1.avgPenalties === 2 &&
+        vA1.q("#teamDanceBoost").textContent === "6" &&
+        vA1.q("#teamDancePen").textContent === "2" &&
+        vA1.q("#attnPct").textContent === Math.round(gA1.mirrorAttention(tA1)) + "%";
+      vA1.cleanup();
+
+      const ctxAvg2 = enterShowtime(4, { allHumans: true, seed: 644 });
+      const gA2 = ctxAvg2.game, tA2 = ctxAvg2.team;
+      const dList2 = tA2.members.filter(p => gA2.mirrorRole(p) === "dance");
+      const vA2_0 = mountView(gA2, dList2[0], tA2);
+      const vA2_1 = mountView(gA2, dList2[1], tA2);
+      drivePerfectHits(vA2_0, 2); // +6
+      drivePerfectHits(vA2_1, 1); // +3
+      gA2.mirrorDanceMiss(dList2[1]); // +2 pen
+      vA2_0.tick();
+      vA2_1.tick();
+      const dcA2 = gA2.mirrorDanceTeam(tA2);
+      const avg2Ok = dcA2.dancers.length === 2 && dcA2.avgBoost === 4.5 && dcA2.avgPenalties === 1 &&
+        vA2_0.q("#teamDanceBoost").textContent === "4.5" &&
+        vA2_1.q("#teamDanceBoost").textContent === "4.5" &&
+        vA2_0.q("#teamDancePen").textContent === "1" &&
+        vA2_1.q("#teamDancePen").textContent === "1" &&
+        vA2_0.q('[data-dance-boost="' + dList2[0].id + '"]').textContent.includes("+6 / 45") &&
+        vA2_0.q('[data-dance-boost="' + dList2[1].id + '"]').textContent.includes("+3 / 45") &&
+        vA2_0.q("#attnPct").textContent === Math.round(gA2.mirrorAttention(tA2)) + "%";
+      vA2_0.cleanup();
+      vA2_1.cleanup();
+
+      const ctxAvg3 = enterShowtime(6, { allHumans: true, seed: 645 });
+      const gA3 = ctxAvg3.game, tA3 = ctxAvg3.team;
+      const dList3 = tA3.members.filter(p => gA3.mirrorRole(p) === "dance");
+      const vA3_0 = mountView(gA3, dList3[0], tA3);
+      const vA3_1 = mountView(gA3, dList3[1], tA3);
+      const vA3_2 = mountView(gA3, dList3[2], tA3);
+      drivePerfectHits(vA3_0, 1); // +3
+      gA3.mirrorDanceHit(dList3[1], "good"); // +2
+      gA3.mirrorDanceMiss(dList3[2]); // +2 pen
+      vA3_0.tick(); vA3_1.tick(); vA3_2.tick();
+      const dcA3 = gA3.mirrorDanceTeam(tA3);
+      const expB3 = (5 / 3).toFixed(1), expP3 = (2 / 3).toFixed(1);
+      const avg3Ok = dcA3.dancers.length === 3 &&
+        Math.abs(dcA3.avgBoost - 5 / 3) < 1e-9 &&
+        Math.abs(dcA3.avgPenalties - 2 / 3) < 1e-9 &&
+        vA3_0.q("#teamDanceBoost").textContent === expB3 &&
+        vA3_1.q("#teamDanceBoost").textContent === expB3 &&
+        vA3_2.q("#teamDanceBoost").textContent === expB3 &&
+        vA3_0.q("#teamDancePen").textContent === expP3 &&
+        vA3_2.q("#attnPct").textContent === Math.round(gA3.mirrorAttention(tA3)) + "%";
+      vA3_0.cleanup(); vA3_1.cleanup(); vA3_2.cleanup();
+
+      // 5. Bot dancers' progress updates in roster with avatars, boardStatus, and no "bot" tag
+      let botProgressOk = false;
+      for (let seed = 1; seed <= 40; seed++) {
+        const ctxBot = enterShowtime(5, { allHumans: false, seed });
+        const dc0 = ctxBot.game.mirrorDanceTeam(ctxBot.team);
+        const hDancer = ctxBot.team.members.find(p => !p.isBot && ctxBot.game.mirrorRole(p) === "dance");
+        const bDancerRec = dc0 && dc0.dancers.find(d => d.isBot);
+        if (!hDancer || !bDancerRec) continue;
+        const vBot = mountView(ctxBot.game, hDancer, ctxBot.team);
+        ctxBot.advanceMs(6000);
+        vBot.tick();
+        const dc1 = ctxBot.game.mirrorDanceTeam(ctxBot.team);
+        const bAfter = dc1.dancers.find(d => d.playerId === bDancerRec.playerId);
+        const bEl = vBot.q('[data-dance-boost="' + bDancerRec.playerId + '"]');
+        const txt = vBot.text();
+        botProgressOk = bAfter.boost > 0 &&
+          !!bEl && bEl.textContent.includes("+" + bAfter.boost + " / 45") &&
+          !!vBot.q('[data-dancer="' + bDancerRec.playerId + '"] svg') &&
+          !/bot/i.test(txt) && !LEAK_RE.test(txt) && vBot.flags().every(f => f !== "OK");
+        vBot.cleanup();
+        if (botProgressOk) break;
+      }
+
+      // 6. Team with 0 dancers shows no lane and Setup flow completes Level 3
+      const ctxZero = enterShowtime(3, {
+        allHumans: true,
+        seed: 646,
+        onOpenFloor: g => { g.teams[0].members[1].glitches = 2; g.teams[0].members[2].glitches = 2; },
+      });
+      const gZ = ctxZero.game, tZ = ctxZero.team;
+      const pZ = tZ.active()[0];
+      const vZ = mountView(gZ, pZ, tZ);
+      const zeroNoLaneUI = gZ.mirrorDanceTeam(tZ).dancers.length === 0 &&
+        !vZ.q("#lane") && !vZ.q("#mirrorDancePanel") &&
+        vZ.text().includes("Dance Crew (0)") && rafQueue.size === 0;
+      const directFallback = MirrorDanceView.screen({
+        game: gZ, me: pZ, team: tZ, state: { msg: "" },
+        headerHTML: "", attentionBarHTML: "", onRender: () => {},
+      });
+      const zeroDirectSafe = !directFallback.html.includes('id="lane"') && !directFallback.isLoopRunning();
+      for (const port of EP.MirrorData.ports) gZ.mirrorCableHit(pZ, port);
+      gZ.mirrorSoundHeld(pZ);
+      while (gZ.mirrorSetupTeam(tZ).currentStep === "mic") {
+        const st = gZ.mirrorSetupTeam(tZ);
+        gZ.mirrorMicTap(pZ, st.mic.sequence[st.mic.index]);
+      }
+      gZ.mirrorPickFile(pZ, EP.MirrorData.files.findIndex(f => f.correct));
+      while (gZ.mirrorSetupTeam(tZ).currentStep === "qa") {
+        const st = gZ.mirrorSetupTeam(tZ);
+        gZ.mirrorAnswerQa(pZ, EP.MirrorData.qaItems[st.qa.order[st.qa.index]].correctIndex);
+      }
+      gZ.mirrorWrapUp(pZ);
+      const zeroTrialDone = gZ.didRun("runTrial");
+      finishLv3Round(gZ);
+      vZ.cleanup();
+      const zeroDancersFlowOk = zeroNoLaneUI && zeroDirectSafe && zeroTrialDone && gZ.level === 3 && gZ.step === "intermission";
+
+      // 7. Showtime end in rules stops the lane (wrap up, showtime timer expire, and attention 0)
+      const ctxWrapEnd = enterShowtime(4, { allHumans: true, seed: 647 });
+      const gWE = ctxWrapEnd.game, tWE = ctxWrapEnd.team;
+      const dWE = tWE.members.find(p => gWE.mirrorRole(p) === "dance");
+      const vWE = mountView(gWE, dWE, tWE);
+      const slotsWE = gWE.mirrorSetupSlots(tWE);
+      const own0 = tWE.members.find(p => p.id === slotsWE[0].playerId);
+      const own1 = tWE.members.find(p => p.id === slotsWE[slotsWE.length - 1].playerId);
+      for (const port of EP.MirrorData.ports) gWE.mirrorCableHit(own0, port);
+      gWE.mirrorSoundHeld(own0);
+      while (gWE.mirrorSetupTeam(tWE).currentStep === "mic") {
+        const st = gWE.mirrorSetupTeam(tWE);
+        gWE.mirrorMicTap(own0, st.mic.sequence[st.mic.index]);
+      }
+      gWE.mirrorPickFile(own1, EP.MirrorData.files.findIndex(f => f.correct));
+      while (gWE.mirrorSetupTeam(tWE).currentStep === "qa") {
+        const st = gWE.mirrorSetupTeam(tWE);
+        gWE.mirrorAnswerQa(own1, EP.MirrorData.qaItems[st.qa.order[st.qa.index]].correctIndex);
+      }
+      const dViewWE = vWE.view();
+      gWE.mirrorWrapUp(own1);
+      vWE.tick();
+      const wrapHitsBefore = gWE.mirrorDanceTeam(tWE).dancers.find(d => d.playerId === dWE.id).strays;
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+      const wrapHitsAfter = gWE.mirrorDanceTeam(tWE).dancers.find(d => d.playerId === dWE.id).strays;
+      const wrapStopsLaneOk = !dViewWE.isLoopRunning() && rafQueue.size === 0 && !vWE.q("#lane") && wrapHitsBefore === wrapHitsAfter;
+      vWE.cleanup();
+
+      const ctxTimerEnd = enterShowtime(4, { allHumans: true, seed: 648 });
+      const gTE = ctxTimerEnd.game, tTE = ctxTimerEnd.team;
+      const dTE = tTE.members.find(p => gTE.mirrorRole(p) === "dance");
+      const vTE = mountView(gTE, dTE, tTE);
+      const dViewTE = vTE.view();
+      ctxTimerEnd.setNow(gTE.timer.deadline);
+      gTE.tick();
+      vTE.tick();
+      const timerStraysBefore = gTE.mirrorDanceTeam(tTE).dancers.find(d => d.playerId === dTE.id).strays;
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }));
+      const timerStraysAfter = gTE.mirrorDanceTeam(tTE).dancers.find(d => d.playerId === dTE.id).strays;
+      const timerStopsLaneOk = gTE.didRun("runTrial") && !dViewTE.isLoopRunning() && rafQueue.size === 0 && !vTE.q("#lane") && timerStraysBefore === timerStraysAfter;
+      vTE.cleanup();
+
+      const ctxAttEnd = enterShowtime(4, { allHumans: true, seed: 649 });
+      const gAE = ctxAttEnd.game, tAE = ctxAttEnd.team;
+      const dAE = tAE.members.find(p => gAE.mirrorRole(p) === "dance");
+      const vAE = mountView(gAE, dAE, tAE);
+      const dViewAE = vAE.view();
+      ctxAttEnd.advanceMs(70000);
+      for (let k = 0; k < 25 && !gAE.mirrorFailReason(tAE); k++) gAE.mirrorDanceMiss(dAE);
+      vAE.tick();
+      const attStraysBefore = gAE.mirrorDanceTeam(tAE).dancers.find(d => d.playerId === dAE.id).strays;
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+      const attStraysAfter = gAE.mirrorDanceTeam(tAE).dancers.find(d => d.playerId === dAE.id).strays;
+      const attnZeroStopsLaneOk = gAE.mirrorFailReason(tAE) === "attention" &&
+        !dViewAE.isLoopRunning() && rafQueue.size === 0 &&
+        (!!vAE.q("#mirrorAttnFailed") || vAE.text().includes("Score 0 of 7")) &&
+        !vAE.q("#lane") && attStraysBefore === attStraysAfter;
+      vAE.cleanup();
+
+      // 8. Leaving screen via game.js navigation stops rAF, removes keydown, blocks keys during Attendance popup,
+      //    and finishes full Dance Crew flow to end of Level 3 without leaks
+      let gameCtx = null;
+      for (let seed = 1; seed <= 40; seed++) {
+        let simNow = 9500000 + seed * 10000;
+        const session = EP.Bots.soloGame({
+          me: { name: "RunnerD", type: "coop", spend: EP.Bots.typicalSpend("coop") },
+          myTeam: { name: "Team Kestrel", mates: TEAM.map(p => p.n) },
+          others: OTHERS.map(o => ({ name: o.t, players: o.p })),
+          rng: EP.Rng.seeded(seed),
+          hooks: EP.Bots.hooks,
+        });
+        const g = session.game;
+        g._timer.clock = () => simNow;
+        advanceToLv3Trial(g);
+        g.start();
+        simNow += 16000;
+        g.tick();
+        for (const p of session.team.active()) g.mirrorConnect(p);
+        simNow = g.timer.deadline;
+        g.tick();
+        if (g.mirrorRole(session.me) === "dance") {
+          gameCtx = {
+            game: g,
+            me: session.me,
+            team: session.team,
+            getNow: () => simNow,
+            setNow: v => { simNow = v; },
+            advanceMs: ms => { simNow += ms; g.tick(); },
+          };
+          break;
+        }
+      }
+      let navLeaveStopsLoopOk = false, attPopupBlockedKeyOk = false, fullDanceLv3EndOk = false;
+      if (gameCtx) {
+        const savedG = G, savedME = ME, savedMYTEAM = MYTEAM;
+        const savedStep = S.step, savedMaxStep = S.maxStep, savedArrived = S.arrived, savedType = S.type, savedName = S.name;
+        const savedTrialUI = S.trialUI;
+        try {
+          G = gameCtx.game;
+          ME = gameCtx.me;
+          MYTEAM = gameCtx.team;
+          S.type = "coop";
+          S.name = ME.name;
+          S.arrived = true;
+          S.step = 7;
+          S.maxStep = 7;
+          resetRoundUI();
+          render();
+
+          const loopStartedOnStage = !!document.querySelector("#lane") && rafQueue.size === 1 &&
+            typeof S.trialUI.mirror._danceCleanup === "function";
+          const danceLaneText = (document.querySelector("#stage") || {}).textContent || "";
+          const danceLaneClean = !LEAK_RE.test(danceLaneText) && !/bot/i.test(danceLaneText) &&
+            [...document.querySelectorAll("#stage .flag")].every(el => el.textContent.trim() !== "OK");
+
+          // Attendance popup open: arrow key closes popup and never hits dance lane
+          const attOv = [...document.querySelectorAll(".board-ov")].pop();
+          const straysBeforePopup = G.mirrorDanceTeam(MYTEAM).dancers.find(d => d.playerId === ME.id).strays;
+          if (attOv) attOv.hidden = false;
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+          const straysAfterPopup = G.mirrorDanceTeam(MYTEAM).dancers.find(d => d.playerId === ME.id).strays;
+          attPopupBlockedKeyOk = !!attOv && attOv.hidden === true && straysBeforePopup === straysAfterPopup;
+
+          // Navigate away from Trial screen -> cancels dance rAF and removes keydown listener
+          const cancelsBeforeLeave = cancelCount;
+          const danceRafId = [...rafQueue.keys()][0];
+          go(6);
+          const straysBeforeKeyAfterLeave = G.mirrorDanceTeam(MYTEAM).dancers.find(d => d.playerId === ME.id).strays;
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+          const straysAfterKeyAfterLeave = G.mirrorDanceTeam(MYTEAM).dancers.find(d => d.playerId === ME.id).strays;
+          navLeaveStopsLoopOk = loopStartedOnStage &&
+            cancelCount > cancelsBeforeLeave &&
+            !rafQueue.has(danceRafId) &&
+            !document.querySelector("#lane") &&
+            S.trialUI.mirror._danceCleanup === null &&
+            straysBeforeKeyAfterLeave === straysAfterKeyAfterLeave;
+
+          // Return to Trial screen, land a hit, let bot Setup Crew finish showtime -> end of Level 3
+          go(7);
+          flushRaf(5000);
+          for (let i = 1; i <= 10; i++) flushRaf(5000 + i * 250);
+          const stageNote = document.querySelector('[data-note-zone="perfect"]');
+          if (stageNote) {
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: KEY_BY_DIR[stageNote.dataset.noteDir], bubbles: true, cancelable: true }));
+          }
+          const stageHitCount = G.mirrorDanceTeam(MYTEAM).dancers.find(d => d.playerId === ME.id).perfects;
+
+          for (let sec = 0; sec < 50 && !G.didRun("runTrial"); sec++) {
+            gameCtx.advanceMs(1000);
+            drawTimer();
+          }
+          if (G.didRun("runTrial")) render();
+          const trialEndText = (document.querySelector("#stage") || {}).textContent || "";
+          const danceTrialEndedClean = G.didRun("runTrial") &&
+            rafQueue.size === 0 &&
+            !document.querySelector("#lane") &&
+            /Score \\d+ of 7/.test(trialEndText) &&
+            !LEAK_RE.test(trialEndText) &&
+            !/bot/i.test(trialEndText);
+
+          // Complete Level 3 Glitch Report -> Gift Window -> Stats Update -> Intermission
+          goForward(); // -> Glitch Report (step 8)
+          const skipBtn = document.querySelector("#skipAcc");
+          if (skipBtn) skipBtn.click();
+          if (G.timer && G.timer.name === "giftWindow") {
+            gameCtx.setNow(G.timer.deadline);
+            afterClose(G.tick());
+          }
+          goForward(); // -> Stats Update (step 9)
+          for (let i = 0; i < 10; i++) {
+            const pInc = document.querySelector("[data-pinc]:not([disabled])");
+            if (!pInc) break;
+            pInc.click();
+          }
+          goForward(); // -> lockPoints
+          fullDanceLv3EndOk = stageHitCount >= 1 &&
+            danceLaneClean &&
+            danceTrialEndedClean &&
+            G.level === 3 &&
+            G.step === "intermission" &&
+            roundDone();
+        } finally {
+          if (currentTrialView && currentTrialView.cleanup) currentTrialView.cleanup();
+          G = savedG; ME = savedME; MYTEAM = savedMYTEAM;
+          S.step = savedStep; S.maxStep = savedMaxStep; S.arrived = savedArrived; S.type = savedType; S.name = savedName;
+          S.trialUI = savedTrialUI;
+          render();
+        }
+      }
+
+      return {
+        setupNoLaneOk,
+        danceSeesLaneOk,
+        perfectHitOk,
+        goodHitOk,
+        strayOk,
+        missOk,
+        tempoRampOk,
+        boostCapOk,
+        avg1Ok,
+        avg2Ok,
+        avg3Ok,
+        botProgressOk,
+        zeroDancersFlowOk,
+        wrapStopsLaneOk,
+        timerStopsLaneOk,
+        attnZeroStopsLaneOk,
+        attPopupBlockedKeyOk,
+        navLeaveStopsLoopOk,
+        fullDanceLv3EndOk,
+      };
+    } finally {
+      window.requestAnimationFrame = origRaf;
+      window.cancelAnimationFrame = origCancel;
+      if (typeof rainOn === "boolean") {
+        rainOn = prevRainOn;
+        if (prevRainOn && typeof origRaf === "function") origRaf(rainFrame);
+      }
+    }
+  })()`);
+
+  check("Dance Crew player sees rhythm lane and Setup Crew player does not", res.setupNoLaneOk && res.danceSeesLaneOk);
+  check("Dance hit (keyboard PERFECT +3, pad good +2), stray (-1), and miss (-2) report to rules and update boost and attention", res.perfectHitOk && res.goodHitOk && res.strayOk && res.missOk);
+  check("Rhythm lane ramps tempo at 20 and 40 notes and never spawns 3 identical arrows in a row", res.tempoRampOk);
+  check("Dance boost stops at the rules cap of 45", res.boostCapOk);
+  check("Team dance average and attention match the rules for 1, 2, and 3 dancers", res.avg1Ok && res.avg2Ok && res.avg3Ok);
+  check("Bot dancers' progress updates live in the roster without any bot tag or leaks", res.botProgressOk);
+  check("A team with 0 dancers shows no rhythm lane and completes Level 3 cleanly", res.zeroDancersFlowOk);
+  check("Rhythm lane stops when showtime ends via wrap up, timer expiration, or attention 0", res.wrapStopsLaneOk && res.timerStopsLaneOk && res.attnZeroStopsLaneOk);
+  check("Attendance popup swallows dance arrow keys before they reach the rhythm lane", res.attPopupBlockedKeyOk);
+  check("Leaving the trial screen stops the animation loop and removes key listeners", res.navLeaveStopsLoopOk);
+  check("Dance Crew flow reaches the end of Level 3 without work style or secret path leaks", res.fullDanceLv3EndOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -1888,6 +2493,8 @@ w.addEventListener("load", async () => {
     await mirrorStep6c1Cases();
     log("run 8: Mirror Step 6c-2 mic, deck, Q&A, and wrap up");
     await mirrorStep6c2Cases();
+    log("run 9: Mirror Step 6d Dance Crew rhythm lane");
+    await mirrorStep6dCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

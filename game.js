@@ -235,7 +235,7 @@ const trialDone=()=>!!G&&G.didRun("runTrial");
 const accDone=()=>!!G&&G.didRun("endGlitchReport");
 const gwClosed=()=>!!G&&G.didRun("lockIn");
 const roundDone=()=>!!G&&G.didRun("finishRound");
-function endSession(){G=null;ME=null;MYTEAM=null}
+function endSession(){if(currentTrialView&&currentTrialView.cleanup)currentTrialView.cleanup();currentTrialView=null;G=null;ME=null;MYTEAM=null}
 /* Sign out keeps only the display name, saved under the email. Look, tool and progress reset.
    The name comes back on the next sign-in with the same email. */
 const NAMES={};
@@ -522,9 +522,10 @@ function trialMirrorScreen(){
     attrName:AN[R().attr],
     sabotageAlert:sabotageAlertHTML(),
     costHint:()=>`Every player now pays ${R().cost} ${AN[R().attr]}. Press <b>All-hands</b> for the meeting.`,
+    avatarFor:p=>p===ME?S.av:(TEAM.find(x=>x.n===p.name)||{}).av||null,
     onRender:render,
   });
-  return {html:view.html,bind:view.bind?()=>view.bind(document):null,tick:view.tick||null,waitHint:view.waitHint};
+  return {html:view.html,bind:view.bind?()=>view.bind(document):null,tick:view.tick||null,cleanup:view.cleanup||null,waitHint:view.waitHint};
 }
 function trialJudgedScreen(){
   const view=JudgedView.screen({
@@ -743,6 +744,7 @@ addEventListener("keydown",e=>{if(e.key!=="Escape"&&e.key!=="Esc")return;const w
 /* ---------- render + bind ---------- */
 function render(){
   stopWorld();
+  if(currentTrialView&&currentTrialView.cleanup)currentTrialView.cleanup();
   currentTrialView=S.step===7?trialView():null;
   chrome();$("#stage").innerHTML=V[S.step]();bind();BOARD.refresh();
   document.body.classList.toggle("mapscreen",!!$("#world"));
