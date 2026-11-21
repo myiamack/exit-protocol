@@ -27,16 +27,20 @@ classDiagram
     -Timer _timer
     +rng  function from Rng.seeded
     +bool host
-    +hooks  onStart, beforeClose
+    +hooks  onStart, onTick, beforeClose, onFastForward
     +log, prompts, submissions
     +step  current step, read-only
     +over  results ran, read-only
     +timer, running  from Timer
     +start(), tick(), closeTimer(), secondsLeft()
-    +startNextRound(), advance(), finishRound()
+    +startNextRound(), advance(), finishRound(), jumpToLevel(targetLevel)
     +activity(), checkAttendance()
     +sabotage(), gift(), answerGift(), switchTeam()
-    +setSopBoard(), closeSop(), startWriting(), submit(), closeWriting(), startVote(), runTrial()
+    +setSopBoard(), closeSop(), splitBrief(), closeSplitBrief()
+    +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
+    +mirrorCableHit()..mirrorWrapUp(), mirrorDanceHit()..mirrorDanceStray()
+    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorDanceTeam()
+    +startWriting(), submit(), closeWriting(), startVote(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
     +payTrialCosts(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
     +board() public view
@@ -73,7 +77,7 @@ classDiagram
   class Team {
     +id, name
     +Player[] members
-    +won, int trialWins
+    +won, int trialWins, trialResults
     +int MIN = 3$, MAX = 5$
     +active(), mates(p), has(p), size()
     +add(p), remove(p), resetRound()
@@ -177,7 +181,7 @@ classDiagram
     +attr, int cost, bool isFinal, int stepIndex
     +completed, trial
     +sabotages[], accusations[], gifts[]
-    +sopBoards, sopResults, earnings, quietHearts, gritBonus
+    +sopBoards, sopResults, mirrorResults, earnings, quietHearts, gritBonus
     +steps, step, LEVELS$, STEPS$
     +nextStep(), saboteurs(), drainOn(p), caughtOn(team, except)
     +sabotage(), gift(), answerGift(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
@@ -200,9 +204,9 @@ classDiagram
   class Bots {
     <<plain object, not a class>>
     +SETTINGS  rates from sim_v2.py
-    +hooks  onStart, beforeClose
+    +hooks  onStart, onTick, beforeClose, onFastForward
     +soloGame(...), typicalSpend(type), makePlayer(id, name, type)
-    +openFloor(), trial(), splitBrief(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
+    +openFloor(), trial(), splitBrief(), mirror(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
     +allocate(p, n, final)
   }
 
@@ -228,7 +232,7 @@ classDiagram
 
   Economy ..> Player : reads and updates
   Attendance ..> Player : reads and sets times
-  Bots ..> Game : connects only via hooks (onStart, beforeClose)
+  Bots ..> Game : connects only via hooks (onStart, onTick, beforeClose, onFastForward)
   Bots ..> Economy : allocate
   Bots ..> Player : makePlayer
   Bots ..> Team : soloGame
@@ -278,7 +282,7 @@ classDiagram
   class Trial {
     <<abstract>>
     +rng, ranking  best first
-    +kind  sop, auto, splitBrief, judged
+    +kind  sop, splitBrief, mirror, auto, judged
     +run(round, teams), runTrial(round, teams)
     +rank(round, teams)*
     +influence(round, teams)$ Levels 1 to 4
@@ -295,7 +299,7 @@ classDiagram
     +rank(round, teams) board score plus influence
   }
   class AutoTrial {
-    Levels 3 to 4
+    Level 4
     +rank(round, teams) random 0 to 7 plus influence
   }
   class SplitBriefTrial {
@@ -316,6 +320,52 @@ classDiagram
   class Scenarios {
     <<data, scenarios.js>>
     +MEDLINE_SPRINT_1  tasks, cards, twist, answer keys
+  }
+  class MirrorTrial {
+    Level 3
+    -MirrorLobby #lobby
+    -SetupCrew #setup
+    -DanceCrew #dance
+    +phase  idle, lobby, reveal, showtime, failed
+    +int MAX_SCORE = 7$, LOBBY_SECONDS = 30$, REVEAL_SECONDS = 1$, SHOWTIME_SECONDS = 75$
+    +score(attention)$, setupCrewSize(n)$
+    +startLobby(teams), connect(id), miss(id), closeDoors(), startShowtime()
+    +cableHit(), cableMiss(), soundHeld(), soundFeedback(), micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +danceHit(), danceMiss(), danceStray(), advanceBotSetup(), advanceBotDance()
+    +attentionFor(), scoreFor(), checkAttention(), finishTeam(), closeMirror(round, teams)
+    +crewFor(), roleOf(), lobbyTeamState(), setupTeamState(), danceTeamState(), failReasonOf()
+    +rank(round, teams) score plus Focus influence, attention tie-break
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class MirrorLobby {
+    <<MirrorParts.js>>
+    -rng, bool #started, bool #closed, #teams, #playerIndex
+    +start(teams), connect(id), miss(id), closeDoors()
+    +botConnectTimes(), allConnected(), isTeamFailed(), teamState(), playerState()
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class SetupCrew {
+    <<MirrorParts.js>>
+    -rng, bool #started, #teams, #playerIndex
+    +crewSize(n)$, splitSteps(slots)$, botStepDuration(step)$
+    +start(entries), cableHit(), cableMiss(), soundHeld(), soundFeedback()
+    +micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +completeBotStep(), advanceBotSetup(), botStepDueAt()
+    +currentStep(), currentPlayerId(), penaltiesFor(), teamState()
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class DanceCrew {
+    <<MirrorParts.js>>
+    -rng, bool #started, #teams, #playerIndex
+    +start(setupCrew, opts), noteHit(), noteMiss(), strayPress()
+    +applyBotBoost(), advanceBotDance(), avgBoostFor(), avgPenaltiesFor()
+    +dancersFor(), dancerState(), teamState()
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class MirrorData {
+    <<data, mirrorData.js>>
+    +ports, files, qaItems, setupSteps, setupSplits
+    +timers, scoring, lobby, cables, sound, mic, deck, qa, dance, bots, flavor
   }
   class JudgedTrial {
     Levels 5 and 6
@@ -344,19 +394,29 @@ classDiagram
   Trial <|-- SopTrial
   Trial <|-- AutoTrial
   Trial <|-- SplitBriefTrial
+  Trial <|-- MirrorTrial
   Trial <|-- JudgedTrial
   SplitBriefTrial ..> Scenarios : reads scenario data
+  MirrorTrial "1" *-- "1" MirrorLobby : #lobby
+  MirrorTrial "1" *-- "1" SetupCrew : #setup
+  MirrorTrial "1" *-- "1" DanceCrew : #dance
+  MirrorTrial ..> MirrorData : reads constants
+  MirrorLobby ..> MirrorData : lobby rules
+  SetupCrew ..> MirrorData : steps, items, penalties
+  DanceCrew ..> MirrorData : boost, penalties, bot timing
+  DanceCrew ..> SetupCrew : reads danceIdsFor on start
   JudgedTrial "1" *-- "0..1" Vote : vote
   Vote "1" o-- "*" Team : ranks teams, sets won
   Vote "1" --> "*" Player : ballots, up to 3 ranked each
-  Trial ..> Team : sets won, trialWins
+  Trial ..> Team : sets won, trialWins, trialResults
   Round --> Player : records link players
 
   Game ..> Trial : forRound, delegates trial calls
   Game ..> Round : delegates round actions
   Bots ..> Sabotage : cost
   Bots ..> Gift : cost, pending
-  Bots ..> Trial : JudgedTrial, BOT_ANSWER
+  Bots ..> Trial : SplitBriefTrial, MirrorTrial, JudgedTrial
+  Bots ..> MirrorData : boostCap
 
   Round ..> Sabotage : apply
   Round ..> Accusation : apply
@@ -371,5 +431,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code at commit `9c05ca6` (branch `level2-split-brief`).
+Made from the rules code at commit `ce6661f` (branch `level3-mirror`).
 Update this diagram whenever a class in `rules/` changes.

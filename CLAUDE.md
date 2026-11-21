@@ -108,18 +108,18 @@ Every import and export in `rules/*.js` must stay on one line, because `tools/bu
 
 ### File map and screen split
 
-- `rules/`: ES module rule classes (`index.js` exports all; `scenarios.js` holds Level 2 scenario data; `rules.bundle.js` is built for the browser).
+- `rules/`: ES module rule classes (`index.js` exports all; `scenarios.js` holds Level 2 scenario data; `mirrorData.js` holds Level 3 data; `MirrorParts.js` holds `MirrorTrial` private parts; `rules.bundle.js` is built for the browser).
 - `pixel-art.js`: Pixel Intern sprite engine, SVG art, wardrobe tab icons, instructors, and tool icons.
 - `world-map.js`: walkable Floor 60 map (movement, collision, rooms, furniture, doors, ghosts, minimap, fog, room popups) and static office preview map.
 - `game.js`: session, navigation, screens `V[0]` to `V[9]`, HUD, timers display, code rain, elevator cutscene, and button wiring.
-- `board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `judged-view.js`: shared UI panels/buttons and trial views used by `index.html` and `pages/vote-test.html`.
+- `board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `mirror-view.js`, `mirror-dance-view.js`, `judged-view.js`: shared UI panels/buttons and trial views used by `index.html` and `pages/vote-test.html`.
 
 ### Test commands
 
 - `npm run build`: rebuild `rules/rules.bundle.js` from `rules/*.js`.
-- `npm test`: run the baseline checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`).
+- `npm test`: run the baseline checks (19/19: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`, `check_mirror_data`, `check_mirror_lobby`, `check_mirror_setup`, `check_mirror_dance`, `check_mirror_score`, `check_mirror_timing`, `check_mirror_bots`).
 - `npm run baseline`: save a new fixed-seed baseline snapshot.
-- `npm run test:screens`: run `Tests/check_screens.js` in jsdom.
+- `npm run test:screens`: run `Tests/check_screens.js` in jsdom (154 passed; Runs 1 to 12, including Level 3 coverage in Run 4 `fullSevenLevelGame`, Run 6 `mirrorStep6bCases`, Run 7 `mirrorStep6c1Cases`, Run 8 `mirrorStep6c2Cases`, Run 9 `mirrorStep6dCases`, Run 10 `mirrorStep6eCases`, Run 11 `devJumpCases`, and Run 12 `mirrorStep8Cases` [8 tests]).
 
 ## Final rules
 
@@ -503,7 +503,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - At the start of every task, read `CLAUDE.md`, `docs/level3-progress.md`, and `docs/level3-report.md`.
 - Hannah Ziegler is the Level 3 designer. Her first version of Level 3 lives in commit `cdf3eff` on `backup/Level3`. Her code is a reference only: read it with `git show cdf3eff:<path>` or `git show hz-level3:<path>` (same commit as `cdf3eff`). Never merge, rebase, or cherry-pick it.
 - CLAUDE.md is the source of truth for rules. If code and CLAUDE.md disagree, stop and report it. Do not guess.
-- After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only when the step touches screen code (`game.js`, `mirror-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`).
+- After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only when the step touches screen code (`game.js`, `mirror-view.js`, `mirror-dance-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`).
 - Never save a new baseline unless the step says so. Explain any baseline change before saving.
 - At the end of every step: update `docs/level3-progress.md` (mark the step done, list files changed, test results, any open issues), commit on `level3-mirror`, and push to `origin` and `backup`.
 - The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3-mirror` later.

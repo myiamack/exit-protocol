@@ -408,3 +408,85 @@ Both branches forked from the same parent line (`862d9fa`) and edited 9 of the s
   - `#mirrorRankTable` in `mirror-view.js` orders rows using `G.trialRanking()` (which includes Focus influence `base + influence`), while its columns display `Place`, `Team`, `Attention`, `Score` (`base / 7`), and `Result` without showing the Focus influence value.
   - Clicking a `[data-cable-port]` button on an empty frame/belt calls `G.mirrorCableMiss` (spark `-3`), and `mirrorStep6c1Cases` explicitly relies on that behavior at tick 0.
   - `mirror-view.js` cable-belt bag shuffling uses `Math.random()` rather than `G.rng`.
+
+## Step 9: Docs, portfolio count, and Game.js watch (branch `level3-mirror`)
+
+- **Files changed:**
+  - `docs/class-diagram.md`: updated for every `rules/` class added or changed in Steps 0 to 7 (`Game` with `jumpToLevel`, `onTick`/`onFastForward` hooks, Split Brief and Mirror methods, and standings helpers; `Team` `trialResults`; `Round` `mirrorResults`; `Bots` `mirror()` and `onTick`/`onFastForward` hooks; `Trial` `mirror` kind; `AutoTrial` Level 4; new `MirrorTrial`, `MirrorLobby`, `SetupCrew`, `DanceCrew`, and `MirrorData` classes and relationships; footer updated to commit `ce6661f` on branch `level3-mirror`).
+  - `CLAUDE.md`: synced `rules/` (`mirrorData.js`, `MirrorParts.js`) and screen file map (`mirror-view.js`, `mirror-dance-view.js`), updated `npm test` (19/19 checks) and `npm run test:screens` (154 passed, Runs 1 to 12 including Run 12 `mirrorStep8Cases` [8 tests]), and added `mirror-dance-view.js` to the Level 3 screen-file list.
+  - `docs/level3-progress.md`: added `mirror-dance-view.js` to the screen-file header list, fixed Step 6d's Goal filename from `mirror-view.js` to `mirror-dance-view.js`, added the Step 7 note that the dev jump lives in rules (`Game.jumpToLevel` in `rules/Game.js`, `Bots.hooks.onFastForward` in `rules/bots.js`) while `game.js` only catches `Ctrl+Shift+1` to `7` behind `DEV_JUMP`, and marked Step 9 DONE.
+  - `docs/level3-report.md`: added this Step 9 summary, portfolio count table, and read-only `rules/Game.js` pass-through watch.
+
+### Portfolio count (read-only)
+
+Counting rule: `Classes` = `class` declarations/expressions; `Subclasses` = classes with `extends`; `Methods` = class methods (instance, `static`, `#private`, `get`/`set`; excludes 24 explicit `constructor` definitions, making 664 if included); `Standalone functions` = module or IIFE top-level named `function` declarations and `const`/`let`/`var` function or arrow bindings (excludes inline callbacks and object-literal methods; `rules/bots.js` plain object `Bots` + `Bots.hooks` has 20 object methods). Excludes generated `rules/rules.bundle.js` (6,147 lines), `rules/package.json`, `Tests/baseline/*.txt`, Python reference `Tests/v2_balance/sim_v2.py` (265 lines), and HTML/CSS files (`index.html` 46, `styles.css` 487, `pages/vote-test.html` 41, `pages/character-concepts.html` 121, `pages/character-system.html` 413).
+
+| Group / File | Classes | Subclasses | Methods | Standalone functions | Lines |
+|---|---:|---:|---:|---:|---:|
+| `rules/Accusation.js` | 1 | 0 | 2 | 0 | 40 |
+| `rules/Attendance.js` | 1 | 0 | 7 | 0 | 88 |
+| `rules/Attributes.js` | 1 | 0 | 24 | 0 | 166 |
+| `rules/CharacterType.js` | 4 | 3 | 22 | 0 | 88 |
+| `rules/Economy.js` | 1 | 0 | 9 | 0 | 113 |
+| `rules/Game.js` | 1 | 0 | 120 | 0 | 1041 |
+| `rules/Gift.js` | 1 | 0 | 8 | 0 | 91 |
+| `rules/Hearts.js` | 1 | 0 | 10 | 0 | 35 |
+| `rules/MirrorParts.js` | 3 | 0 | 98 | 1 | 1604 |
+| `rules/PathTracker.js` | 1 | 0 | 12 | 0 | 78 |
+| `rules/Player.js` | 1 | 0 | 81 | 0 | 252 |
+| `rules/PlayerStatus.js` | 1 | 0 | 16 | 0 | 64 |
+| `rules/Rng.js` | 1 | 0 | 3 | 0 | 26 |
+| `rules/Round.js` | 1 | 0 | 17 | 0 | 112 |
+| `rules/Sabotage.js` | 1 | 0 | 4 | 0 | 40 |
+| `rules/Team.js` | 1 | 0 | 9 | 0 | 36 |
+| `rules/Timer.js` | 1 | 0 | 9 | 0 | 67 |
+| `rules/Trial.js` | 6 | 5 | 164 | 2 | 1296 |
+| `rules/Vote.js` | 1 | 0 | 6 | 0 | 81 |
+| `rules/Wallet.js` | 1 | 0 | 19 | 0 | 103 |
+| `rules/bots.js` | 0 | 0 | 0 | 5 | 399 |
+| `rules/index.js` | 0 | 0 | 0 | 0 | 27 |
+| `rules/mirrorData.js` | 0 | 0 | 0 | 0 | 229 |
+| `rules/scenarios.js` | 0 | 0 | 0 | 0 | 58 |
+| **Total `rules/` (24 files)** | **30** | **8** | **640** | **8** | **6134** |
+| `attendance-view.js` | 0 | 0 | 0 | 2 | 86 |
+| `board.js` | 0 | 0 | 0 | 3 | 52 |
+| `fullscreen-view.js` | 0 | 0 | 0 | 4 | 38 |
+| `game.js` | 0 | 0 | 0 | 105 | 912 |
+| `judged-view.js` | 0 | 0 | 0 | 3 | 121 |
+| `mirror-dance-view.js` | 0 | 0 | 0 | 15 | 560 |
+| `mirror-view.js` | 0 | 0 | 0 | 16 | 1256 |
+| `pixel-art.js` | 0 | 0 | 0 | 9 | 162 |
+| `splitbrief-view.js` | 0 | 0 | 0 | 6 | 291 |
+| `world-map.js` | 0 | 0 | 0 | 24 | 203 |
+| `pages/vote-test.js` | 0 | 0 | 0 | 15 | 163 |
+| **Total Screen files (11 files)** | **0** | **0** | **0** | **202** | **3844** |
+| `Tests/check_balance.js` | 0 | 0 | 0 | 8 | 176 |
+| `Tests/check_bundle.js` | 0 | 0 | 0 | 2 | 51 |
+| `Tests/check_cheese.js` | 0 | 0 | 0 | 8 | 194 |
+| `Tests/check_gifts.js` | 0 | 0 | 0 | 7 | 175 |
+| `Tests/check_mirror_bots.js` | 0 | 0 | 0 | 6 | 748 |
+| `Tests/check_mirror_dance.js` | 0 | 0 | 0 | 4 | 540 |
+| `Tests/check_mirror_data.js` | 0 | 0 | 0 | 2 | 165 |
+| `Tests/check_mirror_lobby.js` | 0 | 0 | 0 | 3 | 402 |
+| `Tests/check_mirror_score.js` | 0 | 0 | 0 | 6 | 569 |
+| `Tests/check_mirror_setup.js` | 0 | 0 | 0 | 3 | 542 |
+| `Tests/check_mirror_timing.js` | 0 | 0 | 0 | 6 | 712 |
+| `Tests/check_rules.js` | 0 | 0 | 0 | 2 | 66 |
+| `Tests/check_save.js` | 0 | 0 | 0 | 10 | 372 |
+| `Tests/check_scenarios.js` | 0 | 0 | 0 | 1 | 48 |
+| `Tests/check_screens.js` | 0 | 0 | 0 | 26 | 3688 |
+| `Tests/check_split_bots.js` | 0 | 0 | 0 | 2 | 244 |
+| `Tests/check_split_brief.js` | 0 | 0 | 0 | 4 | 558 |
+| `Tests/check_split_timing.js` | 0 | 0 | 0 | 2 | 140 |
+| `Tests/check_steps.js` | 0 | 0 | 0 | 4 | 1165 |
+| `Tests/check_teams.js` | 0 | 0 | 0 | 6 | 135 |
+| **Total `Tests/` (20 files)** | **0** | **0** | **0** | **112** | **10690** |
+| **Grand Total (55 JS files)** | **30** | **8** | **640** | **322** | **20668** |
+
+### `rules/Game.js` watch (read-only)
+
+- **Line count:** **1,041** lines (`class Game` has **121** members: 1 `constructor` + 120 methods/getters).
+- **Pass-through methods:** **67** total (out of 120 non-constructor methods/getters):
+  - **25 pure pass-throughs** (directly read or call one other class with no step/timer guard): `Timer` (8: `get timer`, `get running`, `now`, `start`, `refreshTimer`, `secondsLeft`, `closeTimer`, `closeTimerAt`), `Attendance` (1: `activity`), `Economy` (3: `placeAllRemaining`, `placingWhy`, `static get POINTS`), `SopTrial` (1: `sopBoard`), `MirrorTrial` (10: `mirrorAttention`, `mirrorScore`, `mirrorPhase`, `mirrorLobbyTeam`, `mirrorCrew`, `mirrorSetupSlots`, `mirrorRole`, `mirrorFailReason`, `mirrorSetupTeam`, `mirrorDanceTeam`), `Trial`/`Team` (2: `trialRanking`, `teamTrialResults`).
+  - **42 front-desk guarded pass-throughs** (step/trial guard and/or `refreshTimer()`/`_mirrorCall` wrapper, then delegate to one other class): `Round` (7: `sabotage`, `accuse`, `endGlitchReport`, `closeGlitchReport`, `gift`, `answerGift`, `closeGiftWindow`), `Economy` (6: `payTrialCosts`, `computeEarnings`, `draftPoint`, `lockPoints`, `cashOut`, `autoPlacePoints`), `SopTrial` (4: `setSopScore`, `scoreSop`, `setSopBoard`, `closeSop`), `SplitBriefTrial` (1: `closeSplitBrief`), `JudgedTrial` (6: `setPrompt`, `startWriting`, `typeSubmission`, `submit`, `closeWriting`, `startVote`), `Trial` (1: `runTrial`), `MirrorTrial` (17: `startMirrorShowtime`, `closeMirror`, `mirrorMiss`, `mirrorCableHit`, `mirrorCableMiss`, `mirrorSoundHeld`, `mirrorSoundFeedback`, `mirrorMicTap`, `mirrorPickFile`, `mirrorReshuffleDeck`, `mirrorAnswerQa`, `mirrorTimeoutQa`, `mirrorWrapUp`, `mirrorDanceHit`, `mirrorDanceMiss`, `mirrorDanceStray`, `mirrorFinishTeam`).
+  - **Breakdown highlight:** **27** of the 67 pass-throughs are for `MirrorTrial` (10 pure + 17 guarded). The remaining 54 members (1 constructor + 53 core/orchestration methods, including `jumpToLevel` at 141 lines and Mirror early-close coordinators `closeMirrorLobby`, `mirrorConnect`, `mirrorCheckAttention`, `teamStandings`) hold `Game`-level orchestration and rules.

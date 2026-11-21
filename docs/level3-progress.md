@@ -3,7 +3,7 @@
 Designer credit: Hannah Ziegler (`cdf3eff` on `backup/Level3`, reference only via `git show cdf3eff:<path>` or `git show hz-level3:<path>`, same commit as `cdf3eff`; never merge, rebase, or cherry-pick).
 Branch: `level3-mirror` (made from `level2-split-brief`). Note: the 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3-mirror` later.
 
-After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only for steps that touch screen code (`game.js`, `mirror-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`). Update this file at the end of every step.
+After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only for steps that touch screen code (`game.js`, `mirror-view.js`, `mirror-dance-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`). Update this file at the end of every step.
 
 ## Steps
 
@@ -124,7 +124,7 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 
 ### Step 6d: Screens - Dance Crew rhythm lane (Effort: Medium) - DONE
 - **Built:** Created `mirror-dance-view.js` (loaded in `index.html`, styled in `styles.css`, routed from `mirror-view.js` with `cleanup` hooks in `game.js`, zero new `Game` pass-throughs) implementing Hannah's sliding arrow rhythm lane (`requestAnimationFrame` motion with cleanup on leave or showtime end, arrow keys and pad buttons respecting Attendance popups, hits/misses/strays/combo/boost/team averages/attention from rules, live teammate and bot dancer progress via `boardStatus()`, animated avatars, Setup Crew checklist, and 0-dancer fallback).
-- **Goal:** Build the Dance Crew rhythm lane in `mirror-view.js` and `styles.css`: sliding arrow notes, hit frame (PERFECT +3 / good +2), arrow key and pad button input (respecting Attendance popup focus/key rules), combo and boost (cap 45) display, animated dancer avatars from the live roster, and live Setup Crew status checklist.
+- **Goal:** Build the Dance Crew rhythm lane in `mirror-dance-view.js` and `styles.css`: sliding arrow notes, hit frame (PERFECT +3 / good +2), arrow key and pad button input (respecting Attendance popup focus/key rules), combo and boost (cap 45) display, animated dancer avatars from the live roster, and live Setup Crew status checklist.
 - **Done when:** Dance Crew players can hit notes via keyboard or buttons, misses and stray presses apply averaged dancer penalties via `G`, and trial ends when Setup Crew wraps up or attention hits 0.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
 - **Files changed:** `mirror-dance-view.js`, `index.html`, `mirror-view.js`, `game.js`, `styles.css`, `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md` (no `rules/` or `Tests/baseline/` files changed).
@@ -142,6 +142,7 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 
 ### Step 7: Dev jump (`Ctrl+Shift+1` to `7`) (Effort: Low) - DONE
 - **Built:** Added rules-first `Game.jumpToLevel(targetLevel)` in `rules/Game.js` and `Bots.hooks.onFastForward` (plus idempotency guards) in `rules/bots.js` (rebuilt `rules/rules.bundle.js`), gated `Ctrl+Shift+1` to `7` behind one `DEV_JUMP = true` flag (`"remove or gate before Base44"`) in `game.js`, and added Run 11 (`devJumpCases()`) in `Tests/check_screens.js`.
+- **Note:** The dev jump lives in rules (`Game.jumpToLevel` in `rules/Game.js`, `Bots.hooks.onFastForward` in `rules/bots.js`). `game.js` only catches `Ctrl+Shift+1` to `7` behind `DEV_JUMP`.
 - **Goal:** Add `Ctrl+Shift+1` to `7` dev jump in `game.js`, always on in the prototype: jumping forward fast-forwards rounds to that level's briefing; jumping to the current or an earlier level starts a new game and fast-forwards to that level; resets round UI and timers cleanly.
 - **Done when:** `Ctrl+Shift+1` through `7` land cleanly on the target level's Briefing from any screen, both forward and backward/same-level, with no stale step state.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
@@ -158,10 +159,13 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules, `rules/rules.bundle.js` unchanged), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` run 1 (`154 passed, 0 failed`, 0 console errors) and run 2 (`154 passed, 0 failed`, 0 console errors; 0 flaky tests).
 - **Open issues:** None (known Level 2 and Level 3 bugs left out of scope per Step 8 rules; see `docs/level3-report.md`).
 
-### Step 9: Class diagram, README, and docs sync (Effort: Low) - TODO
+### Step 9: Class diagram, README, and docs sync (Effort: Low) - DONE
+- **Built:** Updated `docs/class-diagram.md` (commit `ce6661f`, branch `level3-mirror`) for every `rules/` class added or changed in Steps 0 to 7 (`Game`, `Team`, `Round`, `Bots`, `Trial`, `AutoTrial`, `MirrorTrial`, `MirrorLobby`, `SetupCrew`, `DanceCrew`, and `MirrorData`); synced `CLAUDE.md` file map and test list (`npm test` 19/19 and `npm run test:screens` 154 passed including Run 12 `mirrorStep8Cases` [8 tests]); fixed Step 6d's screen filename (`mirror-dance-view.js`) and added the Step 7 dev-jump rules note in `docs/level3-progress.md`; added the Step 9 summary, portfolio count table, and read-only `rules/Game.js` pass-through count to `docs/level3-report.md`.
 - **Goal:** Update `docs/class-diagram.md` with `MirrorTrial`, `MirrorLobby`, `SetupCrew`, and `DanceCrew` and the commit hash it was built from, update `README.md` (Level 3 overview, `mirror-view.js`, dev jump note, Hannah Ziegler credit), update `docs/Game_Index.md`, and sync `CLAUDE.md` file map and test commands list.
 - **Done when:** All docs accurately reflect the final Level 3 implementation.
-- **Tests:** `npm run build`, `npm test`
+- **Tests:** Docs-only step; `npm test` and `npm run test:screens` intentionally skipped per Step 9 instructions (`git status` verified only `CLAUDE.md` and `docs/` files changed).
+- **Files changed:** `docs/class-diagram.md`, `CLAUDE.md`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Open issues:** `README.md` and `docs/Game_Index.md` from the original Step 9 goal text were left untouched because Step 9 restricts edits to `CLAUDE.md`, `docs/`, and the class diagram file (`README.md` is at the repo root and `docs/Game_Index.md` was not included in Step 9's tasks).
 
 ### Step 10: QA run and manual playtest (Effort: Medium) - TODO
 - **Goal:** Run the full automated suite and complete a manual browser QA pass (lobby fail, 1/2/3 Setup splits, Dance Crew lane, Stuck/Idle exclusion, attention 0 fail, Presentation Day Complete, dev jump forward/backward). Carry forward or resolve any remaining Level 2 QA bugs only when explicitly scheduled.
