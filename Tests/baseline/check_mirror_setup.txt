@@ -1,6 +1,6 @@
 -- 1. Construction, exports, privacy, and guard rails
 PASS  SetupCrew rejects missing rng, keeps fields private, and exposes no #setup on MirrorTrial
-PASS  Round.LEVELS[2] stays auto until Step 5 and MirrorParts uses no Math.random or hardcoded team names
+PASS  Round.LEVELS[2] uses mirror and MirrorParts uses no Math.random or hardcoded team names
 -- 2. Crew split (sizes 3, 4, 5, 1, 2, 6) and Stuck or Idle exclusions
 PASS  Crew split size 3 active (2 setup, 1 dance)
 PASS  Crew split size 4 active (2 setup, 2 dance)

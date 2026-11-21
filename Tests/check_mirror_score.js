@@ -82,9 +82,9 @@ console.log("-- 1. Construction, MAX_SCORE, score(attention) 0..7 edges, and gua
   const hasTeamNames = /\b(kestrel|wren|finch|heron)\b/i.test(mirrorSlice) || /\bTeam\s+[A-Z]\w*/.test(mirrorSlice);
 
   expect(
-    "MirrorTrial keeps scoring fields private, Round.LEVELS[2] stays auto, and no Math.random or team names",
+    "MirrorTrial keeps scoring fields private, Round.LEVELS[2] uses mirror, and no Math.random or team names",
     MirrorTrial.MAX_SCORE === 7 &&
-      Round.LEVELS[2].trialKind === "auto" &&
+      Round.LEVELS[2].trialKind === "mirror" &&
       !ownKeys.includes("lockedAttention") &&
       !ownKeys.includes("#lockedAttention") &&
       !ownKeys.includes("failReasons") &&

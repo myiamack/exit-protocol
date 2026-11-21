@@ -143,7 +143,7 @@ PASS  Status Idle  -> Idle
 PASS  Status updates live (At risk back to Active)  -> Active
 PASS  Level 5 submissions appear on the board with name and level  -> 12 entries
 PASS  Team wins update after every trial (2 winners each level)
-PASS  Team wins add up to 12 after 6 levels  -> Team B0:4 Team B1:6 Team B2:2
+PASS  Team wins add up to 12 after 6 levels  -> Team B0:4 Team B1:4 Team B2:4
 PASS  Level 6 submissions added after Level 5's  -> 12 at Level 6
 PASS  No submissions on the board before Level 5
 PASS  Default settings: 60 s idle, 15 s popup, 1 per round  -> {"idleMs":60000,"popupMs":15000,"maxPerRound":1}
@@ -225,7 +225,7 @@ PASS  New game starts in intermission (covers the intro), paused
 PASS  Gift during the briefing is refused  -> Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in Briefing.
 PASS  Check during the briefing: nothing, however long
 PASS  Leaving the briefing starts a fresh clock (resume time = Game's clock)  -> 2000 vs 2000
-PASS  Graduation: running for players with points to place, paused for players with 0  -> 3R 0P 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R
+PASS  Graduation: running for players with points to place, paused for players with 0  -> 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R 0P 3R
 PASS  Graduation: everyone paused once all points are placed
 PASS  Every step was visited, Levels 1 to 7  -> briefing,openFloor,trial,glitchReport,giftWindow,lockIn,statsUpdate,intermission,graduation
 PASS  Paused in every briefing, intermission, Glitch Report and Stats Update; running in every other step

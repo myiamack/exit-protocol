@@ -1,5 +1,5 @@
 -- 1. Timer constants, guards, and no Math.random or hardcoded team names
-PASS  TIMER_SECONDS exposes mirrorLobby (30), mirrorReveal (1), mirrorShowtime (75) and Round.LEVELS[2] stays auto
+PASS  TIMER_SECONDS exposes mirrorLobby (30), mirrorReveal (1), mirrorShowtime (75) and Round.LEVELS[2] uses mirror
 PASS  Game guards MirrorTrial methods in wrong step and on non-Mirror trial
 -- 2. Full timer chain: 30s lobby -> 1s reveal -> 75s showtime -> close
 PASS  Entering Mirror trial starts lobby, sets 30s mirrorLobby timer, Attendance active, attention stays 100

@@ -1,7 +1,7 @@
 -- 1. Construction, exports, and Round.LEVELS guard
 PASS  MirrorLobby and MirrorTrial reject missing rng
 PASS  MirrorTrial keeps #lobby private and is exported through Trial and MirrorParts
-PASS  Round.LEVELS[2] stays auto until Step 5 while Trial.forRound supports mirror
+PASS  Round.LEVELS[2] uses mirror and Trial.forRound returns MirrorTrial
 -- 2. MirrorLobby direct: active-only, connect/miss, speed cap, bot times, closeDoors
 PASS  MirrorLobby excludes Stuck and Idle players and includes active players only
 PASS  MirrorLobby miss raises tile speed by +2 up to cap 16 with valid glitchReason  -> speeds=[7,9,11,13,15,16,16,16,16]

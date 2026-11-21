@@ -1,5 +1,5 @@
 -- 1. Hook wiring, no Game-to-Bots link, no MirrorParts duplication, and guards
-PASS  No Game-to-Bots link, Bots.mirror delegates without Math.random/MirrorParts/team names, Round.LEVELS[2] stays auto, and guards hold
+PASS  No Game-to-Bots link, Bots.mirror delegates without Math.random/MirrorParts/team names, Round.LEVELS[2] uses mirror, and guards hold
 -- 2. Lobby bot connections inside 3..15s window and beforeClose catch-up
 PASS  Bots connect at exact seeded 3..15s lobby times while human remains unconnected until human connects
 PASS  Lobby closes early at exact last bot connect second (<= 15s) into 1s reveal

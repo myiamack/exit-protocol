@@ -130,13 +130,13 @@ console.log("-- 1. Hook wiring, no Game-to-Bots link, no MirrorParts duplication
   const snapAfterExtra = JSON.stringify(closedCtx.g.toJSON());
 
   expect(
-    "No Game-to-Bots link, Bots.mirror delegates without Math.random/MirrorParts/team names, Round.LEVELS[2] stays auto, and guards hold",
+    "No Game-to-Bots link, Bots.mirror delegates without Math.random/MirrorParts/team names, Round.LEVELS[2] uses mirror, and guards hold",
     !hasGameToBots &&
       !hasMathRandom &&
       !hasMirrorParts &&
       !hasTeamNames &&
       delegatesToTrialAndGame &&
-      Round.LEVELS[2].trialKind === "auto" &&
+      Round.LEVELS[2].trialKind === "mirror" &&
       closedCtx.g.didRun("runTrial") &&
       snapBeforeExtra === snapAfterExtra
   );

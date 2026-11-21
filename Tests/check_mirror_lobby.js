@@ -64,9 +64,9 @@ console.log("-- 1. Construction, exports, and Round.LEVELS guard");
   const forR3 = Trial.forRound(r3, Rng.seeded(12));
   const forMirror = Trial.forRound({ trialKind: "mirror" }, Rng.seeded(12));
   expect(
-    "Round.LEVELS[2] stays auto until Step 5 while Trial.forRound supports mirror",
-    Round.LEVELS[2].trialKind === "auto" &&
-      forR3 instanceof Trial.AutoTrial &&
+    "Round.LEVELS[2] uses mirror and Trial.forRound returns MirrorTrial",
+    Round.LEVELS[2].trialKind === "mirror" &&
+      forR3 instanceof MirrorTrial &&
       forMirror instanceof MirrorTrial
   );
 }

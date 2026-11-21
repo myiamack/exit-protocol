@@ -64,8 +64,8 @@ console.log("-- 1. Construction, exports, privacy, and guard rails");
       !tr.setupStarted
   );
   expect(
-    "Round.LEVELS[2] stays auto until Step 5 and MirrorParts uses no Math.random or hardcoded team names",
-    Round.LEVELS[2].trialKind === "auto" && !hasMathRandom && !hasTeamNames
+    "Round.LEVELS[2] uses mirror and MirrorParts uses no Math.random or hardcoded team names",
+    Round.LEVELS[2].trialKind === "mirror" && !hasMathRandom && !hasTeamNames
   );
 }
 

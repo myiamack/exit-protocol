@@ -1,5 +1,5 @@
 -- 1. Construction, MAX_SCORE, score(attention) 0..7 edges, and guard rails
-PASS  MirrorTrial keeps scoring fields private, Round.LEVELS[2] stays auto, and no Math.random or team names
+PASS  MirrorTrial keeps scoring fields private, Round.LEVELS[2] uses mirror, and no Math.random or team names
 PASS  MirrorTrial.score maps 0..100 cleanly to 0..7 across all rounding and clamp boundaries  -> 21/21 edges
 -- 2. Lobby failure and attention-0 failure
 PASS  Team failing lobby scores 0 with failReason 'lobby' and stays failed

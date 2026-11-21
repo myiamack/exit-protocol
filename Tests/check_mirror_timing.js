@@ -90,14 +90,14 @@ console.log("-- 1. Timer constants, guards, and no Math.random or hardcoded team
   const hasTeamNames = /\b(kestrel|wren|finch|heron)\b/i.test(mirrorSlice) || /\bTeam\s+[A-Z]\w*/.test(mirrorSlice);
 
   expect(
-    "TIMER_SECONDS exposes mirrorLobby (30), mirrorReveal (1), mirrorShowtime (75) and Round.LEVELS[2] stays auto",
+    "TIMER_SECONDS exposes mirrorLobby (30), mirrorReveal (1), mirrorShowtime (75) and Round.LEVELS[2] uses mirror",
     Game.TIMER_SECONDS.mirrorLobby === 30 &&
       Game.TIMER_SECONDS.mirrorReveal === 1 &&
       Game.TIMER_SECONDS.mirrorShowtime === 75 &&
       MirrorTrial.LOBBY_SECONDS === 30 &&
       MirrorTrial.REVEAL_SECONDS === 1 &&
       MirrorTrial.SHOWTIME_SECONDS === 75 &&
-      Round.LEVELS[2].trialKind === "auto" &&
+      Round.LEVELS[2].trialKind === "mirror" &&
       !hasMathRandom &&
       !hasTeamNames
   );

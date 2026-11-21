@@ -8,7 +8,7 @@ import { Sabotage } from "./Sabotage.js";
 const LEVELS = [
   { n: 1, name: "Boot Up",    trialName: "SOP mini-game",                attr: "grit",       cost: 2, judged: false, trialKind: "sop" },
   { n: 2, name: "Sprint 1",   trialName: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "splitBrief" },
-  { n: 3, name: "The Mirror", trialName: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false, trialKind: "auto" },
+  { n: 3, name: "The Mirror", trialName: "Presentation Day",             attr: "focus",      cost: 3, judged: false, trialKind: "mirror" },
   { n: 4, name: "Geek Week",  trialName: "Testing challenge",            attr: "initiative", cost: 4, judged: false, trialKind: "auto" },
   { n: 5, name: "Sprint 2",   trialName: "Fix the broken team",          attr: "composure",  cost: 4, judged: true,  trialKind: "judged" },
   { n: 6, name: "Sprint 3",   trialName: "Final build and dream speech", attr: "composure",  cost: 5, judged: true,  trialKind: "judged" },

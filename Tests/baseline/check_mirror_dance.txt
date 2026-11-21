@@ -1,6 +1,6 @@
 -- 1. Construction, exports, privacy, and guard rails
 PASS  DanceCrew rejects missing rng, raw Team objects, unstarted SetupCrew, and keeps fields private
-PASS  Round.LEVELS[2] stays auto until Step 5 and MirrorParts uses no Math.random or hardcoded team names
+PASS  Round.LEVELS[2] uses mirror and MirrorParts uses no Math.random or hardcoded team names
 -- 2. Dance Crew roster (team sizes 3, 4, 5, 6 and Stuck or Idle exclusions)
 PASS  Dance roster size 3 active -> 1 dancer
 PASS  Dance roster size 4 active -> 2 dancers

@@ -88,6 +88,65 @@ function act(g, T, d) {
       if (r < 0.52) return "close " + g.closeTimer(T.now);
       return "wait";
     }
+    if (t instanceof Trial.MirrorTrial && !g.didRun("runTrial")) {
+      if (t.phase === "lobby") {
+        if (r < 0.2) return "mirrorMiss " + g.mirrorMiss(h.id).ok;
+        if (r < 0.55) return "mirrorConnect " + g.mirrorConnect(h.id).ok;
+        if (r < 0.62) return "close " + g.closeTimer(T.now);
+        return "wait";
+      }
+      if (t.phase === "reveal") return "wait";
+      if (t.phase === "showtime") {
+        const role = t.roleOf(h.id);
+        if (role === "setup") {
+          if (t.isSetupTurn(h.id)) {
+            const st = t.setupTeamState(team);
+            const step = t.setupStep(team);
+            if (step === "cables" && st) {
+              const rem = EP.MirrorData.ports.filter(p => !st.cables.connected.includes(p));
+              if (rem.length) {
+                const port = rem[0];
+                const res = r < 0.25 ? g.mirrorCableMiss(h.id, port) : g.mirrorCableHit(h.id, port);
+                return "mirrorCable " + res.ok;
+              }
+            } else if (step === "sound") {
+              const res = r < 0.3 ? g.mirrorSoundFeedback(h.id) : g.mirrorSoundHeld(h.id);
+              return "mirrorSound " + res.ok;
+            } else if (step === "mic" && st && st.mic.sequence && st.mic.index < st.mic.sequence.length) {
+              const want = st.mic.sequence[st.mic.index];
+              const tap = r < 0.25 ? ((want % EP.MirrorData.mic.count) + 1) : want;
+              return "mirrorMic " + g.mirrorMicTap(h.id, tap).ok;
+            } else if (step === "deck") {
+              const wrongFiles = EP.MirrorData.files.map((f, i) => ({ f, i })).filter(x => !x.f.correct && !(st && st.deck.filesTried.includes(x.i)));
+              const res = r < 0.2 ? g.mirrorReshuffleDeck(team)
+                : (r < 0.4 && wrongFiles.length) ? g.mirrorPickFile(h.id, wrongFiles[0].f.name)
+                : g.mirrorPickFile(h.id, EP.MirrorData.files.find(f => f.correct).name);
+              return "mirrorDeck " + res.ok;
+            } else if (step === "qa") {
+              const qa = t.currentQaFor(team);
+              if (qa) {
+                const res = r < 0.2 ? g.mirrorTimeoutQa(h.id)
+                  : r < 0.4 ? g.mirrorAnswerQa(h.id, (qa.correctIndex + 1) % qa.options.length)
+                  : g.mirrorAnswerQa(h.id, qa.correctIndex);
+                return "mirrorQa " + res.ok;
+              }
+            } else if (step === "wrapUp") {
+              return "mirrorWrapUp " + g.mirrorWrapUp(h.id).ok;
+            }
+          }
+          return "wait";
+        }
+        if (role === "dance") {
+          if (r < 0.5) return "mirrorDanceHit " + g.mirrorDanceHit(h.id, r < 0.25 ? "perfect" : "good").ok;
+          if (r < 0.65) return "mirrorDanceMiss " + g.mirrorDanceMiss(h.id).ok;
+          if (r < 0.75) return "mirrorDanceStray " + g.mirrorDanceStray(h.id).ok;
+          return "wait";
+        }
+        if (r < 0.08) return "close " + g.closeTimer(T.now);
+        return "wait";
+      }
+      return "wait";
+    }
     if (t instanceof Trial.JudgedTrial && !g.didRun("runTrial")) {
       if (!t.writing) { g.startWriting(); Bots.submit(g); return "startWriting"; }
       if (t.writing === "open") {
@@ -191,7 +250,11 @@ for (let seed = 1; seed <= GAMES; seed++) {
         (diffPath(JSON.parse(textA), data) || diffPath(data, JSON.parse(save(B))));
       break;
     }
-    if (B.timer && deadlineCases.filter(c => c.name === B.timer.name).length < 6 && sel() < 0.5) {
+    // Sample mirrorLobby only while an active human is still unconnected, because live bots close the lobby early once all humans connect.
+    const lobbyWaitHuman = B.timer && B.timer.name === "mirrorLobby"
+      ? humans(B).some(p => { const st = B.round.trial.lobbyPlayerState(p.id); return p.isActive() && st && !st.connected; })
+      : true;
+    if (B.timer && lobbyWaitHuman && deadlineCases.filter(c => c.name === B.timer.name).length < 6 && sel() < 0.5) {
       deadlineCases.push({ text, now: TB.now, deadline: B.timer.deadline, name: B.timer.name });
     }
   }
@@ -206,9 +269,7 @@ ok("both copies hold the same state after every action", sameEveryStep, firstDif
 ok("final endings match the game that never reloaded", sameEndings);
 const ALL_STEPS = ["intermission", "briefing", "openFloor", "trial", "glitchReport", "giftWindow", "lockIn", "statsUpdate", "graduation"];
 ok("saved and loaded at every round step", ALL_STEPS.every(s => stepsSaved.has(s)), [...stepsSaved].join(", "));
-const hasMirror = EP.Round.LEVELS.some(l => l.trialKind === "mirror");
-const MIRROR_TIMERS = ["mirrorLobby", "mirrorReveal", "mirrorShowtime"];
-const ALL_TIMERS = Object.keys(Game.TIMER_SECONDS).filter(k => hasMirror || !MIRROR_TIMERS.includes(k));
+const ALL_TIMERS = Object.keys(Game.TIMER_SECONDS);
 ok("saved and loaded while every timer was running", ALL_TIMERS.every(s => timersSaved.has(s)), [...timersSaved].join(", "));
 
 /* ----- 2. passed deadlines ----- */
@@ -256,6 +317,55 @@ ok("no functions, Maps, class objects, undefined or circular links in any save",
   const next = g.rng();                    // the number after the save point
   const g2 = load(JSON.stringify(data), T); // loaded from the save taken before it
   ok("random numbers continue the same sequence after loading", g2.rng() === next);
+}
+
+/* ----- 4. fixed-seed full game through Level 3 Mirror and mid-Level 3 reload ----- */
+console.log("-- 4. Fixed-seed full game (Levels 1 to 7) with Level 3 Mirror and mid-Level 3 reload");
+{
+  const seed = 42;
+  const TA = { now: 1e9 };
+  const dA = Rng.seeded(seed + 5000);
+  const gA = newGame(seed, TA);
+  let snapText = null, snapNow = null, snapRngState = null;
+  let l3TrialKind = null, l3IsMirror = false, l3Attr = null, l3Cost = null, l3Results = null;
+
+  for (let i = 0; i < 5000 && !gA.over; i++) {
+    if (gA.level === 3 && gA.step === "trial") {
+      l3TrialKind = gA.round.trialKind;
+      l3IsMirror = gA.round.trial instanceof Trial.MirrorTrial;
+      l3Attr = gA.round.attr;
+      l3Cost = gA.round.cost;
+      if (gA.round.mirrorResults) l3Results = JSON.parse(JSON.stringify(gA.round.mirrorResults));
+      if (!snapText && l3IsMirror && gA.round.trial.phase === "showtime") {
+        snapText = save(gA);
+        snapNow = TA.now;
+        snapRngState = dA.getState();
+      }
+    }
+    if (act(gA, TA, dA) === null) break;
+    if (gA.level === 3 && gA.round && gA.round.mirrorResults) {
+      l3Results = JSON.parse(JSON.stringify(gA.round.mirrorResults));
+    }
+  }
+
+  let sameMidReload = false;
+  if (snapText) {
+    const TB = { now: snapNow };
+    const dB = Rng.seeded(0);
+    dB.setState(snapRngState);
+    const gB = load(snapText, TB);
+    for (let i = 0; i < 5000 && !gB.over; i++) {
+      if (act(gB, TB, dB) === null) break;
+    }
+    const endA = gA.results().map(r => r.player.id + ":" + r.ending).join();
+    const endB = gB.results().map(r => r.player.id + ":" + r.ending).join();
+    sameMidReload = gB.over && endA === endB && save(gA) === save(gB);
+  }
+
+  ok("fixed-seed full game plays Level 3 as Mirror (Focus, cost 3) and finishes",
+     gA.over && gA.results().length === 16 && l3TrialKind === "mirror" && l3IsMirror &&
+     l3Attr === "focus" && l3Cost === 3 && !!l3Results && Object.keys(l3Results).length === 4);
+  ok("save and load mid-Level 3 in a full game matches unbroken run", !!snapText && sameMidReload);
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed  (" + ((Date.now() - t0) / 1000).toFixed(1) + " s)");

@@ -77,10 +77,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed; zero changes to the 18 existing baselines), and `node Tests/check_mirror_bots.js` (20/20 assertions passed).
 - **Open issues:** None.
 
-### Step 5: Save/load update, wire Level 3 into `Round.LEVELS`, and baseline update (Effort: Medium) - TODO
+### Step 5: Save/load update, wire Level 3 into `Round.LEVELS`, and baseline update (Effort: Medium) - DONE
+- **Built:** Switched `Round.LEVELS` row 3 to `Presentation Day` / `mirror` (Focus, cost 3), documented `mirrorLobby` wake-up behavior in `CLAUDE.md`, extended `Tests/check_save.js` for Mirror actions, all 12 timers, and Part 4 full-game and mid-Level 3 reload, updated the 6 temporary `Round.LEVELS[2]` guards in `Tests/check_mirror_*.js`, and saved updated baselines.
 - **Goal:** Update `Tests/check_save.js` for mid-trial Level 3, switch `Round.LEVELS` row 3 to `trialName: "Presentation Day"`, `trialKind: "mirror"` (Focus, cost 3), confirm Level 1 and Level 2 snapshots do not change, explain Level 3+ baseline diffs, and run `npm run baseline`. No new rule test files in Step 5.
 - **Done when:** `Tests/check_save.js` covers mid-trial Level 3, Level 1 and Level 2 snapshots are unchanged, Level 3+ baseline diffs are explained, and the full baseline suite passes after `npm run baseline`.
 - **Tests:** `npm run build`, `npm test` (after `npm run baseline`)
+- **Files changed:** `rules/Round.js`, `rules/rules.bundle.js`, `CLAUDE.md`, `Tests/check_save.js`, `Tests/check_mirror_lobby.js`, `Tests/check_mirror_setup.js`, `Tests/check_mirror_dance.js`, `Tests/check_mirror_score.js`, `Tests/check_mirror_timing.js`, `Tests/check_mirror_bots.js`, `Tests/baseline/check_rules.txt`, `Tests/baseline/check_steps.txt`, `Tests/baseline/check_teams.txt`, `Tests/baseline/check_balance.txt`, `Tests/baseline/check_cheese.txt`, `Tests/baseline/check_save.txt`, `Tests/baseline/check_mirror_lobby.txt`, `Tests/baseline/check_mirror_setup.txt`, `Tests/baseline/check_mirror_dance.txt`, `Tests/baseline/check_mirror_score.txt`, `Tests/baseline/check_mirror_timing.txt`, `Tests/baseline/check_mirror_bots.txt`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed, 604 assertions across 14 assertion suites plus `check_bundle` and 4 simulation checks), and fixed-clock SHA-256 snapshots at Level 1 and Level 2 matched identically across seeds `[1, 2, 3, 7, 11]`.
+- **Open issues:** None (Step 6a begins screen wiring in `game.js`).
 
 ### Step 6a: Screens - Level 3 flow, Briefing, Host Script, Hint Table, and Sprint 1 Complete unlock (Effort: Medium) - TODO
 - **Goal:** Update `game.js` with the exact Level 3 `BRIEFINGS[3]`, `LEVEL_HINTS[3]` (ghost hints and tea guest story), and `FAC_BY_LEVEL[3]` (Briefing, Trial lobby, Trial showtime); replace "Level 3 locked" on Sprint 1 Complete with a "Start Level 3" button and wire Level 2 -> Level 3 progression; register `mirror` in `TRIAL_SCREENS`; ensure zero hardcoded team names.
