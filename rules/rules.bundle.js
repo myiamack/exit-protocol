@@ -5315,6 +5315,8 @@ class Game {
   mirrorSetupSlots(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupSlots(teamOrId) : []; }
   mirrorRole(playerOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.roleOf(playerOrId) : null; }
   mirrorFailReason(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.failReasonOf(teamOrId) : null; }
+  mirrorSetupTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupTeamState(teamOrId) : null; }
+  mirrorDanceTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceTeamState(teamOrId) : null; }
   trialRanking() { return (this.round && this.round.trial && this.round.trial.ranking) || []; }
   mirrorCheckAttention(teamOrId, now = this.now()) {
     return this._mirrorCall(t => {

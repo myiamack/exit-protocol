@@ -385,28 +385,76 @@ async function fullSevenLevelGame() {
           !LEAK_RE.test(revealText) && noOkFlags()
       );
 
-      // Advance past 1s mirrorReveal deadline into showtime placeholder
+      // Advance past 1s mirrorReveal deadline into showtime
       w.eval('window._mirSimNow = G.timer.deadline; afterClose(G.tick());');
       await sleep(10);
       const showtimePhaseOk = w.eval('G.mirrorPhase() === "showtime"');
       const showtimeScriptOk = $("#fac").textContent.includes("Crews are locked. Setup, work your steps in order. Dancers, keep the room awake. Attention is draining. Go.");
       toggleHost(); await sleep(10);
       const hostRehiddenAtTrial = $("#facBtn").hidden && $("#fac").hidden;
-      const placeholderText = $("#stage").textContent;
+      const showtimeText = $("#stage").textContent;
       check(
         "Level 3 Trial host script is hidden from non-host players and updates from lobby to showtime",
         hostHiddenAtTrial && lobbyPhaseOk && lobbyScriptOk && showtimePhaseOk && showtimeScriptOk && hostRehiddenAtTrial
       );
       check(
-        "Crew Reveal advances into Step 6b showtime placeholder without leaks",
-        placeholderText.includes("Setup and Dance: coming in Steps 6c and 6d") &&
-          !!$("#finishMirrorPlaceholder") && !LEAK_RE.test(placeholderText)
+        "Crew Reveal advances into Step 6c-1 showtime frame without leaks",
+        !!$("#attnBar") && !!$("#attnPct") && !!$("#mirrorSetupFrame") &&
+          !/bot/i.test(showtimeText) && !LEAK_RE.test(showtimeText) && noOkFlags()
       );
 
-      // Restore real clock before finishing trial and advancing to Glitch Report
+      const lv3Role = w.eval("G.mirrorRole(ME)");
+      if (lv3Role === "dance") {
+        check(
+          "Dance Crew player sees Step 6d placeholder during showtime",
+          !!$("#mirrorDancePlaceholder") && $("#mirrorDancePlaceholder").textContent.includes("Dance lane: coming in Step 6d")
+        );
+        for (let g = 0; g < 80 && !w.eval('G.didRun("runTrial")'); g++) {
+          w.eval('window._mirSimNow += 1000; const cl = G.tick(); if (cl.length) afterClose(cl); else drawTimer();');
+        }
+        await sleep(10);
+      } else {
+        for (let g = 0; g < 500 && !w.eval('G.didRun("runTrial")'); g++) {
+          const cur = w.eval('({ step: (G.mirrorSetupTeam(MYTEAM) || {}).currentStep, owner: (G.mirrorSetupTeam(MYTEAM) || {}).currentPlayerId, meId: ME.id })');
+          if (cur.owner === cur.meId) {
+            if (cur.step === "cables") {
+              w.eval(`(() => {
+                for (let k = 0; k < 25; k++) {
+                  const hitEl = document.querySelector('[data-cable-item][data-in-frame="1"]');
+                  if (hitEl) {
+                    const port = hitEl.dataset.cableItem;
+                    const btn = document.querySelector('[data-cable-port="' + port + '"]');
+                    if (btn && !btn.disabled) { btn.click(); return; }
+                  }
+                  drawTimer();
+                }
+              })()`);
+            } else if (cur.step === "sound") {
+              w.eval(`(() => {
+                const lvl = Number((document.querySelector("#soundVal") || {}).textContent || 45);
+                if (lvl < 74) {
+                  const b = document.querySelector('[data-sound-gain="' + (lvl <= 68 ? "10" : "5") + '"]');
+                  if (b) b.click();
+                } else if (lvl > 85) {
+                  const b = document.querySelector('[data-sound-gain="-10"]');
+                  if (b) b.click();
+                }
+                drawTimer();
+              })()`);
+            } else if ($("#mirrorAdvanceStepPlaceholder")) {
+              $("#mirrorAdvanceStepPlaceholder").click();
+            }
+          } else {
+            w.eval('window._mirSimNow += 1000; const cl = G.tick(); if (cl.length) afterClose(cl); else drawTimer();');
+          }
+          await sleep(2);
+        }
+      }
+
+      // Restore real clock before checking completion and advancing to Glitch Report
       w.eval('G._timer.clock = () => Date.now(); G.activity(ME);');
-      $("#finishMirrorPlaceholder").click(); await sleep(20);
-      check("Level 3 Trial placeholder finishes cleanly without leaks", w.eval('G.didRun("runTrial")') && !LEAK_RE.test($("#stage").textContent));
+      await sleep(10);
+      check("Level 3 Showtime finishes cleanly without leaks", w.eval('G.didRun("runTrial")') && !LEAK_RE.test($("#stage").textContent) && noOkFlags());
     } else if (kind === "auto") {
       check("Level " + lv + " renders AutoTrial placeholder", !!$("#runAuto"));
       $("#runAuto").click(); await sleep(20);
@@ -830,6 +878,346 @@ async function mirrorStep6bCases() {
   check("Stuck player sees no signal-grab tile and is excluded from lobby and Crew Reveal", res.meStuckLobbyOk && res.meStuckRevealOk);
 }
 
+async function mirrorStep6c1Cases() {
+  const res = w.eval(`(() => {
+    const LEAK_RE = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i;
+    const HARDCODED_TEAMS_RE = /Team Kestrel|Team Wren|Team Finch|Team Heron/i;
+
+    const advanceToLv3Trial = (game, onOpenFloor) => {
+      for (let round = 1; round <= 2; round++) {
+        game.startNextRound();
+        game.advance();
+        game.advance();
+        game.runTrial();
+        game.endTrial();
+        game.endGlitchReport();
+        game.advance();
+        game.advance();
+        game.lockIn();
+        game.advance();
+        game.computeEarnings();
+        game.placeAllRemaining();
+        game.finishRound();
+      }
+      game.startNextRound();
+      game.advance();
+      if (onOpenFloor) onOpenFloor(game);
+      game.advance();
+    };
+
+    const makeTeam = (tid, size, { allHumans = false, startId = tid * 10 + 1 } = {}) => {
+      const members = [];
+      for (let i = 0; i < size; i++) {
+        members.push(new EP.Player({
+          id: startId + i,
+          name: "T" + tid + "P" + (i + 1),
+          type: "coop",
+          spend: EP.Bots.typicalSpend("coop"),
+          isBot: !allHumans && i > 0,
+        }));
+      }
+      return new EP.Team({ id: tid, name: "Unit " + tid, members });
+    };
+
+    const enterShowtime = (size, { allHumans = true, seed = 610 + size, onOpenFloor = null } = {}) => {
+      let simNow = 7000000 + size * 10000;
+      const t1 = makeTeam(1, size, { allHumans });
+      const t2 = new EP.Team({ id: 2, name: "Unit 2", members: [0, 1, 2].map(i => EP.Bots.makePlayer(21 + i, "BotB_" + i, "coop")) });
+      const t3 = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "BotC_" + i, "indep")) });
+      const t4 = new EP.Team({ id: 4, name: "Unit 4", members: [0, 1, 2].map(i => EP.Bots.makePlayer(41 + i, "BotD_" + i, "contra")) });
+      const game = new EP.Game({ teams: [t1, t2, t3, t4], rng: EP.Rng.seeded(seed), clock: () => simNow, hooks: EP.Bots.hooks });
+      advanceToLv3Trial(game, onOpenFloor);
+      game.start();
+      simNow += 16000;
+      game.tick();
+      for (const p of t1.active()) game.mirrorConnect(p);
+      simNow = game.timer.deadline;
+      game.tick();
+      return { game, team: t1, getNow: () => simNow, advanceMs: ms => { simNow += ms; game.tick(); } };
+    };
+
+    const mountView = (game, me, team, state = {}) => {
+      const box = document.createElement("div");
+      let curView = null;
+      const renderMount = () => {
+        curView = MirrorView.screen({
+          game, me, team, state, attrName: "Focus",
+          sabotageAlert: "", costHint: () => "Cost hint", onRender: renderMount,
+        });
+        box.innerHTML = curView.html;
+        if (curView.bind) curView.bind(box);
+      };
+      renderMount();
+      return {
+        box,
+        state,
+        render: renderMount,
+        tick: () => { if (curView && curView.tick) curView.tick(); },
+        text: () => box.textContent || "",
+        q: s => box.querySelector(s),
+        qa: s => [...box.querySelectorAll(s)],
+        flags: () => [...box.querySelectorAll(".flag")].map(el => el.textContent.trim()),
+      };
+    };
+
+    // 1. Setup Crew frame shows the right 5 steps & owners for 1, 2, and 3 Setup players + live team names
+    const checkSplitFrame = (size, expectedCount, onOpenFloor = null) => {
+      const ctx = enterShowtime(size, { allHumans: true, onOpenFloor });
+      const slots = ctx.game.mirrorSetupSlots(ctx.team);
+      const ownerPlayer = ctx.team.members.find(p => p.id === slots[0].playerId);
+      const v = mountView(ctx.game, ownerPlayer, ctx.team);
+      const rows = v.qa("[data-setup-step]");
+      const stepOrder = rows.map(r => r.dataset.setupStep);
+      const ownersMatch = rows.every(r => {
+        const step = r.dataset.setupStep;
+        const slot = slots.find(s => s.steps.includes(step));
+        return slot && r.dataset.stepOwner === String(slot.playerId) && r.textContent.includes(slot.name);
+      });
+      const statesOk = rows[0].dataset.stepState === "live" && rows.slice(1).every(r => r.dataset.stepState === "waiting");
+      const text = v.text();
+      return {
+        ctx,
+        v,
+        slots,
+        ok: slots.length === expectedCount &&
+          JSON.stringify(stepOrder) === '["cables","sound","mic","deck","qa"]' &&
+          ownersMatch &&
+          statesOk &&
+          !HARDCODED_TEAMS_RE.test(text) &&
+          !LEAK_RE.test(text) &&
+          !/bot/i.test(text) &&
+          v.flags().every(f => f !== "OK"),
+      };
+    };
+
+    const split1 = checkSplitFrame(3, 1, g => {
+      const m = g.teams[0].members;
+      m[1].glitches = 2;
+      m[2].glitches = 2;
+    });
+    const split1ZeroDancersOk = split1.v.text().includes("Dance Crew (0)");
+
+    const split2 = checkSplitFrame(4, 2);
+    const split2DanceOk = split2.v.text().includes("Dance Crew (2)");
+
+    const split3 = checkSplitFrame(5, 3);
+    const { game: g3, team: team3 } = split3.ctx;
+    const slots3 = split3.slots;
+    const s0 = team3.members.find(p => p.id === slots3[0].playerId);
+    const s1 = team3.members.find(p => p.id === slots3[1].playerId);
+    const s2 = team3.members.find(p => p.id === slots3[2].playerId);
+    const d0 = team3.members.find(p => g3.mirrorRole(p) === "dance");
+
+    // 2. Cables owner-only view + waiting view for non-owner
+    const v0 = split3.v;
+    const v1 = mountView(g3, s1, team3);
+    const cablesOwnerGateOk = !!v0.q("#mirrorCablesStep") && !v0.q("#mirrorWaitingView") && !v0.q("#mirrorSoundStep") &&
+      v0.qa("[data-cable-port]").every(btn => !HARDCODED_TEAMS_RE.test(btn.textContent));
+    const cablesWaitGateOk = !v1.q("#mirrorCablesStep") && !v1.q("#mirrorSoundStep") && !!v1.q("#mirrorWaitingView") &&
+      v1.q("#mirrorWaitingView").textContent.includes(s0.name) &&
+      v1.q("#mirrorWaitingView").textContent.includes("Cables") &&
+      v1.q("#mirrorWaitProgress").textContent.includes("0 of 4");
+
+    // 3. Cables miss (spark) and hits report to rules, update waiting view & frame
+    const attBeforeSpark = g3.mirrorAttention(team3);
+    v0.q('[data-cable-port="HDMI"]').click();
+    const stAfterSpark = g3.mirrorSetupTeam(team3);
+    const attAfterSpark = g3.mirrorAttention(team3);
+    const cablesMissOk = stAfterSpark.cables.sparks === 1 &&
+      stAfterSpark.penalties === 3 &&
+      attAfterSpark === attBeforeSpark - 3 &&
+      v0.q("#mirrorMsg").textContent.includes("Spark") &&
+      v0.q("#mirrorMsg").textContent.includes("3");
+
+    let waitUpdatedOnFirstCable = false;
+    for (let k = 0; k < 200; k++) {
+      const st = g3.mirrorSetupTeam(team3);
+      if (!st || st.currentStep !== "cables") break;
+      const inFrame = v0.q('[data-cable-item][data-in-frame="1"]');
+      if (inFrame) {
+        const port = inFrame.dataset.cableItem;
+        const btn = v0.q('[data-cable-port="' + port + '"]');
+        if (btn && !btn.disabled) {
+          btn.click();
+          if (g3.mirrorSetupTeam(team3).cables.connected.length === 1) {
+            v1.render();
+            waitUpdatedOnFirstCable = v1.q("#mirrorWaitProgress").textContent.includes("1 of 4");
+          }
+          continue;
+        }
+      }
+      v0.tick();
+    }
+    const stAfterCables = g3.mirrorSetupTeam(team3);
+    const cablesDoneFrameOk = stAfterCables.completedSteps.includes("cables") &&
+      stAfterCables.currentStep === "sound" &&
+      stAfterCables.currentPlayerId === s0.id &&
+      v0.q('[data-setup-step="cables"]').dataset.stepState === "done" &&
+      v0.q('[data-setup-step="sound"]').dataset.stepState === "live" &&
+      !v0.q("#mirrorCablesStep") &&
+      !!v0.q("#mirrorSoundStep");
+
+    // Sound owner-only & waiting view
+    v1.render();
+    const soundGateOk = !v1.q("#mirrorSoundStep") && !!v1.q("#mirrorWaitingView") &&
+      v1.q("#mirrorWaitingView").textContent.includes(s0.name) &&
+      v1.q("#mirrorWaitingView").textContent.includes("Sound");
+
+    // 4. Sound feedback miss + 3s hold hit + handoff to Slot 1
+    for (let k = 0; k < 10; k++) {
+      if (g3.mirrorSetupTeam(team3).sound.feedbacks >= 1) break;
+      v0.q('[data-sound-gain="10"]').click();
+    }
+    const stAfterFeedback = g3.mirrorSetupTeam(team3);
+    const soundMissOk = stAfterFeedback.sound.feedbacks === 1 &&
+      stAfterFeedback.penalties === 7 &&
+      v0.q("#soundVal").textContent === "45" &&
+      v0.q("#holdN").textContent.includes("0.0s") &&
+      v0.q("#mirrorMsg").textContent.includes("FEEDBACK") &&
+      v0.q("#mirrorMsg").textContent.includes("4");
+
+    for (let k = 0; k < 400; k++) {
+      const st = g3.mirrorSetupTeam(team3);
+      if (!st || st.currentStep !== "sound") break;
+      const lvl = Number((v0.q("#soundVal") || {}).textContent || 45);
+      if (lvl < 74) {
+        v0.q('[data-sound-gain="' + (lvl <= 68 ? "10" : "5") + '"]').click();
+      } else if (lvl > 85) {
+        v0.q('[data-sound-gain="-10"]').click();
+      }
+      v0.tick();
+    }
+    const stAfterSound = g3.mirrorSetupTeam(team3);
+    v0.render();
+    v1.render();
+    const soundDoneAndHandoffOk = stAfterSound.sound.locked === true &&
+      stAfterSound.completedSteps.includes("sound") &&
+      stAfterSound.currentStep === "mic" &&
+      stAfterSound.currentPlayerId === s1.id &&
+      !v0.q("#mirrorSoundStep") &&
+      !!v0.q("#mirrorWaitingView") &&
+      v0.q("#mirrorWaitingView").textContent.includes(s1.name) &&
+      v0.q("#mirrorWaitingView").textContent.includes("Mic") &&
+      v0.q('[data-setup-step="sound"]').dataset.stepState === "done" &&
+      v0.q('[data-setup-step="mic"]').dataset.stepState === "live" &&
+      !!v1.q('#mirrorStepPlaceholder[data-placeholder-step="mic"]');
+
+    // Dance Crew sees placeholder during showtime
+    const vDance = mountView(g3, d0, team3);
+    const dancePlaceholderOk = !!vDance.q("#mirrorDancePlaceholder") &&
+      vDance.q("#mirrorDancePlaceholder").textContent.includes("Dance lane: coming in Step 6d") &&
+      !!vDance.q("#attnBar") &&
+      !!vDance.q("#mirrorSetupFrame") &&
+      !vDance.q("#mirrorCablesStep") &&
+      !vDance.q("#mirrorSoundStep") &&
+      !vDance.q("#mirrorStepPlaceholder") &&
+      !LEAK_RE.test(vDance.text()) &&
+      !/bot/i.test(vDance.text()) &&
+      vDance.flags().every(f => f !== "OK");
+
+    // 5. Placeholders for mic, deck, Q&A, wrapUp keep flow going to end of Level 3
+    v1.q("#mirrorAdvanceStepPlaceholder").click(); // mic -> deck (still s1)
+    const afterMicStep = g3.mirrorSetupTeam(team3).currentStep;
+    const deckPlaceholderOk = afterMicStep === "deck" && !!v1.q('#mirrorStepPlaceholder[data-placeholder-step="deck"]');
+    v1.q("#mirrorAdvanceStepPlaceholder").click(); // deck -> qa (hands off to s2)
+    const afterDeckSt = g3.mirrorSetupTeam(team3);
+    const v2 = mountView(g3, s2, team3);
+    const qaHandoffOk = afterDeckSt.currentStep === "qa" && afterDeckSt.currentPlayerId === s2.id &&
+      !!v1.q("#mirrorWaitingView") && v1.q("#mirrorWaitingView").textContent.includes(s2.name) &&
+      !!v2.q('#mirrorStepPlaceholder[data-placeholder-step="qa"]');
+    v2.q("#mirrorAdvanceStepPlaceholder").click(); // qa -> wrapUp (still s2)
+    const wrapPlaceholderOk = g3.mirrorSetupTeam(team3).currentStep === "wrapUp" &&
+      !!v2.q('#mirrorStepPlaceholder[data-placeholder-step="wrapUp"]');
+    v2.q("#mirrorAdvanceStepPlaceholder").click(); // wrapUp -> closes trial
+    const placeholderFlowEndOk = g3.didRun("runTrial") &&
+      /Score \\d+ of 7/.test(v2.text()) &&
+      !LEAK_RE.test(v2.text()) &&
+      !/bot/i.test(v2.text());
+
+    // 6. Bot-owned step runs & bot hiccup shows its attention cost
+    let botCase = null;
+    for (let seed = 1; seed <= 80; seed++) {
+      const ctx = enterShowtime(4, { allHumans: false, seed });
+      const st0 = ctx.game.mirrorSetupTeam(ctx.team);
+      const human = ctx.team.members[0];
+      if (!st0 || st0.slots.length < 2 || !st0.slots[0].isBot || st0.slots[1].playerId !== human.id) continue;
+      const probeGame = EP.Game.fromJSON(ctx.game.toJSON(), { clock: ctx.getNow, hooks: EP.Bots.hooks });
+      ctx.advanceMs(4000);
+      const stAt4 = ctx.game.mirrorSetupTeam(ctx.team);
+      if (stAt4 && stAt4.completedSteps.includes("cables") && stAt4.botHiccups >= 1) {
+        // Rewind to t=1s using probeGame so we can mount screen before t=4s and observe live tick()
+        let pNow = ctx.getNow() - 4000;
+        const pTeam = probeGame.teams[0];
+        const pHuman = pTeam.members[0];
+        probeGame._timer.clock = () => pNow;
+        pNow += 1000;
+        probeGame.tick();
+        const vBotWait = mountView(probeGame, pHuman, pTeam);
+        const beforeBotWaitOk = !!vBotWait.q("#mirrorWaitingView") &&
+          vBotWait.q("#mirrorWaitingView").textContent.includes(st0.slots[0].name) &&
+          vBotWait.q('[data-setup-step="cables"]').dataset.stepState === "live" &&
+          !vBotWait.q("#mirrorSetupHiccups") &&
+          !/bot/i.test(vBotWait.text());
+        pNow += 3000;
+        probeGame.tick();
+        vBotWait.tick();
+        const stAfterBot = probeGame.mirrorSetupTeam(pTeam);
+        const botText = vBotWait.text();
+        const hiccupEl = vBotWait.q("#mirrorSetupHiccups");
+        const msgEl = vBotWait.q("#mirrorMsg");
+        botCase = {
+          beforeBotWaitOk,
+          stepAdvanced: stAfterBot.completedSteps.includes("cables") && stAfterBot.currentStep === "sound",
+          hiccupInRules: stAfterBot.botHiccups === 1 && stAfterBot.penalties === 3,
+          frameUpdated: vBotWait.q('[data-setup-step="cables"]').dataset.stepState === "done" &&
+            vBotWait.q('[data-setup-step="sound"]').dataset.stepState === "live",
+          hiccupCostShown: !!hiccupEl && hiccupEl.textContent.includes("3") &&
+            !!msgEl && msgEl.textContent.includes("after a hiccup") && msgEl.textContent.includes("3"),
+          noBotWordOrLeaks: !/bot/i.test(botText) && !LEAK_RE.test(botText) && vBotWait.flags().every(f => f !== "OK"),
+        };
+        break;
+      }
+    }
+
+    return {
+      split1Ok: split1.ok && split1ZeroDancersOk,
+      split2Ok: split2.ok && split2DanceOk,
+      split3Ok: split3.ok,
+      cablesOwnerGateOk,
+      cablesWaitGateOk,
+      cablesMissOk,
+      waitUpdatedOnFirstCable,
+      cablesDoneFrameOk,
+      soundGateOk,
+      soundMissOk,
+      soundDoneAndHandoffOk,
+      dancePlaceholderOk,
+      deckPlaceholderOk,
+      qaHandoffOk,
+      wrapPlaceholderOk,
+      placeholderFlowEndOk,
+      botCase,
+    };
+  })()`);
+
+  check("Setup Crew frame shows right 5 step owners for 1 Setup player without leaks or hardcoded teams", res.split1Ok);
+  check("Setup Crew frame shows right 5 step owners for 2 Setup players without leaks or hardcoded teams", res.split2Ok);
+  check("Setup Crew frame shows right 5 step owners for 3 Setup players without leaks or hardcoded teams", res.split3Ok);
+  check("Cables screen shows only for its owner and non-owners see waiting view with progress", res.cablesOwnerGateOk && res.cablesWaitGateOk);
+  check("Cables miss reports spark penalty to rules and updates attention bar", res.cablesMissOk);
+  check("Cables hits report to rules, update waiting progress, and advance frame to Sound", res.waitUpdatedOnFirstCable && res.cablesDoneFrameOk);
+  check("Sound screen shows only for its owner and non-owners see waiting view", res.soundGateOk);
+  check("Sound feedback miss reports penalty to rules and resets hold timer", res.soundMissOk);
+  check("Sound 3s hold reports lock to rules and hands off to next owner", res.soundDoneAndHandoffOk);
+  check("Dance Crew player sees Step 6d placeholder during showtime without leaks", res.dancePlaceholderOk);
+  check("Placeholders for mic, deck, Q&A, and wrapUp keep Setup flow going to end of Level 3", res.deckPlaceholderOk && res.qaHandoffOk && res.wrapPlaceholderOk && res.placeholderFlowEndOk);
+  check(
+    "Bot-owned setup step runs on schedule and bot hiccup shows its attention cost without bot tag",
+    !!res.botCase && res.botCase.beforeBotWaitOk && res.botCase.stepAdvanced && res.botCase.hiccupInRules &&
+      res.botCase.frameUpdated && res.botCase.hiccupCostShown && res.botCase.noBotWordOrLeaks
+  );
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -859,6 +1247,8 @@ w.addEventListener("load", async () => {
     await voteTestPage();
     log("run 6: Mirror Step 6b lobby and crew reveal edge cases");
     await mirrorStep6bCases();
+    log("run 7: Mirror Step 6c-1 Setup Crew frame, cables, and sound");
+    await mirrorStep6c1Cases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

@@ -104,10 +104,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (89 passed, 0 failed, 0 console errors).
 - **Open issues:** Showtime uses the Step 6b placeholder (`"Setup and Dance: coming in Steps 6c and 6d."`) until Setup Crew and Dance Crew screens are built in Steps 6c to 6e.
 
-### Step 6c-1: Screens - Setup Crew frame, cables, and sound steps (Effort: Medium) - TODO
+### Step 6c-1: Screens - Setup Crew frame, cables, and sound steps (Effort: Medium) - DONE
+- **Built:** Added two read-only one-line pass-throughs on `Game` (`mirrorSetupTeam`, `mirrorDanceTeam`) in `rules/Game.js` and rebuilt `rules/rules.bundle.js`; built Step 6c-1 showtime views in `mirror-view.js` and `styles.css` (Audience Attention bar with rules countdown, Setup Crew 5-step checklist frame with owners/live/done states and bot hiccup cost without bot tags, Dance Crew readout panel, Cables moving belt with live team names and spark/hit reporting, Sound check drift/spikes/feedback and 3s hold, non-owner waiting view with live step progress, Step 6c-2 placeholders for mic/deck/Q&A/wrap-up, and Step 6d Dance Crew placeholder), and extended `Tests/check_screens.js`.
 - **Goal:** Build the Setup Crew showtime shell and first two steps in `mirror-view.js` and `styles.css`: Audience Attention bar, live step checklist for waiting Setup players, Dance Crew readout panel, cables step (moving belt and machines, no hardcoded team names), and sound step (`-10/+5/+10`, green zone 70-85 for 3s, 100 feedback reset). Screen handles motion and timing and reports results to `G`.
 - **Done when:** Waiting Setup players see the live checklist and Dance Crew readout, active Setup players can complete cables and sound with results routed through `G`, and no hardcoded team names appear.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+- **Files changed:** `rules/Game.js`, `rules/rules.bundle.js`, `mirror-view.js`, `styles.css`, `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (102 passed, 0 failed, 0 console errors).
+- **Open issues:** Mic, deck, Q&A, and wrap-up use plain Step 6c-2 placeholders and Dance Crew uses the Step 6d placeholder until those steps are built.
 
 ### Step 6c-2: Screens - Setup Crew mic, deck, Q&A, and Wrap up (Effort: Medium) - TODO
 - **Goal:** Build the remaining Setup Crew steps and wrap-up in `mirror-view.js` and `styles.css`: mic step (3/4/5 memory rounds with flash and `?`), deck step (6-file reshuffling grid), Q&A step (3 rapid-fire questions with countdown bar), and the "Wrap up the presentation" button for the last Setup player. Screen handles display timing and reports results to `G`.
