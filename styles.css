@@ -427,3 +427,21 @@ body.menucur.curgl,body.menucur.curgl button,body.menucur.curgl input{cursor:var
 .atrk.mix{position:relative;overflow:visible}
 .atrk.mix .zn{position:absolute;left:70%;width:15%;top:-4px;bottom:-4px;border:2px dashed var(--ok);border-radius:6px;pointer-events:none}
 .atrk.mix i.zone{background:linear-gradient(90deg,var(--ok2),var(--ok))}
+/* Presentation Day (Level 3, Step 6c-2: mic, deck, Q&A, wrap up) */
+.mics{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.cable{border:3px solid var(--edge);border-radius:10px;background:var(--frame3);color:var(--ink);font-family:var(--mono);font-size:1rem;padding:6px 14px}
+.cable:disabled{opacity:.45;cursor:not-allowed}
+.cable.mic.done{border-color:var(--ok);color:var(--ok)}
+.mfiles{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mfile{flex:1 1 44%;text-align:left;border:3px solid var(--edge);border-radius:10px;background:var(--cream);color:#2a1a0c;font-family:var(--mono);font-size:.95rem;padding:8px 12px;overflow-wrap:anywhere}
+.mfile.bad{background:#ffb3bd;opacity:.65}
+.mfile.ok{background:#9ee6a8}
+.mfile:disabled{cursor:default}
+.mqa{display:grid;gap:8px}
+.mq{background:var(--edge);border:3px solid var(--pink);border-radius:12px;padding:10px 14px;font-family:var(--code);font-size:1.2rem;color:var(--sky)}
+.mopt{text-align:left;border:3px solid var(--edge);border-radius:10px;background:#1d232e;color:var(--ink);padding:8px 12px;display:flex;gap:10px;align-items:baseline}
+.mopt:hover:not(:disabled){filter:brightness(1.2)}
+.mopt .num{font-family:var(--px);color:var(--gold);min-width:1.5em}
+.atrk.qacd{height:10px;margin:4px 0 8px}
+.atrk.qacd i{background:linear-gradient(90deg,var(--ok2),var(--gold))}
+.atrk.qacd i.low{background:linear-gradient(90deg,var(--red2),var(--bad))}

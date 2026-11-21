@@ -1,4 +1,4 @@
-/* Level 3 Mirror (Presentation Day) trial screens: Lobby, Crew Reveal, Setup Crew frame, cables and sound steps.
+/* Level 3 Mirror (Presentation Day) trial screens: Lobby, Crew Reveal, Setup Crew (cables, sound, mic, deck, Q&A, wrap up).
    Screen code only, loaded by index.html before game.js.
    Rules live in rules/Trial.js (MirrorTrial) and rules/MirrorParts.js. */
 (function (root) {
@@ -55,8 +55,15 @@
         ? `${base} · ${setup.sound.feedbacks} feedback reset${setup.sound.feedbacks === 1 ? "" : "s"}`
         : base;
     }
-    if (step === "mic") return `Round ${setup.mic.round + 1} of ${EP.MirrorData.mic.roundLengths.length}`;
-    if (step === "deck") return setup.deck.grabbed ? "Signed deck found" : "Searching shared drive for the signed deck";
+    if (step === "mic") {
+      const len = (setup.mic.sequence && setup.mic.sequence.length) || EP.MirrorData.mic.roundLengths[setup.mic.round] || 3;
+      return `Round ${setup.mic.round + 1} of ${EP.MirrorData.mic.roundLengths.length} · ${setup.mic.index} of ${len}`;
+    }
+    if (step === "deck") {
+      if (setup.deck.grabbed) return "Signed deck found";
+      const n = setup.deck.filesTried.length;
+      return n ? `Searching shared drive (${n} wrong file${n === 1 ? "" : "s"} ruled out)` : "Searching shared drive for the signed deck";
+    }
     if (step === "qa") return `Question ${Math.min(setup.qa.index + 1, EP.MirrorData.qaItems.length)} of ${EP.MirrorData.qaItems.length}`;
     if (step === "wrapUp") return "Wrapping up the presentation…";
     return "";
@@ -71,8 +78,13 @@
       st.sound.feedbacks,
       st.mic.round,
       st.mic.index,
+      st.mic.wrongs,
       st.deck.grabbed ? 1 : 0,
+      st.deck.filesTried.length,
       st.qa.index,
+      st.qa.right,
+      st.qa.wrong,
+      st.qa.timeouts,
     ].join(":");
   }
 
@@ -94,6 +106,9 @@
     m.danceCamCount = 0;
     m.cables = { tick: 0, belt: [], bag: [], nextSpawn: 0, nextId: 1 };
     m.sound = { tick: 0, level: S.start, holdTicks: 0, spikeAt: 0 };
+    m.mic = { tick: 0, hideAt: 0, flashKey: null };
+    m.deck = { tick: 0, shuffleAt: 0, active: false };
+    m.qa = { tick: 0, deadline: 0, qKey: null };
   }
 
   /* opts:
@@ -406,6 +421,56 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
         ms.lastDanceTotalBoost = dance.dancers.reduce((sum, d) => sum + d.boost, 0);
       }
     }
+    if (setup) {
+      if (setup.currentStep !== "mic") ms.mic.flashKey = null;
+      if (setup.currentStep !== "deck") ms.deck.active = false;
+      if (setup.currentStep !== "qa") ms.qa.qKey = null;
+    }
+
+    const ensureMicFlash = st => {
+      if (!st || st.currentStep !== "mic" || !st.mic.sequence) {
+        ms.mic.flashKey = null;
+        return;
+      }
+      const key = `${st.mic.round}:${st.mic.wrongs}:${st.mic.sequence.join(",")}`;
+      if (ms.mic.flashKey !== key) {
+        ms.mic.flashKey = key;
+        if (st.mic.index === 0) {
+          const M = EP.MirrorData.mic;
+          const dur = (st.mic.round === 0 && st.mic.wrongs === 0)
+            ? M.flashRound1Ticks
+            : M.flashBaseTicks + st.mic.sequence.length;
+          ms.mic.hideAt = ms.mic.tick + dur;
+        } else {
+          ms.mic.hideAt = ms.mic.tick;
+        }
+      }
+    };
+
+    const ensureDeckTimer = st => {
+      if (!st || st.currentStep !== "deck") {
+        ms.deck.active = false;
+        return;
+      }
+      if (!ms.deck.active) {
+        ms.deck.active = true;
+        ms.deck.tick = 0;
+        ms.deck.shuffleAt = EP.MirrorData.deck.reshuffleTicks;
+      }
+    };
+
+    const ensureQaTimer = st => {
+      if (!st || st.currentStep !== "qa" || !st.qa.order || st.qa.index >= st.qa.order.length) {
+        ms.qa.qKey = null;
+        return;
+      }
+      const itemIndex = st.qa.order[st.qa.index];
+      const key = `${st.qa.index}:${itemIndex}`;
+      if (ms.qa.qKey !== key) {
+        ms.qa.qKey = key;
+        ms.qa.deadline = ms.qa.tick + EP.MirrorData.qa.countdownTicks;
+      }
+    };
 
     const renderAttentionBarHTML = () => {
       const att = teamAttentionPct();
@@ -534,17 +599,71 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
 </div>`;
     };
 
-    const renderStepPlaceholderHTML = step => {
-      const cfg = {
-        mic: { label: "Step 3 · Mic check", text: "Mic check: coming in Step 6c-2.", btn: "Continue to Deck ▶" },
-        deck: { label: "Step 4 · Grab the deck", text: "Grab the deck: coming in Step 6c-2.", btn: "Continue to Q&A ▶" },
-        qa: { label: "Step 5 · Rapid-fire Q&A", text: "Rapid-fire Q&A: coming in Step 6c-2.", btn: "Continue to Wrap up ▶" },
-        wrapUp: { label: "Wrap up", text: "Wrap up: coming in Step 6c-2.", btn: "Wrap up presentation ▶" },
-      }[step] || { label: "Setup", text: "Coming in Step 6c-2.", btn: "Continue ▶" };
-      return `<div class="panel" id="mirrorStepPlaceholder" data-placeholder-step="${esc(step)}">
-  <span class="label">${esc(cfg.label)}</span>
-  <p>${esc(cfg.text)}</p>
-  <div class="row"><button type="button" class="btn green" id="mirrorAdvanceStepPlaceholder" data-placeholder-step="${esc(step)}">${esc(cfg.btn)}</button></div>
+    const renderMicStepHTML = st => {
+      ensureMicFlash(st);
+      const M = EP.MirrorData.mic;
+      const seq = st.mic.sequence || [];
+      const flashing = ms.mic.tick < ms.mic.hideAt;
+      const totalRounds = M.roundLengths.length;
+      const seqText = flashing ? seq.join(" · ") : "? ".repeat(seq.length).trim() + " (from memory)";
+      const btns = Array.from({ length: M.count }, (_, idx) => {
+        const n = idx + 1;
+        const doneHit = !flashing && seq.slice(0, st.mic.index).includes(n);
+        return `<button type="button" class="cable mic ${doneHit ? "done" : ""}" data-mic="${n}" ${flashing ? "disabled" : ""}>MIC ${n}</button>`;
+      }).join("");
+      return `<div class="panel" id="mirrorMicStep" data-mic-round="${st.mic.round}" data-mic-len="${seq.length}">
+  <span class="label">Step 3 · Mic check · three rounds from memory</span>
+  <p class="hint">Round ${st.mic.round + 1} of ${totalRounds}. Watch the flash, then tap it back from memory: <b id="micSeqDisp" data-flashing="${flashing ? "1" : "0"}">${esc(seqText)}</b> Each round runs longer than the last. A wrong tap costs ${M.wrongPenalty} attention and flashes a new order.</p>
+  <div class="mics">${btns}<span class="hint" id="micProgress">round ${st.mic.round + 1} of ${totalRounds} · ${st.mic.index} of ${seq.length}</span></div>
+</div>`;
+    };
+
+    const renderDeckStepHTML = st => {
+      ensureDeckTimer(st);
+      const D = EP.MirrorData.deck;
+      const files = EP.MirrorData.files;
+      const signed = files.find(f => f.correct);
+      const order = st.deck.fileOrder || files.map((_, i) => i);
+      const buttons = order.map((fileIdx, pos) => {
+        const f = files[fileIdx];
+        const tried = st.deck.filesTried.includes(fileIdx);
+        return `<button type="button" class="mfile ${tried ? "bad" : ""}" id="fileBtn${fileIdx}" data-file="${fileIdx}" data-file-order="${pos}" ${tried ? "disabled" : ""}>${esc(f.name)}</button>`;
+      }).join("");
+      return `<div class="panel" id="mirrorDeckStep">
+  <span class="label">Step 4 · Grab the deck · the drive keeps shuffling</span>
+  <p class="hint">The shared drive reshuffles every couple of seconds. Grab ${esc(signed ? signed.name : "the signed deck")} while you can find it. A wrong file costs ${D.wrongPenalty} attention and triggers an extra reshuffle.</p>
+  <div class="mfiles" id="fileGrid">${buttons}</div>
+</div>`;
+    };
+
+    const renderQaStepHTML = st => {
+      ensureQaTimer(st);
+      const Q = EP.MirrorData.qa;
+      const order = st.qa.order || [];
+      const itemIndex = order[st.qa.index];
+      const item = EP.MirrorData.qaItems[itemIndex];
+      const leftT = Math.max(0, ms.qa.deadline - ms.qa.tick);
+      const pct = Math.round((leftT / Q.countdownTicks) * 100);
+      const optionsHTML = item.options.map((opt, i) => `<button type="button" class="mopt" data-qa="${i}"><span class="num">${i + 1}.</span><span>${esc(opt)}</span></button>`).join("");
+      return `<div class="panel" id="mirrorQaStep" data-qa-index="${st.qa.index}" data-qa-item="${itemIndex}">
+  <div class="row" style="justify-content:space-between">
+    <span class="label">Step 5 · The Q&amp;A gauntlet · rapid fire</span>
+    <span class="counter" id="qaCount">Question ${st.qa.index + 1} of ${order.length}</span>
+  </div>
+  <div class="mq" id="qaQuestion">${esc(item.question)}</div>
+  <span class="atrk qacd" id="qaCd" data-ticks-left="${leftT}"><i style="width:${pct}%" class="${leftT <= Q.lowWarningTicks ? "low" : ""}"></i></span>
+  <div class="mqa">${optionsHTML}</div>
+  <span class="hint">Answer before the bar empties. Hesitating costs ${Q.wrongPenalty} attention, a wrong answer costs ${Q.wrongPenalty}, landing it restores up to ${Q.rightRecover} lost attention.</span>
+</div>`;
+    };
+
+    const renderWrapUpStepHTML = st => {
+      const totalQa = st.qa.order ? st.qa.order.length : EP.MirrorData.qaItems.length;
+      return `<div class="panel" id="mirrorWrapUpStep">
+  <span class="label">Wrap up · Presentation ready</span>
+  <p>The deck held. Medline is nodding. All ${EP.MirrorData.setupSteps.length} setup steps are done (${st.qa.right} of ${totalQa} Q&amp;A right).</p>
+  <p class="hint">Press the button below to lock in your team's Audience Attention and end the presentation.</p>
+  <div class="row"><button type="button" class="btn green" id="wrapUp">Wrap up the presentation</button></div>
 </div>`;
     };
 
@@ -569,7 +688,10 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
       if (setup.currentPlayerId === ME.id) {
         if (setup.currentStep === "cables") stepPanelHTML = renderCablesStepHTML(setup);
         else if (setup.currentStep === "sound") stepPanelHTML = renderSoundStepHTML();
-        else stepPanelHTML = renderStepPlaceholderHTML(setup.currentStep);
+        else if (setup.currentStep === "mic") stepPanelHTML = renderMicStepHTML(setup);
+        else if (setup.currentStep === "deck") stepPanelHTML = renderDeckStepHTML(setup);
+        else if (setup.currentStep === "qa") stepPanelHTML = renderQaStepHTML(setup);
+        else stepPanelHTML = renderWrapUpStepHTML(setup);
       } else {
         stepPanelHTML = renderWaitingViewHTML(setup);
       }
@@ -614,6 +736,35 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
       if (val) val.textContent = String(snd.level);
       const hold = mountedRoot.querySelector("#holdN");
       if (hold) hold.textContent = `holding ${(snd.holdTicks / 4).toFixed(1)}s of ${S.holdSeconds.toFixed(1)}s`;
+    };
+
+    const updateMicUI = st => {
+      if (!mountedRoot || !st || !st.mic.sequence) return;
+      const seq = st.mic.sequence;
+      const flashing = ms.mic.tick < ms.mic.hideAt;
+      const disp = mountedRoot.querySelector("#micSeqDisp");
+      if (disp) {
+        disp.dataset.flashing = flashing ? "1" : "0";
+        disp.textContent = flashing ? seq.join(" · ") : "? ".repeat(seq.length).trim() + " (from memory)";
+      }
+      mountedRoot.querySelectorAll("[data-mic]").forEach(btn => {
+        const n = Number(btn.dataset.mic);
+        btn.disabled = flashing;
+        btn.classList.toggle("done", !flashing && seq.slice(0, st.mic.index).includes(n));
+      });
+    };
+
+    const updateDeckOrderUI = fileOrder => {
+      if (!mountedRoot || !Array.isArray(fileOrder)) return;
+      const grid = mountedRoot.querySelector("#fileGrid");
+      if (!grid) return;
+      fileOrder.forEach((fileIdx, pos) => {
+        const btn = grid.querySelector(`[data-file="${fileIdx}"]`);
+        if (btn) {
+          btn.dataset.fileOrder = String(pos);
+          grid.appendChild(btn);
+        }
+      });
     };
 
     const bind = rootEl => {
@@ -696,38 +847,104 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
         };
       });
 
-      const phBtn = rootEl.querySelector("#mirrorAdvanceStepPlaceholder");
-      if (phBtn) {
-        phBtn.onclick = () => {
+      rootEl.querySelectorAll("[data-mic]").forEach(btn => {
+        btn.onclick = () => {
           G.activity(ME);
           if (G.mirrorPhase() !== "showtime" || G.didRun("runTrial")) { opts.onRender(); return; }
-          let st = G.mirrorSetupTeam(MYTEAM);
-          if (!st || st.currentPlayerId !== ME.id) { opts.onRender(); return; }
-          const curStep = st.currentStep;
-          if (curStep === "mic") {
-            let guard = 0;
-            while (guard++ < 20 && st && st.currentStep === "mic" && st.currentPlayerId === ME.id && st.mic.sequence) {
-              const r = G.mirrorMicTap(ME, st.mic.sequence[st.mic.index]);
-              if (!r.ok) break;
-              st = G.mirrorSetupTeam(MYTEAM);
-            }
-            ms.msg = EP.MirrorData.flavor.statusMessages.micDone;
-          } else if (curStep === "deck") {
-            const correctFile = EP.MirrorData.files.find(f => f.correct);
-            if (correctFile) G.mirrorPickFile(ME, correctFile.name);
-            ms.msg = EP.MirrorData.flavor.statusMessages.deckGrabbed;
-          } else if (curStep === "qa") {
-            let guard = 0;
-            while (guard++ < 5 && st && st.currentStep === "qa" && st.currentPlayerId === ME.id && st.qa.order && st.qa.index < st.qa.order.length) {
-              const item = EP.MirrorData.qaItems[st.qa.order[st.qa.index]];
-              const r = G.mirrorAnswerQa(ME, item.correctIndex);
-              if (!r.ok) break;
-              st = G.mirrorSetupTeam(MYTEAM);
-            }
-            ms.msg = "Q&A complete.";
-          } else if (curStep === "wrapUp") {
-            G.mirrorWrapUp(ME);
+          const st = G.mirrorSetupTeam(MYTEAM);
+          if (!st || st.currentStep !== "mic" || st.currentPlayerId !== ME.id || !st.mic.sequence || ms.mic.tick < ms.mic.hideAt) {
+            opts.onRender();
+            return;
           }
+          const micNum = Number(btn.dataset.mic);
+          const r = G.mirrorMicTap(ME, micNum);
+          if (r.ok) {
+            const nextSt = G.mirrorSetupTeam(MYTEAM);
+            syncSetupSnapshots(nextSt);
+            if (r.stepDone) {
+              ms.msg = EP.MirrorData.flavor.statusMessages.micDone;
+              if (r.nextPlayerId && r.nextPlayerId !== ME.id && nextSt) {
+                const nextSlot = ownerSlotFor(nextSt.slots, r.nextStep);
+                if (nextSlot) ms.msg += ` Handing off to ${nextSlot.name}.`;
+              }
+            } else if (r.roundDone) {
+              ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.micNextRound, { round: r.round + 1 });
+            } else if (r.hit) {
+              ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.micTapOk, { mic: micNum, left: r.remaining });
+            } else {
+              ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.micWrong, { round: r.round + 1 });
+            }
+          } else {
+            ms.msg = r.reason || "";
+          }
+          opts.onRender();
+        };
+      });
+
+      rootEl.querySelectorAll("[data-file]").forEach(btn => {
+        btn.onclick = () => {
+          G.activity(ME);
+          if (G.mirrorPhase() !== "showtime" || G.didRun("runTrial")) { opts.onRender(); return; }
+          const st = G.mirrorSetupTeam(MYTEAM);
+          const fileIdx = Number(btn.dataset.file);
+          if (!st || st.currentStep !== "deck" || st.currentPlayerId !== ME.id || st.deck.filesTried.includes(fileIdx)) {
+            opts.onRender();
+            return;
+          }
+          const r = G.mirrorPickFile(ME, fileIdx);
+          if (r.ok) {
+            const nextSt = G.mirrorSetupTeam(MYTEAM);
+            syncSetupSnapshots(nextSt);
+            if (r.hit) {
+              ms.deck.active = false;
+              ms.msg = EP.MirrorData.flavor.statusMessages.deckGrabbed;
+              if (r.nextPlayerId && r.nextPlayerId !== ME.id && nextSt) {
+                const nextSlot = ownerSlotFor(nextSt.slots, r.nextStep);
+                if (nextSlot) ms.msg += ` Handing off to ${nextSlot.name}.`;
+              }
+            } else {
+              ms.deck.shuffleAt = ms.deck.tick + EP.MirrorData.deck.wrongReshuffleTicks;
+              ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.deckWrong, { file: r.fileName });
+            }
+          } else {
+            ms.msg = r.reason || "";
+          }
+          opts.onRender();
+        };
+      });
+
+      rootEl.querySelectorAll("[data-qa]").forEach(btn => {
+        btn.onclick = () => {
+          G.activity(ME);
+          if (G.mirrorPhase() !== "showtime" || G.didRun("runTrial")) { opts.onRender(); return; }
+          const st = G.mirrorSetupTeam(MYTEAM);
+          if (!st || st.currentStep !== "qa" || st.currentPlayerId !== ME.id) {
+            opts.onRender();
+            return;
+          }
+          const r = G.mirrorAnswerQa(ME, Number(btn.dataset.qa));
+          if (r.ok) {
+            syncSetupSnapshots(G.mirrorSetupTeam(MYTEAM));
+            ms.msg = formatMsg(
+              r.correct ? EP.MirrorData.flavor.statusMessages.qaRight : EP.MirrorData.flavor.statusMessages.qaWrong,
+              { why: r.why }
+            );
+          } else {
+            ms.msg = r.reason || "";
+          }
+          opts.onRender();
+        };
+      });
+
+      const wrapBtn = rootEl.querySelector("#wrapUp");
+      if (wrapBtn) {
+        wrapBtn.onclick = () => {
+          G.activity(ME);
+          if (G.mirrorPhase() !== "showtime" || G.didRun("runTrial")) { opts.onRender(); return; }
+          const st = G.mirrorSetupTeam(MYTEAM);
+          if (!st || st.currentStep !== "wrapUp" || st.currentPlayerId !== ME.id) { opts.onRender(); return; }
+          const r = G.mirrorWrapUp(ME);
+          if (!r.ok) ms.msg = r.reason || "";
           syncSetupSnapshots(G.mirrorSetupTeam(MYTEAM));
           opts.onRender();
         };
@@ -891,6 +1108,44 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
           }
           updateSoundUI();
           updateMsgEl();
+        } else if (st.currentStep === "mic") {
+          ensureMicFlash(st);
+          const wasFlashing = ms.mic.tick < ms.mic.hideAt;
+          ms.mic.tick += 1;
+          if (wasFlashing !== (ms.mic.tick < ms.mic.hideAt)) updateMicUI(st);
+        } else if (st.currentStep === "deck") {
+          ensureDeckTimer(st);
+          ms.deck.tick += 1;
+          if (ms.deck.tick >= ms.deck.shuffleAt) {
+            const r = G.mirrorReshuffleDeck(MYTEAM);
+            ms.deck.shuffleAt = ms.deck.tick + EP.MirrorData.deck.reshuffleTicks;
+            if (r.ok) updateDeckOrderUI(r.fileOrder);
+          }
+        } else if (st.currentStep === "qa") {
+          ensureQaTimer(st);
+          ms.qa.tick += 1;
+          const Q = EP.MirrorData.qa;
+          const leftT = Math.max(0, ms.qa.deadline - ms.qa.tick);
+          const bar = mountedRoot.querySelector("#qaCd");
+          if (bar) {
+            bar.dataset.ticksLeft = String(leftT);
+            const fill = bar.querySelector("i");
+            if (fill) {
+              fill.style.width = Math.round((leftT / Q.countdownTicks) * 100) + "%";
+              fill.classList.toggle("low", leftT <= Q.lowWarningTicks);
+            }
+          }
+          if (leftT <= 0) {
+            const r = G.mirrorTimeoutQa(ME);
+            if (r.ok) {
+              syncSetupSnapshots(G.mirrorSetupTeam(MYTEAM));
+              ms.msg = EP.MirrorData.flavor.statusMessages.qaTimeout;
+            } else {
+              ms.msg = r.reason || "";
+            }
+            opts.onRender();
+            return;
+          }
         }
       }
     };

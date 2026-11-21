@@ -113,10 +113,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (102 passed, 0 failed, 0 console errors).
 - **Open issues:** Mic, deck, Q&A, and wrap-up use plain Step 6c-2 placeholders and Dance Crew uses the Step 6d placeholder until those steps are built.
 
-### Step 6c-2: Screens - Setup Crew mic, deck, Q&A, and Wrap up (Effort: Medium) - TODO
+### Step 6c-2: Screens - Setup Crew mic, deck, Q&A, and Wrap up (Effort: Medium) - DONE
+- **Built:** Replaced the Step 6c-1 Setup Crew placeholders in `mirror-view.js` and `styles.css` with Mic check (3/4/5 memory rounds with flash/hide timing and `-4` wrong tap reporting via `G.mirrorMicTap`), Grab the deck (6-file grid driven by seeded `fileOrder` with 8-tick auto-reshuffles and 2-tick spite reshuffles via `G.mirrorPickFile` / `G.mirrorReshuffleDeck`), Rapid-fire Q&A (seeded `qaItems` with 29-tick countdown bar, 8-tick `.low` warning, timeout via `G.mirrorTimeoutQa`, and right-answer recovery/wrong-answer penalty via `G.mirrorAnswerQa`), and Wrap up (`#wrapUp` calling `G.mirrorWrapUp` for the last Setup slot owner), all plugged into the Step 6c-1 frame and waiting view; updated `Tests/check_screens.js` (Run 4 + Run 7 + Run 8 `mirrorStep6c2Cases`).
 - **Goal:** Build the remaining Setup Crew steps and wrap-up in `mirror-view.js` and `styles.css`: mic step (3/4/5 memory rounds with flash and `?`), deck step (6-file reshuffling grid), Q&A step (3 rapid-fire questions with countdown bar), and the "Wrap up the presentation" button for the last Setup player. Screen handles display timing and reports results to `G`.
 - **Done when:** Setup players complete mic, deck, and Q&A in assigned slot order with penalties and recoveries routed through `G`, and the last Setup player's Wrap up button ends the trial.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+- **Files changed:** `mirror-view.js`, `styles.css`, `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md` (no `game.js`, `rules/`, or `Tests/baseline/` files changed).
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (113 passed, 0 failed, 0 console errors).
+- **Open issues:** Dance Crew keeps its Step 6d placeholder (`"Dance lane: coming in Step 6d."`) until Step 6d.
 
 ### Step 6d: Screens - Dance Crew rhythm lane (Effort: Medium) - TODO
 - **Goal:** Build the Dance Crew rhythm lane in `mirror-view.js` and `styles.css`: sliding arrow notes, hit frame (PERFECT +3 / good +2), arrow key and pad button input (respecting Attendance popup focus/key rules), combo and boost (cap 45) display, animated dancer avatars from the live roster, and live Setup Crew status checklist.

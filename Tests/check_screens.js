@@ -441,8 +441,37 @@ async function fullSevenLevelGame() {
                 }
                 drawTimer();
               })()`);
-            } else if ($("#mirrorAdvanceStepPlaceholder")) {
-              $("#mirrorAdvanceStepPlaceholder").click();
+            } else if (cur.step === "mic") {
+              w.eval(`(() => {
+                for (let k = 0; k < 25; k++) {
+                  const disp = document.querySelector("#micSeqDisp");
+                  if (disp && disp.dataset.flashing === "0") break;
+                  drawTimer();
+                }
+                const st = G.mirrorSetupTeam(MYTEAM);
+                if (st && st.currentStep === "mic" && st.mic.sequence) {
+                  const micNum = st.mic.sequence[st.mic.index];
+                  const b = document.querySelector('[data-mic="' + micNum + '"]');
+                  if (b && !b.disabled) b.click();
+                }
+              })()`);
+            } else if (cur.step === "deck") {
+              w.eval(`(() => {
+                const idx = EP.MirrorData.files.findIndex(f => f.correct);
+                const b = document.querySelector('[data-file="' + idx + '"]');
+                if (b && !b.disabled) b.click();
+              })()`);
+            } else if (cur.step === "qa") {
+              w.eval(`(() => {
+                const st = G.mirrorSetupTeam(MYTEAM);
+                if (st && st.currentStep === "qa" && st.qa.order) {
+                  const item = EP.MirrorData.qaItems[st.qa.order[st.qa.index]];
+                  const b = document.querySelector('[data-qa="' + item.correctIndex + '"]');
+                  if (b) b.click();
+                }
+              })()`);
+            } else if (cur.step === "wrapUp" && $("#wrapUp")) {
+              $("#wrapUp").click();
             }
           } else {
             w.eval('window._mirSimNow += 1000; const cl = G.tick(); if (cl.length) afterClose(cl); else drawTimer();');
@@ -1100,7 +1129,7 @@ async function mirrorStep6c1Cases() {
       v0.q("#mirrorWaitingView").textContent.includes("Mic") &&
       v0.q('[data-setup-step="sound"]').dataset.stepState === "done" &&
       v0.q('[data-setup-step="mic"]').dataset.stepState === "live" &&
-      !!v1.q('#mirrorStepPlaceholder[data-placeholder-step="mic"]');
+      !!v1.q('#mirrorMicStep');
 
     // Dance Crew sees placeholder during showtime
     const vDance = mountView(g3, d0, team3);
@@ -1110,25 +1139,43 @@ async function mirrorStep6c1Cases() {
       !!vDance.q("#mirrorSetupFrame") &&
       !vDance.q("#mirrorCablesStep") &&
       !vDance.q("#mirrorSoundStep") &&
-      !vDance.q("#mirrorStepPlaceholder") &&
+      !vDance.q("#mirrorMicStep") &&
+      !vDance.q("#mirrorDeckStep") &&
+      !vDance.q("#mirrorQaStep") &&
+      !vDance.q("#mirrorWrapUpStep") &&
       !LEAK_RE.test(vDance.text()) &&
       !/bot/i.test(vDance.text()) &&
       vDance.flags().every(f => f !== "OK");
 
-    // 5. Placeholders for mic, deck, Q&A, wrapUp keep flow going to end of Level 3
-    v1.q("#mirrorAdvanceStepPlaceholder").click(); // mic -> deck (still s1)
+    // 5. Real mic, deck, Q&A, and wrapUp steps complete Level 3 across slots
+    for (let k = 0; k < 100; k++) {
+      const st = g3.mirrorSetupTeam(team3);
+      if (!st || st.currentStep !== "mic") break;
+      for (let f = 0; f < 25; f++) {
+        const disp = v1.q("#micSeqDisp");
+        if (disp && disp.dataset.flashing === "0") break;
+        v1.tick();
+      }
+      const curSt = g3.mirrorSetupTeam(team3);
+      v1.q('[data-mic="' + curSt.mic.sequence[curSt.mic.index] + '"]').click();
+    }
     const afterMicStep = g3.mirrorSetupTeam(team3).currentStep;
-    const deckPlaceholderOk = afterMicStep === "deck" && !!v1.q('#mirrorStepPlaceholder[data-placeholder-step="deck"]');
-    v1.q("#mirrorAdvanceStepPlaceholder").click(); // deck -> qa (hands off to s2)
+    const deckStepOk = afterMicStep === "deck" && !!v1.q("#mirrorDeckStep");
+    const signedIdx = EP.MirrorData.files.findIndex(f => f.correct);
+    v1.q('[data-file="' + signedIdx + '"]').click(); // deck -> qa (hands off to s2)
     const afterDeckSt = g3.mirrorSetupTeam(team3);
     const v2 = mountView(g3, s2, team3);
     const qaHandoffOk = afterDeckSt.currentStep === "qa" && afterDeckSt.currentPlayerId === s2.id &&
       !!v1.q("#mirrorWaitingView") && v1.q("#mirrorWaitingView").textContent.includes(s2.name) &&
-      !!v2.q('#mirrorStepPlaceholder[data-placeholder-step="qa"]');
-    v2.q("#mirrorAdvanceStepPlaceholder").click(); // qa -> wrapUp (still s2)
-    const wrapPlaceholderOk = g3.mirrorSetupTeam(team3).currentStep === "wrapUp" &&
-      !!v2.q('#mirrorStepPlaceholder[data-placeholder-step="wrapUp"]');
-    v2.q("#mirrorAdvanceStepPlaceholder").click(); // wrapUp -> closes trial
+      !!v2.q("#mirrorQaStep");
+    for (let k = 0; k < 5; k++) {
+      const st = g3.mirrorSetupTeam(team3);
+      if (!st || st.currentStep !== "qa") break;
+      const item = EP.MirrorData.qaItems[st.qa.order[st.qa.index]];
+      v2.q('[data-qa="' + item.correctIndex + '"]').click();
+    }
+    const wrapStepOk = g3.mirrorSetupTeam(team3).currentStep === "wrapUp" && !!v2.q("#mirrorWrapUpStep") && !!v2.q("#wrapUp");
+    v2.q("#wrapUp").click(); // wrapUp -> closes trial
     const placeholderFlowEndOk = g3.didRun("runTrial") &&
       /Score \\d+ of 7/.test(v2.text()) &&
       !LEAK_RE.test(v2.text()) &&
@@ -1192,9 +1239,9 @@ async function mirrorStep6c1Cases() {
       soundMissOk,
       soundDoneAndHandoffOk,
       dancePlaceholderOk,
-      deckPlaceholderOk,
+      deckStepOk,
       qaHandoffOk,
-      wrapPlaceholderOk,
+      wrapStepOk,
       placeholderFlowEndOk,
       botCase,
     };
@@ -1210,12 +1257,602 @@ async function mirrorStep6c1Cases() {
   check("Sound feedback miss reports penalty to rules and resets hold timer", res.soundMissOk);
   check("Sound 3s hold reports lock to rules and hands off to next owner", res.soundDoneAndHandoffOk);
   check("Dance Crew player sees Step 6d placeholder during showtime without leaks", res.dancePlaceholderOk);
-  check("Placeholders for mic, deck, Q&A, and wrapUp keep Setup flow going to end of Level 3", res.deckPlaceholderOk && res.qaHandoffOk && res.wrapPlaceholderOk && res.placeholderFlowEndOk);
+  check("Mic, deck, Q&A, and wrapUp steps keep Setup flow going to end of Level 3", res.deckStepOk && res.qaHandoffOk && res.wrapStepOk && res.placeholderFlowEndOk);
   check(
     "Bot-owned setup step runs on schedule and bot hiccup shows its attention cost without bot tag",
     !!res.botCase && res.botCase.beforeBotWaitOk && res.botCase.stepAdvanced && res.botCase.hiccupInRules &&
       res.botCase.frameUpdated && res.botCase.hiccupCostShown && res.botCase.noBotWordOrLeaks
   );
+}
+
+async function mirrorStep6c2Cases() {
+  const res = w.eval(`(() => {
+    const LEAK_RE = /Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i;
+    const HARDCODED_TEAMS_RE = /Team Kestrel|Team Wren|Team Finch|Team Heron/i;
+
+    const advanceToLv3Trial = (game, onOpenFloor) => {
+      for (let round = 1; round <= 2; round++) {
+        game.startNextRound();
+        game.advance();
+        game.advance();
+        game.runTrial();
+        game.endTrial();
+        game.endGlitchReport();
+        game.advance();
+        game.advance();
+        game.lockIn();
+        game.advance();
+        game.computeEarnings();
+        game.placeAllRemaining();
+        game.finishRound();
+      }
+      game.startNextRound();
+      game.advance();
+      if (onOpenFloor) onOpenFloor(game);
+      game.advance();
+    };
+
+    const finishLv3Round = game => {
+      game.endTrial();
+      game.endGlitchReport();
+      game.advance();
+      game.advance();
+      game.lockIn();
+      game.advance();
+      game.computeEarnings();
+      game.placeAllRemaining();
+      game.finishRound();
+    };
+
+    const makeTeam = (tid, size, { allHumans = false, startId = tid * 10 + 1 } = {}) => {
+      const members = [];
+      for (let i = 0; i < size; i++) {
+        members.push(new EP.Player({
+          id: startId + i,
+          name: "T" + tid + "P" + (i + 1),
+          type: "coop",
+          spend: EP.Bots.typicalSpend("coop"),
+          isBot: !allHumans && i > 0,
+        }));
+      }
+      return new EP.Team({ id: tid, name: "Unit " + tid, members });
+    };
+
+    const enterShowtime = (size, { allHumans = true, seed = 620 + size, onOpenFloor = null } = {}) => {
+      let simNow = 8000000 + size * 10000;
+      const t1 = makeTeam(1, size, { allHumans });
+      const t2 = new EP.Team({ id: 2, name: "Unit 2", members: [0, 1, 2].map(i => EP.Bots.makePlayer(21 + i, "BotB_" + i, "coop")) });
+      const t3 = new EP.Team({ id: 3, name: "Unit 3", members: [0, 1, 2].map(i => EP.Bots.makePlayer(31 + i, "BotC_" + i, "indep")) });
+      const t4 = new EP.Team({ id: 4, name: "Unit 4", members: [0, 1, 2].map(i => EP.Bots.makePlayer(41 + i, "BotD_" + i, "contra")) });
+      const game = new EP.Game({ teams: [t1, t2, t3, t4], rng: EP.Rng.seeded(seed), clock: () => simNow, hooks: EP.Bots.hooks });
+      advanceToLv3Trial(game, onOpenFloor);
+      game.start();
+      simNow += 16000;
+      game.tick();
+      for (const p of t1.active()) game.mirrorConnect(p);
+      simNow = game.timer.deadline;
+      game.tick();
+      return { game, team: t1, getNow: () => simNow, advanceMs: ms => { simNow += ms; game.tick(); } };
+    };
+
+    const mountView = (game, me, team, state = {}) => {
+      const box = document.createElement("div");
+      let curView = null;
+      const renderMount = () => {
+        curView = MirrorView.screen({
+          game, me, team, state, attrName: "Focus",
+          sabotageAlert: "", costHint: () => "Cost hint", onRender: renderMount,
+        });
+        box.innerHTML = curView.html;
+        if (curView.bind) curView.bind(box);
+      };
+      renderMount();
+      return {
+        box,
+        state,
+        render: renderMount,
+        tick: () => { if (curView && curView.tick) curView.tick(); },
+        text: () => box.textContent || "",
+        q: s => box.querySelector(s),
+        qa: s => [...box.querySelectorAll(s)],
+        flags: () => [...box.querySelectorAll(".flag")].map(el => el.textContent.trim()),
+      };
+    };
+
+    const passCablesAndSoundViaRules = (game, team) => {
+      const st0 = game.mirrorSetupTeam(team);
+      const owner0 = team.members.find(p => p.id === st0.currentPlayerId);
+      for (const port of EP.MirrorData.ports) game.mirrorCableHit(owner0, port);
+      game.mirrorSoundHeld(owner0);
+    };
+
+    const passMicAndDeckViaRules = (game, team) => {
+      for (let guard = 0; guard < 20; guard++) {
+        const st = game.mirrorSetupTeam(team);
+        if (!st || st.currentStep !== "mic") break;
+        const owner = team.members.find(p => p.id === st.currentPlayerId);
+        game.mirrorMicTap(owner, st.mic.sequence[st.mic.index]);
+      }
+      const stDeck = game.mirrorSetupTeam(team);
+      if (stDeck && stDeck.currentStep === "deck") {
+        const owner = team.members.find(p => p.id === stDeck.currentPlayerId);
+        const signed = EP.MirrorData.files.findIndex(f => f.correct);
+        game.mirrorPickFile(owner, signed);
+      }
+    };
+
+    // 1. Seeded content determinism (same seed -> identical mic sequence, deck order & reshuffle, Q&A question & options)
+    const ctxA = enterShowtime(4, { allHumans: true, seed: 777 });
+    const ctxB = enterShowtime(4, { allHumans: true, seed: 777 });
+    passCablesAndSoundViaRules(ctxA.game, ctxA.team);
+    passCablesAndSoundViaRules(ctxB.game, ctxB.team);
+    const slot0A = ctxA.team.members.find(p => p.id === ctxA.game.mirrorSetupTeam(ctxA.team).currentPlayerId);
+    const slot0B = ctxB.team.members.find(p => p.id === ctxB.game.mirrorSetupTeam(ctxB.team).currentPlayerId);
+    const vMicA = mountView(ctxA.game, slot0A, ctxA.team);
+    const vMicB = mountView(ctxB.game, slot0B, ctxB.team);
+    const stMicA = ctxA.game.mirrorSetupTeam(ctxA.team);
+    const stMicB = ctxB.game.mirrorSetupTeam(ctxB.team);
+    const seededMicMatchOk = vMicA.q("#micSeqDisp").textContent === vMicB.q("#micSeqDisp").textContent &&
+      vMicA.q("#micSeqDisp").textContent === stMicA.mic.sequence.join(" · ") &&
+      JSON.stringify(stMicA.mic.sequence) === JSON.stringify(stMicB.mic.sequence);
+
+    const driveMicClean = (game, team, view) => {
+      for (let guard = 0; guard < 120; guard++) {
+        const st = game.mirrorSetupTeam(team);
+        if (!st || st.currentStep !== "mic") break;
+        for (let t = 0; t < 25; t++) {
+          const disp = view.q("#micSeqDisp");
+          if (disp && disp.dataset.flashing === "0") break;
+          view.tick();
+        }
+        const cur = game.mirrorSetupTeam(team);
+        view.q('[data-mic="' + cur.mic.sequence[cur.mic.index] + '"]').click();
+      }
+    };
+    driveMicClean(ctxA.game, ctxA.team, vMicA);
+    driveMicClean(ctxB.game, ctxB.team, vMicB);
+
+    const slot1A = ctxA.team.members.find(p => p.id === ctxA.game.mirrorSetupTeam(ctxA.team).currentPlayerId);
+    const slot1B = ctxB.team.members.find(p => p.id === ctxB.game.mirrorSetupTeam(ctxB.team).currentPlayerId);
+    const vDeckA = mountView(ctxA.game, slot1A, ctxA.team);
+    const vDeckB = mountView(ctxB.game, slot1B, ctxB.team);
+    const domOrderA0 = vDeckA.qa("[data-file]").map(b => Number(b.dataset.file));
+    const domOrderB0 = vDeckB.qa("[data-file]").map(b => Number(b.dataset.file));
+    const stDeckA0 = ctxA.game.mirrorSetupTeam(ctxA.team);
+    const stDeckB0 = ctxB.game.mirrorSetupTeam(ctxB.team);
+    const deckInitialMatchOk = JSON.stringify(domOrderA0) === JSON.stringify(domOrderB0) &&
+      JSON.stringify(domOrderA0) === JSON.stringify(stDeckA0.deck.fileOrder) &&
+      JSON.stringify(stDeckA0.deck.fileOrder) === JSON.stringify(stDeckB0.deck.fileOrder) &&
+      vDeckA.qa("[data-file]").every((b, idx) => b.textContent === EP.MirrorData.files[domOrderA0[idx]].name);
+
+    for (let t = 0; t < EP.MirrorData.deck.reshuffleTicks; t++) {
+      vDeckA.tick();
+      vDeckB.tick();
+    }
+    const domOrderA1 = vDeckA.qa("[data-file]").map(b => Number(b.dataset.file));
+    const domOrderB1 = vDeckB.qa("[data-file]").map(b => Number(b.dataset.file));
+    const stDeckA1 = ctxA.game.mirrorSetupTeam(ctxA.team);
+    const deckReshuffleMatchOk = stDeckA1.deck.reshuffles === 1 &&
+      JSON.stringify(domOrderA1) === JSON.stringify(domOrderB1) &&
+      JSON.stringify(domOrderA1) === JSON.stringify(stDeckA1.deck.fileOrder);
+
+    const signedIdx = EP.MirrorData.files.findIndex(f => f.correct);
+    vDeckA.q('[data-file="' + signedIdx + '"]').click();
+    vDeckB.q('[data-file="' + signedIdx + '"]').click();
+    const stQaA = ctxA.game.mirrorSetupTeam(ctxA.team);
+    const stQaB = ctxB.game.mirrorSetupTeam(ctxB.team);
+    const qaItem0 = EP.MirrorData.qaItems[stQaA.qa.order[0]];
+    const qaMatchOk = JSON.stringify(stQaA.qa.order) === JSON.stringify(stQaB.qa.order) &&
+      vDeckA.q("#qaQuestion").textContent === vDeckB.q("#qaQuestion").textContent &&
+      vDeckA.q("#qaQuestion").textContent === qaItem0.question &&
+      JSON.stringify(vDeckA.qa("[data-qa]").map(b => b.querySelector("span:last-child").textContent)) ===
+        JSON.stringify(qaItem0.options);
+    const seededContentOk = seededMicMatchOk && deckInitialMatchOk && deckReshuffleMatchOk && qaMatchOk;
+
+    // 2. Detailed Mic, Deck, Q&A, Wrap Up behavior on a 3-Setup team (owner gating, penalties, recoveries, timers)
+    const ctx3 = enterShowtime(5, { allHumans: true, seed: 825 });
+    const g3 = ctx3.game, team3 = ctx3.team;
+    const slots3 = g3.mirrorSetupSlots(team3);
+    const s0 = team3.members.find(p => p.id === slots3[0].playerId);
+    const s1 = team3.members.find(p => p.id === slots3[1].playerId);
+    const s2 = team3.members.find(p => p.id === slots3[2].playerId);
+    const d0 = team3.members.find(p => g3.mirrorRole(p) === "dance");
+    passCablesAndSoundViaRules(g3, team3);
+
+    const v0 = mountView(g3, s0, team3);
+    const v1 = mountView(g3, s1, team3);
+    const v2 = mountView(g3, s2, team3);
+    const vD = mountView(g3, d0, team3);
+
+    const micOwnerGateOk = !!v1.q("#mirrorMicStep") && !v1.q("#mirrorWaitingView") &&
+      !v0.q("#mirrorMicStep") && !!v0.q("#mirrorWaitingView") &&
+      v0.q("#mirrorWaitingView").textContent.includes(s1.name) &&
+      v0.q("#mirrorWaitingView").textContent.includes("Mic") &&
+      !v2.q("#mirrorMicStep") && !!v2.q("#mirrorWaitingView") &&
+      !!vD.q("#mirrorDancePlaceholder") && !vD.q("#mirrorMicStep");
+
+    // Flash lasts 9 ticks on round 1, then hides behind ? and enables buttons
+    const seqR0 = g3.mirrorSetupTeam(team3).mic.sequence;
+    const micFlashInitialOk = v1.q("#micSeqDisp").dataset.flashing === "1" &&
+      v1.q("#micSeqDisp").textContent === seqR0.join(" · ") &&
+      v1.qa("[data-mic]").every(b => b.disabled);
+    for (let t = 0; t < EP.MirrorData.mic.flashRound1Ticks - 1; t++) v1.tick();
+    const stillFlashingAt8 = v1.q("#micSeqDisp").dataset.flashing === "1" && v1.qa("[data-mic]").every(b => b.disabled);
+    v1.tick();
+    const micHiddenAt9Ok = v1.q("#micSeqDisp").dataset.flashing === "0" &&
+      v1.q("#micSeqDisp").textContent.includes("?") &&
+      v1.qa("[data-mic]").every(b => !b.disabled);
+
+    // Deliberate wrong mic tap (-4 attention, flashes new sequence for 6 + 3 = 9 ticks)
+    const wrongMicNum = (seqR0[0] % EP.MirrorData.mic.count) + 1;
+    const attBeforeMicMiss = g3.mirrorAttention(team3);
+    v1.q('[data-mic="' + wrongMicNum + '"]').click();
+    const stAfterMicMiss = g3.mirrorSetupTeam(team3);
+    const attAfterMicMiss = g3.mirrorAttention(team3);
+    const micWrongOk = stAfterMicMiss.mic.wrongs === 1 &&
+      stAfterMicMiss.penalties === EP.MirrorData.mic.wrongPenalty &&
+      attAfterMicMiss === attBeforeMicMiss - EP.MirrorData.mic.wrongPenalty &&
+      v1.q("#attnPct").textContent === Math.round(attAfterMicMiss) + "%" &&
+      v1.q("#micSeqDisp").dataset.flashing === "1" &&
+      v1.qa("[data-mic]").every(b => b.disabled) &&
+      v1.q("#mirrorMsg").textContent.includes("Feedback squeal") &&
+      v1.q("#mirrorMsg").textContent.includes("4");
+
+    // Retry flash duration is 6 + len (9 ticks)
+    for (let t = 0; t < EP.MirrorData.mic.flashBaseTicks + 3 - 1; t++) v1.tick();
+    const retryStillFlashing = v1.q("#micSeqDisp").dataset.flashing === "1";
+    v1.tick();
+    const retryHiddenOk = v1.q("#micSeqDisp").dataset.flashing === "0";
+
+    // Right first tap marks .done and updates waiting view
+    const seqRetry = g3.mirrorSetupTeam(team3).mic.sequence;
+    v1.q('[data-mic="' + seqRetry[0] + '"]').click();
+    v0.render();
+    const micHitAndWaitOk = g3.mirrorSetupTeam(team3).mic.index === 1 &&
+      v1.q('[data-mic="' + seqRetry[0] + '"]').classList.contains("done") &&
+      v1.q("#micProgress").textContent.includes("1 of 3") &&
+      v0.q("#mirrorWaitProgress").textContent.includes("1 of 3");
+
+    // Complete remaining mic rounds (lengths 3, 4, 5)
+    driveMicClean(g3, team3, v1);
+    const stAfterMicDone = g3.mirrorSetupTeam(team3);
+    v0.render();
+    v2.render();
+    const micDoneFrameOk = stAfterMicDone.completedSteps.includes("mic") &&
+      stAfterMicDone.currentStep === "deck" &&
+      stAfterMicDone.currentPlayerId === s1.id &&
+      v1.q('[data-setup-step="mic"]').dataset.stepState === "done" &&
+      v1.q('[data-setup-step="deck"]').dataset.stepState === "live" &&
+      !!v1.q("#mirrorDeckStep") &&
+      !v0.q("#mirrorDeckStep") && !!v0.q("#mirrorWaitingView") && v0.q("#mirrorWaitingView").textContent.includes("Deck") &&
+      !v2.q("#mirrorDeckStep") && !!v2.q("#mirrorWaitingView");
+
+    // Deck auto-reshuffle after 8 ticks, wrong file (-6 + 2-tick spite reshuffle), right file -> Q&A handoff to s2
+    for (let t = 0; t < EP.MirrorData.deck.reshuffleTicks - 1; t++) v1.tick();
+    const noReshuffleAt7 = g3.mirrorSetupTeam(team3).deck.reshuffles === 0;
+    v1.tick();
+    const stAfterAutoShuffle = g3.mirrorSetupTeam(team3);
+    const deckAutoShuffleOk = noReshuffleAt7 && stAfterAutoShuffle.deck.reshuffles === 1 &&
+      JSON.stringify(v1.qa("[data-file]").map(b => Number(b.dataset.file))) === JSON.stringify(stAfterAutoShuffle.deck.fileOrder);
+
+    const wrongFileIdx = EP.MirrorData.files.findIndex(f => !f.correct);
+    const attBeforeDeckMiss = g3.mirrorAttention(team3);
+    v1.q('[data-file="' + wrongFileIdx + '"]').click();
+    const stAfterDeckMiss = g3.mirrorSetupTeam(team3);
+    const attAfterDeckMiss = g3.mirrorAttention(team3);
+    v0.render();
+    const wrongBtn = v1.q('[data-file="' + wrongFileIdx + '"]');
+    v1.tick();
+    const noSpiteShuffleAt1 = g3.mirrorSetupTeam(team3).deck.reshuffles === 1;
+    v1.tick();
+    const stAfterSpite = g3.mirrorSetupTeam(team3);
+    const deckWrongOk = stAfterDeckMiss.deck.filesTried.includes(wrongFileIdx) &&
+      attAfterDeckMiss === attBeforeDeckMiss - EP.MirrorData.deck.wrongPenalty &&
+      v1.q("#attnPct").textContent === Math.round(attAfterDeckMiss) + "%" &&
+      !!wrongBtn && wrongBtn.disabled && wrongBtn.classList.contains("bad") &&
+      v1.q("#mirrorMsg").textContent.includes(EP.MirrorData.files[wrongFileIdx].name) &&
+      v1.q("#mirrorMsg").textContent.includes("6") &&
+      v0.q("#mirrorWaitProgress").textContent.includes("1 wrong file ruled out") &&
+      noSpiteShuffleAt1 && stAfterSpite.deck.reshuffles === 2 &&
+      JSON.stringify(v1.qa("[data-file]").map(b => Number(b.dataset.file))) === JSON.stringify(stAfterSpite.deck.fileOrder);
+
+    v1.q('[data-file="' + signedIdx + '"]').click();
+    const stAfterDeckDone = g3.mirrorSetupTeam(team3);
+    v0.render();
+    v2.render();
+    const deckDoneHandoffOk = stAfterDeckDone.deck.grabbed === true &&
+      stAfterDeckDone.completedSteps.includes("deck") &&
+      stAfterDeckDone.currentStep === "qa" &&
+      stAfterDeckDone.currentPlayerId === s2.id &&
+      !v1.q("#mirrorDeckStep") && !!v1.q("#mirrorWaitingView") && v1.q("#mirrorWaitingView").textContent.includes(s2.name) &&
+      !v0.q("#mirrorQaStep") && !!v0.q("#mirrorWaitingView") &&
+      !!v2.q("#mirrorQaStep") && !v2.q("#mirrorWaitingView") &&
+      v2.q('[data-setup-step="deck"]').dataset.stepState === "done" &&
+      v2.q('[data-setup-step="qa"]').dataset.stepState === "live";
+
+    // Q&A: wrong answer (-5), timeout (-5 with .low warning bar), right answer (+5 recovery) -> Wrap up
+    const qaOrder = stAfterDeckDone.qa.order;
+    const q0 = EP.MirrorData.qaItems[qaOrder[0]];
+    const attBeforeQaWrong = g3.mirrorAttention(team3);
+    v2.q('[data-qa="' + ((q0.correctIndex + 1) % q0.options.length) + '"]').click();
+    const stAfterQaWrong = g3.mirrorSetupTeam(team3);
+    const attAfterQaWrong = g3.mirrorAttention(team3);
+    const qaWrongOk = stAfterQaWrong.qa.wrong === 1 &&
+      attAfterQaWrong === attBeforeQaWrong - EP.MirrorData.qa.wrongPenalty &&
+      v2.q("#attnPct").textContent === Math.round(attAfterQaWrong) + "%" &&
+      v2.q("#mirrorMsg").textContent.includes("The room cools.") &&
+      v2.q("#mirrorMsg").textContent.includes(q0.why) &&
+      v2.q("#qaCount").textContent === "Question 2 of 3";
+
+    const barInitOk = v2.q("#qaCd").dataset.ticksLeft === String(EP.MirrorData.qa.countdownTicks) &&
+      !v2.q("#qaCd i").classList.contains("low");
+    const ticksToLow = EP.MirrorData.qa.countdownTicks - EP.MirrorData.qa.lowWarningTicks;
+    for (let t = 0; t < ticksToLow; t++) v2.tick();
+    const barLowOk = v2.q("#qaCd").dataset.ticksLeft === String(EP.MirrorData.qa.lowWarningTicks) &&
+      v2.q("#qaCd i").classList.contains("low");
+    const attBeforeQaTimeout = g3.mirrorAttention(team3);
+    for (let t = 0; t < EP.MirrorData.qa.lowWarningTicks; t++) v2.tick();
+    const stAfterQaTimeout = g3.mirrorSetupTeam(team3);
+    const attAfterQaTimeout = g3.mirrorAttention(team3);
+    const qaTimeoutOk = barInitOk && barLowOk &&
+      stAfterQaTimeout.qa.timeouts === 1 &&
+      attAfterQaTimeout === attBeforeQaTimeout - EP.MirrorData.qa.wrongPenalty &&
+      v2.q("#attnPct").textContent === Math.round(attAfterQaTimeout) + "%" &&
+      v2.q("#mirrorMsg").textContent.includes("You hesitate") &&
+      v2.q("#mirrorMsg").textContent.includes("5") &&
+      v2.q("#qaCount").textContent === "Question 3 of 3";
+
+    const q2 = EP.MirrorData.qaItems[qaOrder[2]];
+    const penBeforeQaRight = stAfterQaTimeout.penalties;
+    const attBeforeQaRight = g3.mirrorAttention(team3);
+    v2.q('[data-qa="' + q2.correctIndex + '"]').click();
+    const stAfterQaRight = g3.mirrorSetupTeam(team3);
+    const attAfterQaRight = g3.mirrorAttention(team3);
+    v0.render();
+    v1.render();
+    const qaRightAndWrapGateOk = stAfterQaRight.qa.right === 1 &&
+      stAfterQaRight.qaRecovered === EP.MirrorData.qa.rightRecover &&
+      stAfterQaRight.penalties === penBeforeQaRight - EP.MirrorData.qa.rightRecover &&
+      attAfterQaRight === attBeforeQaRight + EP.MirrorData.qa.rightRecover &&
+      v2.q("#attnPct").textContent === Math.round(attAfterQaRight) + "%" &&
+      v2.q("#mirrorMsg").textContent.includes("Land it.") &&
+      v2.q("#mirrorMsg").textContent.includes(q2.why) &&
+      stAfterQaRight.completedSteps.includes("qa") &&
+      stAfterQaRight.currentStep === "wrapUp" &&
+      v2.q('[data-setup-step="qa"]').dataset.stepState === "done" &&
+      v2.q('[data-setup-step="wrapUp"]').dataset.stepState === "live" &&
+      !!v2.q("#mirrorWrapUpStep") && !!v2.q("#wrapUp") &&
+      !v0.q("#wrapUp") && !!v0.q("#mirrorWaitingView") && v0.q("#mirrorWaitingView").textContent.includes("Wrap up") &&
+      !v1.q("#wrapUp") && !!v1.q("#mirrorWaitingView") && v1.q("#mirrorWaitingView").textContent.includes("Wrap up");
+
+    v2.q("#wrapUp").click();
+    const stAfterWrap = g3.mirrorSetupTeam(team3);
+    const wrapText = v2.text();
+    finishLv3Round(g3);
+    const wrapAndEndLv3Ok = stAfterWrap.wrappedUp === true &&
+      g3.didRun("runTrial") &&
+      /Score \\d+ of 7/.test(wrapText) &&
+      !LEAK_RE.test(wrapText) &&
+      !HARDCODED_TEAMS_RE.test(wrapText) &&
+      v2.flags().every(f => f !== "OK") &&
+      g3.level === 3 && g3.step === "intermission";
+
+    // 3. Full 5-step + wrap up handoff through real UI for 1, 2, and 3 Setup players
+    const playAllSetupSteps = setupCount => {
+      const size = setupCount === 1 ? 3 : setupCount === 2 ? 4 : 5;
+      const onOpenFloor = setupCount === 1
+        ? g => { g.teams[0].members[1].glitches = 2; g.teams[0].members[2].glitches = 2; }
+        : null;
+      const ctx = enterShowtime(size, { allHumans: true, seed: 910 + setupCount, onOpenFloor });
+      const g = ctx.game, team = ctx.team;
+      const slots = g.mirrorSetupSlots(team);
+      if (slots.length !== setupCount) return false;
+      const views = {};
+      for (const sl of slots) {
+        const pl = team.members.find(p => p.id === sl.playerId);
+        views[sl.playerId] = mountView(g, pl, team);
+      }
+      const syncAllViews = () => { for (const sl of slots) views[sl.playerId].render(); };
+      const checkGates = (expectedStep, expectedOwnerId) => {
+        const stepId = {
+          cables: "#mirrorCablesStep",
+          sound: "#mirrorSoundStep",
+          mic: "#mirrorMicStep",
+          deck: "#mirrorDeckStep",
+          qa: "#mirrorQaStep",
+          wrapUp: "#mirrorWrapUpStep",
+        }[expectedStep];
+        for (const sl of slots) {
+          const vw = views[sl.playerId];
+          const text = vw.text();
+          if (LEAK_RE.test(text) || HARDCODED_TEAMS_RE.test(text) || vw.flags().some(f => f === "OK")) return false;
+          if (sl.playerId === expectedOwnerId) {
+            if (!vw.q(stepId) || vw.q("#mirrorWaitingView")) return false;
+          } else {
+            if (vw.q(stepId) || !vw.q("#mirrorWaitingView")) return false;
+          }
+        }
+        return true;
+      };
+
+      const seenSteps = [];
+      for (let stepGuard = 0; stepGuard < 20 && !g.didRun("runTrial"); stepGuard++) {
+        syncAllViews();
+        const st = g.mirrorSetupTeam(team);
+        const curStep = st.currentStep;
+        const ownerId = st.currentPlayerId;
+        const ownerSlot = slots.find(s => (curStep === "wrapUp" ? s.slotIndex === slots.length - 1 : s.steps.includes(curStep)));
+        if (!ownerSlot || ownerSlot.playerId !== ownerId) return false;
+        if (!checkGates(curStep, ownerId)) return false;
+        seenSteps.push(curStep + ":" + ownerSlot.slotIndex);
+        const ov = views[ownerId];
+
+        if (curStep === "cables") {
+          for (let k = 0; k < 200 && g.mirrorSetupTeam(team).currentStep === "cables"; k++) {
+            const hit = ov.q('[data-cable-item][data-in-frame="1"]');
+            if (hit) {
+              const b = ov.q('[data-cable-port="' + hit.dataset.cableItem + '"]');
+              if (b && !b.disabled) { b.click(); continue; }
+            }
+            ov.tick();
+          }
+        } else if (curStep === "sound") {
+          for (let k = 0; k < 400 && g.mirrorSetupTeam(team).currentStep === "sound"; k++) {
+            const lvl = Number((ov.q("#soundVal") || {}).textContent || 45);
+            if (lvl < 74) ov.q('[data-sound-gain="' + (lvl <= 68 ? "10" : "5") + '"]').click();
+            else if (lvl > 85) ov.q('[data-sound-gain="-10"]').click();
+            ov.tick();
+          }
+        } else if (curStep === "mic") {
+          driveMicClean(g, team, ov);
+        } else if (curStep === "deck") {
+          ov.q('[data-file="' + signedIdx + '"]').click();
+        } else if (curStep === "qa") {
+          for (let k = 0; k < 5 && g.mirrorSetupTeam(team).currentStep === "qa"; k++) {
+            const qst = g.mirrorSetupTeam(team);
+            const qItem = EP.MirrorData.qaItems[qst.qa.order[qst.qa.index]];
+            ov.q('[data-qa="' + qItem.correctIndex + '"]').click();
+          }
+        } else if (curStep === "wrapUp") {
+          ov.q("#wrapUp").click();
+        }
+      }
+
+      const expectedSplit = setupCount === 1
+        ? ["cables:0", "sound:0", "mic:0", "deck:0", "qa:0", "wrapUp:0"]
+        : setupCount === 2
+        ? ["cables:0", "sound:0", "mic:0", "deck:1", "qa:1", "wrapUp:1"]
+        : ["cables:0", "sound:0", "mic:1", "deck:1", "qa:2", "wrapUp:2"];
+      const lastView = views[slots[slots.length - 1].playerId];
+      const endResultOk = g.didRun("runTrial") &&
+        /Score \\d+ of 7/.test(lastView.text()) &&
+        !LEAK_RE.test(lastView.text()) &&
+        lastView.flags().every(f => f !== "OK");
+      finishLv3Round(g);
+      return JSON.stringify(seenSteps) === JSON.stringify(expectedSplit) &&
+        endResultOk && g.level === 3 && g.step === "intermission";
+    };
+
+    const split1FullOk = playAllSetupSteps(1);
+    const split2FullOk = playAllSetupSteps(2);
+    const split3FullOk = playAllSetupSteps(3);
+
+    // 4. Bot-owned mic, deck, and Q&A steps run on schedule with hiccups shown (plus bot automatic wrapUp)
+    const testBotHiccupOnStep = targetStep => {
+      for (let seed = 1; seed <= 120; seed++) {
+        const ctx = enterShowtime(5, { allHumans: false, seed });
+        const g = ctx.game, team = ctx.team;
+        const human = team.members[0];
+        const slots = g.mirrorSetupSlots(team);
+        if (!slots || slots.length !== 3) continue;
+        if (targetStep === "mic" || targetStep === "deck") {
+          if (slots[0].playerId !== human.id || !slots[1].isBot) continue;
+          passCablesAndSoundViaRules(g, team);
+          if (targetStep === "deck") ctx.advanceMs(6000);
+        } else {
+          if (!slots[2].isBot) continue;
+          if (slots[0].isBot) ctx.advanceMs(10000);
+          else passCablesAndSoundViaRules(g, team);
+          if (slots[1].isBot) ctx.advanceMs(12000);
+          else passMicAndDeckViaRules(g, team);
+        }
+        const stBefore = g.mirrorSetupTeam(team);
+        if (!stBefore || stBefore.currentStep !== targetStep || stBefore.currentPlayerId === human.id) continue;
+        const snapBefore = g.toJSON();
+        const savedNow = ctx.getNow();
+        ctx.advanceMs(6000);
+        const stProbe = g.mirrorSetupTeam(team);
+        if (!stProbe || !stProbe.completedSteps.includes(targetStep) || stProbe.botHiccups !== stBefore.botHiccups + 1) continue;
+
+        let pNow = savedNow;
+        const pGame = EP.Game.fromJSON(snapBefore, { clock: () => pNow, hooks: EP.Bots.hooks });
+        const pTeam = pGame.teams[0];
+        const pHuman = pTeam.members[0];
+        const botOwner = slots.find(s => s.steps.includes(targetStep));
+        const vWait = mountView(pGame, pHuman, pTeam);
+        const waitLabel = targetStep === "qa" ? "Q&A" : targetStep === "mic" ? "Mic" : "Deck";
+        const beforeOk = !!vWait.q("#mirrorWaitingView") &&
+          vWait.q("#mirrorWaitingView").textContent.includes(botOwner.name) &&
+          vWait.q("#mirrorWaitingView").textContent.includes(waitLabel) &&
+          vWait.q('[data-setup-step="' + targetStep + '"]').dataset.stepState === "live" &&
+          !/bot/i.test(vWait.text());
+
+        pNow += 6000;
+        pGame.tick();
+        vWait.tick();
+        const stAfter = pGame.mirrorSetupTeam(pTeam);
+        const afterText = vWait.text();
+        const hiccupEl = vWait.q("#mirrorSetupHiccups");
+        const msgEl = vWait.q("#mirrorMsg");
+        const nextStep = targetStep === "mic" ? "deck" : targetStep === "deck" ? "qa" : "wrapUp";
+        const expectedTotalHiccupCost = stAfter.botHiccups * EP.MirrorData.bots.setupHiccupPenalty;
+        const afterOk = stAfter.completedSteps.includes(targetStep) &&
+          stAfter.currentStep === nextStep &&
+          stAfter.botHiccups === stBefore.botHiccups + 1 &&
+          stAfter.penalties === stBefore.penalties + EP.MirrorData.bots.setupHiccupPenalty &&
+          vWait.q('[data-setup-step="' + targetStep + '"]').dataset.stepState === "done" &&
+          vWait.q('[data-setup-step="' + nextStep + '"]').dataset.stepState === "live" &&
+          !!hiccupEl && hiccupEl.textContent.includes(String(expectedTotalHiccupCost)) &&
+          !!msgEl && msgEl.textContent.includes("after a hiccup") && msgEl.textContent.includes("3") &&
+          !/bot/i.test(afterText) && !LEAK_RE.test(afterText) && vWait.flags().every(f => f !== "OK");
+
+        let botWrapEndOk = true;
+        if (targetStep === "qa") {
+          pNow += 6000;
+          pGame.tick();
+          vWait.tick();
+          const endText = vWait.text();
+          botWrapEndOk = pGame.didRun("runTrial") &&
+            /Score \\d+ of 7/.test(endText) &&
+            !/bot/i.test(endText) && !LEAK_RE.test(endText);
+        }
+        return { ok: beforeOk && afterOk && botWrapEndOk, seed };
+      }
+      return { ok: false, seed: null };
+    };
+
+    const botMicCase = testBotHiccupOnStep("mic");
+    const botDeckCase = testBotHiccupOnStep("deck");
+    const botQaCase = testBotHiccupOnStep("qa");
+
+    return {
+      seededContentOk,
+      micOwnerGateOk,
+      micFlashInitialOk,
+      stillFlashingAt8,
+      micHiddenAt9Ok,
+      micWrongOk,
+      retryStillFlashing,
+      retryHiddenOk,
+      micHitAndWaitOk,
+      micDoneFrameOk,
+      deckAutoShuffleOk,
+      deckWrongOk,
+      deckDoneHandoffOk,
+      qaWrongOk,
+      qaTimeoutOk,
+      qaRightAndWrapGateOk,
+      wrapAndEndLv3Ok,
+      split1FullOk,
+      split2FullOk,
+      split3FullOk,
+      botMicCase,
+      botDeckCase,
+      botQaCase,
+    };
+  })()`);
+
+  check("Seeded mic sequence, deck file order/reshuffle, and Q&A content repeat deterministically for the same seed", res.seededContentOk);
+  check("Mic screen shows only for its owner and non-owners see waiting view or Dance placeholder", res.micOwnerGateOk);
+  check("Mic check flashes sequence for round 1 ticks, hides behind ?, and re-enables buttons", res.micFlashInitialOk && res.stillFlashingAt8 && res.micHiddenAt9Ok);
+  check("Mic wrong tap reports -4 penalty, updates attention bar, re-flashes new order, and right taps update frame", res.micWrongOk && res.retryStillFlashing && res.retryHiddenOk && res.micHitAndWaitOk && res.micDoneFrameOk);
+  check("Deck step auto-reshuffles on schedule, reports wrong file -6 with spite reshuffle, and hands off on signed deck", res.deckAutoShuffleOk && res.deckWrongOk && res.deckDoneHandoffOk);
+  check("Q&A reports wrong (-5), countdown warning/timeout (-5), and right answer (+5 recovery) then opens wrap up for last slot", res.qaWrongOk && res.qaTimeoutOk && res.qaRightAndWrapGateOk);
+  check("Wrap up shows only for last Setup owner, calls G.mirrorWrapUp, and finishes Level 3 cleanly without leaks", res.wrapAndEndLv3Ok);
+  check("All 5 Setup steps and wrap up hand off cleanly for 1, 2, and 3 Setup players without leaks", res.split1FullOk && res.split2FullOk && res.split3FullOk);
+  check("Bot-owned mic step runs on schedule with hiccup cost shown and no bot tag", res.botMicCase && res.botMicCase.ok);
+  check("Bot-owned deck step runs on schedule with hiccup cost shown and no bot tag", res.botDeckCase && res.botDeckCase.ok);
+  check("Bot-owned Q&A step runs with hiccup cost shown and bot wrap up finishes Level 3 cleanly", res.botQaCase && res.botQaCase.ok);
 }
 
 w.addEventListener("load", async () => {
@@ -1249,6 +1886,8 @@ w.addEventListener("load", async () => {
     await mirrorStep6bCases();
     log("run 7: Mirror Step 6c-1 Setup Crew frame, cables, and sound");
     await mirrorStep6c1Cases();
+    log("run 8: Mirror Step 6c-2 mic, deck, Q&A, and wrap up");
+    await mirrorStep6c2Cases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");
