@@ -167,6 +167,7 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Files changed:** `docs/class-diagram.md`, `CLAUDE.md`, `docs/level3-progress.md`, `docs/level3-report.md`.
 - **Open issues:** `README.md` and `docs/Game_Index.md` from the original Step 9 goal text were left untouched because Step 9 restricts edits to `CLAUDE.md`, `docs/`, and the class diagram file (`README.md` is at the repo root and `docs/Game_Index.md` was not included in Step 9's tasks).
 - Step 9b: README.md, Game_Index.md, and remaining docs updated.
+- Step 9c: Game_Index.md rules and round map updated to current rules; README dev jump wording fixed.
 
 ### Step 10: QA run and manual playtest (Effort: Medium) - TODO
 - **Goal:** Run the full automated suite and complete a manual browser QA pass (lobby fail, 1/2/3 Setup splits, Dance Crew lane, Stuck/Idle exclusion, attention 0 fail, Presentation Day Complete, dev jump forward/backward). Carry forward or resolve any remaining Level 2 QA bugs only when explicitly scheduled.

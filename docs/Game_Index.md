@@ -59,20 +59,22 @@ Updated Nov 8, 2026. One place that points to everything about the game. Game de
 The .html copies are snapshots from Nov 8, 2026. Open a file in a browser to run it.
 
 ## Rules summary
-- Characters: 3 hidden types (Cooperative, Independent, Contrarian), 5 attributes (Focus, Initiative, Collaboration, Composure, Grit), character creation.
-- Economy: round costs, backup pool, gifts, status flags, glitch and reboot.
-- Rules and Round Flow: round steps, sabotage, accusations, win conditions (71% typical graduation).
+Updated Nov 21, 2026.
+- **Characters:** 3 hidden work styles picked freely with no type cap (`rules/CharacterType.js`, `CLAUDE.md`): **Cooperative** (bonus Collaboration and Composure, penalty Initiative max 4, gift cost 1 heart/pt, Empathy loses 1 heart when a teammate's glitch locks in, second path **Lifeline**: 1 rescue), **Independent** (bonus Focus and Grit, penalty Collaboration max 4, gift cost 2 hearts for 1 pt / 3 for 2 pts, cannot accept gifts, Cash Out once per game: 2 hearts for +1 pt at full hearts, second path **Auditor**: 1 own correct accusation), and **Contrarian** (bonus Initiative and Grit, penalty Composure max 4, gift cost 1 heart/pt, can sabotage, Skim +1 pt per uncaught sabotage round max 2 per game, second path **Exploit**: 3 uncaught sabotage rounds). 5 attributes in canonical order: **Focus, Collaboration, Initiative, Grit, Composure** (`rules/Attributes.js`, `CLAUDE.md`). Creation: each starts at 1, spend 15, +2 in each bonus attribute (starting total 24; max 10, penalty max 4). Stat abilities: Focus x 10% safe wrong accusation, Collaboration x 10% gift costs 1 heart less (min 1), Initiative vote weight `1 + Initiative / 10` (Levels 5 to 6), Grit x 5% extra heart at round end, Composure x 10% sabotage drains 1 instead of 2.
+- **Economy:** **Hearts** (`rules/Hearts.js`) replace the old backup pool: start 3, cap 3, refill +1 at round end, plus quiet heart buff (+1 heart at round start for teams with 3 or fewer active players, `rules/Game.js`). Hearts cover shortfalls below 0 from any cause (1 heart/pt in bonus attributes, 2 hearts/pt in others) and do not count toward graduation. Points earned at Stats Update (`rules/Economy.js`): team wins trial 4, team loses 2, glitched that round 1, correct accusation +1, plus Skim/Cash Out; Round 7 awards 3 points. Gifts (`rules/Gift.js`): 1 or 2 points to any non-Stuck teammate during Open Floor or the gift window (min cost 1 heart); accepted points go to a glitching attribute first or else lowest attribute with room (tie order: Focus, Collaboration, Initiative, Grit, Composure), and declined/expired/overflow/Independent-refused gifts refund hearts. Status flags (`rules/PlayerStatus.js`): shown in order **Stuck, Glitching, Idle, At risk, Active** (other players see flags only; At risk = any attribute plus heart cover cannot pay a fixed cost of 3). Glitch and reboot (`rules/Player.js`, `rules/Attendance.js`): any attribute below 0 (0 is safe) or a pending missed Attendance check-in (60s idle + 15s popup, max 1 counted miss per round) sets Glitching; if still below 0 or an unsaved attendance miss remains when the gift window closes (or a check-in is missed after it closes), lock-in adds +1 glitch, reboots glitched attributes to 1 from other attributes evenly (shortfall forgiven), empties hearts to 0, and triggers Empathy. Two locked glitches = **Stuck** (spectator).
+- **Rules and Round Flow:** Levels 1 to 6 steps (`rules/Round.js`, `rules/Game.js`): Briefing, Open Floor (90s; sabotage, gifts, team switches keeping teams at 3 to 5 members), Trial (Level 1 SOP 60s, Level 2 Split Brief 180s with 90s twist, Level 3 Mirror 30s lobby + 1s reveal + 75s showtime, Level 4 AutoTrial, Levels 5 to 6 Judged writing 180s + ranked top-3 player vote with no host), Glitch Report (30s; 1 accusation per player per round), Gift window (30s), Lock-in, Stats Update (30s; place points, Cash Out, heart refill), and Intermission (90s before Level 1). Level 7: Briefing, then Graduation (60s placement, then locked results). Every trial ranks teams and top half win, rounded up (`rules/Trial.js`, `rules/Vote.js`); Levels 1 to 4 add light tested-attribute influence (`0.5 x (team active avg - all teams avg)`). Sabotage (`rules/Sabotage.js`): Contrarians only, teammates only, not Stuck; costs 1 heart first then 2 per extra in a round, drains 2 from trial attribute (Composure x 10% drains 1); if caught, 0 points lost, round does not count for Exploit or Skim, no sabotage on any team next round, and none while on a team that caught them (Exploit is never lost). Accusations (`rules/Accusation.js`): correct gives +1 point and Auditor credit; wrong loses 1 from highest attribute (tie order: Focus, Collaboration, Initiative, Grit, Composure; Focus x 10% safe). Win conditions (`rules/PathTracker.js`): **Graduated** (all 5 attributes total >= 24, every attribute >= 2, not Stuck, not Idle at `results()`) or completing your type's second path at any point; otherwise **Contract renewed**. Current balance baseline (`Tests/baseline/check_balance.txt`, typical spending across random mixes): **68.3%** overall graduation (61.0% at 16 players, 72.9% at 20 players, 69.3% at 24 players; overall type gap 2.3 points, PASS).
 
 ## Round map
-| Round | Name | Attribute | Cost |
-|---|---|---|---|
-| 1 | Boot Up | Initiative | 2 |
-| 2 | Sprint 1 | Focus | 3 |
-| 3 | The Mirror | Composure | 3 |
-| 4 | Geek Week | Focus | 4 |
-| 5 | Sprint 2 | Collaboration | 4 |
-| 6 | Sprint 3 | Grit | 6 |
-| 7 | Graduation | none | 0 |
+Updated Nov 21, 2026.
+| Round | Name | Trial | Tested attribute | Cost |
+|---|---|---|---|---|
+| 1 | Boot Up | SOP mini-game | Grit | 2 |
+| 2 | Sprint 1 | Prioritize against a timer | Collaboration | 3 |
+| 3 | The Mirror | Presentation Day | Focus | 3 |
+| 4 | Geek Week | Testing challenge | Initiative | 4 |
+| 5 | Sprint 2 | Fix the broken team | Composure | 4 |
+| 6 | Sprint 3 | Final build and dream speech | Composure | 5 |
+| 7 | Graduation | Crack the simulation | None (all five checked) | 0 |
 
 ## Design decisions (from Prototype_Build_Notes.md)
 - Code-rain intro, red/blue EXIT_PROTOCOL logo, ID-badge login.
