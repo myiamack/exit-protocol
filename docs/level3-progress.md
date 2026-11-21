@@ -140,10 +140,14 @@ After each step: `npm run build`, then `npm test`. Run `npm run test:screens` on
 - **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (136 passed, 0 failed, 0 console errors).
 - **Open issues:** None.
 
-### Step 7: Dev jump (`Ctrl+Shift+1` to `7`) (Effort: Low) - TODO
+### Step 7: Dev jump (`Ctrl+Shift+1` to `7`) (Effort: Low) - DONE
+- **Built:** Added rules-first `Game.jumpToLevel(targetLevel)` in `rules/Game.js` and `Bots.hooks.onFastForward` (plus idempotency guards) in `rules/bots.js` (rebuilt `rules/rules.bundle.js`), gated `Ctrl+Shift+1` to `7` behind one `DEV_JUMP = true` flag (`"remove or gate before Base44"`) in `game.js`, and added Run 11 (`devJumpCases()`) in `Tests/check_screens.js`.
 - **Goal:** Add `Ctrl+Shift+1` to `7` dev jump in `game.js`, always on in the prototype: jumping forward fast-forwards rounds to that level's briefing; jumping to the current or an earlier level starts a new game and fast-forwards to that level; resets round UI and timers cleanly.
 - **Done when:** `Ctrl+Shift+1` through `7` land cleanly on the target level's Briefing from any screen, both forward and backward/same-level, with no stale step state.
 - **Tests:** `npm run build`, `npm test`, `npm run test:screens`
+- **Files changed:** `rules/Game.js`, `rules/bots.js`, `rules/rules.bundle.js`, `game.js`, `Tests/check_screens.js`, `docs/level3-progress.md`, `docs/level3-report.md`.
+- **Test results:** `npm run build` (23 modules), `npm test` (19/19 checks passed with zero baseline diffs), and `npm run test:screens` (146 passed, 0 failed, 0 console errors).
+- **Open issues:** None.
 
 ### Step 8: Screen tests (`Tests/check_screens.js`) (Effort: Medium) - TODO
 - **Goal:** Extend `Tests/check_screens.js` to cover Sprint 1 Complete "Start Level 3", Level 3 briefing & hints, lobby signal grab + miss + bot connect + doors-close fail, Crew Reveal, Setup Crew all 5 steps + wrap up, Dance Crew rhythm lane + bot setup wrap up, mid-trial save/reload, Presentation Day Complete screen (no work styles or secret paths), and dev jump forward and backward (`Ctrl+Shift+1..7`).

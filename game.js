@@ -881,5 +881,32 @@ addEventListener("keydown",e=>{if(!(e.ctrlKey&&e.shiftKey&&(e.key==="H"||e.key==
   const b=$("#facBtn");b.hidden=!b.hidden;if(b.hidden){b.setAttribute("aria-pressed","false");$("#fac").hidden=true}});
 /* Attendance popup: screen code in attendance-view.js. The rules live in rules/Attendance.js and rules/Game.js.
    Input only counts once a round exists. Pausing is decided in rules/Game.js. */
-AttendanceView.mount({game:()=>G,me:()=>ME,onChange:()=>render()});
+const ATT=AttendanceView.mount({game:()=>G,me:()=>ME,onChange:()=>render()});
+/* Dev jump (Ctrl+Shift+1 to 7): remove or gate before Base44. */
+var DEV_JUMP=true;
+function devJumpLevel(e){
+  if(!e.ctrlKey||!e.shiftKey||e.altKey||e.metaKey)return 0;
+  const m=/^Digit([1-7])$/.exec(e.code||"");if(m)return +m[1];
+  const k=/^([1-7])$/.exec(e.key||"");return k?+k[1]:0;
+}
+function devJump(n){
+  if(!DEV_JUMP)return;
+  if(!Number.isInteger(n)||n<1||n>EP.Round.LEVELS.length)return;
+  elevTimers.forEach(clearTimeout);elevTimers=[];
+  BOARD.close();ATT.close();
+  const w=$("#whisper");if(w){clearTimeout(w._t);w.hidden=true}
+  if(!S.code)S.code="CYCLE60";
+  if(!S.name)S.name=S.draft&&S.draft.trim().length>=2?S.draft.trim():"Dev";
+  if(!S.type){S.type="coop";S.spend=EP.Bots.typicalSpend("coop")}
+  else if(spendLeft()!==0)S.spend=EP.Bots.typicalSpend(S.type);
+  const startNew=!G||n<=G.level;
+  if(startNew){endSession();S.found={};S.maxStep=5;newSession()}
+  G.jumpToLevel(n);
+  MYTEAM=G.teamOf(ME);
+  resetRoundUI();
+  S.arrived=true;S.doorsDone=true;S.arr="done";
+  S.prog=startNew?{level:G.level,done:G.level-1}:{level:Math.max(S.prog.level,G.level),done:Math.max(S.prog.done,G.level-1)};
+  go(5);
+}
+addEventListener("keydown",e=>{if(!DEV_JUMP)return;const lv=devJumpLevel(e);if(!lv)return;e.preventDefault();devJump(lv)});
 render();

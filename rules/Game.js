@@ -353,6 +353,150 @@ class Game {
     return this.round;
   }
 
+  /* Dev jump (remove or gate before Base44): fast-forward this game to targetLevel's briefing.
+     During fast-forward, human players act via the existing bot rules (hooks / auto-pilot). */
+  jumpToLevel(targetLevel) {
+    if (!Number.isInteger(targetLevel) || targetLevel < 1 || targetLevel > Round.LEVELS.length) {
+      throw new Error("No level " + targetLevel);
+    }
+    if (this.level === targetLevel && this.step === "briefing") {
+      if (!this.running) this.start();
+      return this.round;
+    }
+    if (this.level > targetLevel || (this.level === targetLevel && this.step !== "briefing")) {
+      throw new Error("Cannot jump backward on an active game.");
+    }
+    if (!this.running) this.start();
+
+    const humans = this.players.filter(p => !p.isBot);
+    const setBotPilot = on => {
+      for (const p of humans) {
+        p.isBot = on;
+        if (!p.isStuck()) p.idle = false;
+      }
+    };
+    const setMirrorAutoPilot = () => {
+      for (const p of humans) {
+        p.isBot = false;
+        if (!p.isStuck()) p.idle = true;
+      }
+    };
+    const timerIs = name => !!(this._timer.current && this._timer.current.name === name);
+
+    try {
+      setBotPilot(true);
+      let guard = 0;
+      while (!(this.level === targetLevel && this.step === "briefing")) {
+        if (++guard > 200) throw new Error("Jump loop.");
+        const s = this.step;
+        if (s === "intermission") {
+          if (timerIs("intermission")) this._timer.closeAt(this._timer.current.deadline);
+          else this.startNextRound();
+        } else if (s === "briefing") {
+          this.advance();
+        } else if (s === "openFloor") {
+          if (this.hooks.onFastForward) this.hooks.onFastForward(this, "openFloor");
+          if (timerIs("openFloor")) this._timer.closeAt(this._timer.current.deadline);
+          else {
+            if (this.hooks.beforeClose) this.hooks.beforeClose(this, "openFloor");
+            this.advance();
+          }
+        } else if (s === "trial") {
+          const t = this.round.trial;
+          if (!this.didRun("runTrial")) {
+            if (t instanceof Trial.MirrorTrial) {
+              const hasMixed = this.teams.some(team => !t.isBotOnlyTeam(team));
+              if (hasMixed) setMirrorAutoPilot();
+              if (timerIs("mirrorLobby") || timerIs("mirrorReveal") || timerIs("mirrorShowtime")) {
+                this._timer.closeAt(this._timer.current.deadline);
+              } else if (t.phase === "lobby") {
+                if (this.hooks.beforeClose) this.hooks.beforeClose(this, "mirrorLobby");
+                this.closeMirrorLobby();
+              } else if (t.phase === "reveal") {
+                this.startMirrorShowtime();
+              } else {
+                if (this.hooks.beforeClose) this.hooks.beforeClose(this, "mirrorShowtime");
+                this.closeMirror({ showtimeSecondsLeft: 0 });
+              }
+              if (hasMixed && this.didRun("runTrial")) setBotPilot(true);
+            } else if (t instanceof Trial.SopTrial) {
+              if (timerIs("sop")) this._timer.closeAt(this._timer.current.deadline);
+              else this.closeSop();
+            } else if (t instanceof Trial.SplitBriefTrial) {
+              if (timerIs("splitBrief")) this._timer.closeAt(this._timer.current.deadline);
+              else {
+                if (!t.twistFired) t.fireTwist(this.teams);
+                if (this.hooks.beforeClose) this.hooks.beforeClose(this, "splitBrief");
+                this.closeSplitBrief();
+              }
+            } else if (t instanceof Trial.JudgedTrial) {
+              if (!t.writing) {
+                if (this.host && !t.prompt) {
+                  this.setPrompt(Math.floor(this.rng() * Trial.JudgedTrial.prompts(this.level).length));
+                }
+                this.startWriting();
+              } else if (t.writing === "open") {
+                if (this.hooks.onFastForward) this.hooks.onFastForward(this, "writing");
+                if (t.writing === "open") {
+                  if (timerIs("writing")) this._timer.closeAt(this._timer.current.deadline);
+                  else this.closeWriting();
+                }
+              } else if (!t.vote) {
+                this.startVote();
+              } else {
+                if (this.hooks.onFastForward) this.hooks.onFastForward(this, "vote");
+                this.runTrial();
+              }
+            } else {
+              this.runTrial();
+            }
+          } else {
+            if (!this.didRun("payTrialCosts")) this.endTrial();
+            else this.advance();
+          }
+        } else if (s === "glitchReport") {
+          if (!this.didRun("endGlitchReport")) {
+            if (timerIs("glitchReport")) this._timer.closeAt(this._timer.current.deadline);
+            else {
+              if (this.hooks.beforeClose) this.hooks.beforeClose(this, "glitchReport");
+              this.closeGlitchReport();
+            }
+          } else {
+            this.advance();
+          }
+        } else if (s === "giftWindow") {
+          if (this.hooks.onFastForward) this.hooks.onFastForward(this, "giftWindow");
+          if (timerIs("giftWindow")) this._timer.closeAt(this._timer.current.deadline);
+          else this.closeGiftWindow();
+        } else if (s === "lockIn") {
+          if (!this.didRun("lockIn")) this.lockIn();
+          this.advance();
+        } else if (s === "statsUpdate") {
+          if (!this.didRun("computeEarnings")) this.computeEarnings();
+          else if (timerIs("statsUpdate")) this._timer.closeAt(this._timer.current.deadline);
+          else {
+            this.placeAllRemaining();
+            this.finishRound();
+          }
+        } else {
+          throw new Error("Cannot fast-forward from step " + s + ".");
+        }
+      }
+    } finally {
+      const now = this.now();
+      for (const p of humans) {
+        p.isBot = false;
+        if (!p.isStuck()) p.idle = false;
+        if (p.lastActivity != null && p.lastActivity > now) p.lastActivity = now;
+        if (p.attendanceResumeAt != null && p.attendanceResumeAt > now) p.attendanceResumeAt = now;
+        if (p.attendanceMissAt != null && p.attendanceMissAt > now) p.attendanceMissAt = now;
+      }
+      this.syncAttendance(now);
+      this.refreshTimer();
+    }
+    return this.round;
+  }
+
   /* Part 6, quiet heart buff. At the start of each round (called only by startNextRound, so once per round),
      every non-Stuck player on a team with 3 or fewer active players (Team.active(): not Stuck, not idle)
      gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only. */

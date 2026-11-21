@@ -84,7 +84,7 @@ const Bots = {
   openFloor(game, rng) {
     for (const team of game.teams) {
       for (const p of team.members) {
-        if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageBlockedThisRound || p.wasCaughtBy(team.id)) continue;
+        if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageBlockedThisRound || p.sabotagesThisRound > 0 || p.wasCaughtBy(team.id)) continue;
         if (!p.hearts.has(Sabotage.cost(p))) continue;
         if (rng() >= Bots.SETTINGS.sabotageRate) continue;
         const targets = team.mates(p).filter(q => !q.isStuck());
@@ -377,12 +377,17 @@ const Bots = {
       Bots.splitBrief(game, now);
       Bots.mirror(game, now);
     },
+    onFastForward(game, phase) {
+      if (phase === "writing") Bots.submit(game);
+      else if (phase === "vote") Bots.vote(game, game.round.trial.vote, game.rng);
+      else if (phase === "openFloor" || phase === "giftWindow") Bots.answerAll(game, game.rng);
+    },
   },
 
   /* Bot votes: rank 3 players from other teams at random. */
   vote(game, vote, rng) {
     for (const p of game.players) {
-      if (!p.isBot || p.isStuck()) continue;
+      if (!p.isBot || p.isStuck() || vote.ballots.has(p)) continue;
       const pool = vote.choicesFor(p).slice();
       const ranking = [];
       while (ranking.length < 3 && pool.length) ranking.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);

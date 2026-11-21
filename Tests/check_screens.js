@@ -2955,6 +2955,210 @@ async function mirrorStep6eCases() {
   check("Presentation Day Complete Replay and Back to sign-in buttons reset session properly", res.replayWorksOk && res.signOutWorksOk);
 }
 
+/* Step 7: Dev jump (Ctrl+Shift+1 to 7) via DEV_JUMP flag, Game.jumpToLevel, and rules fast-forward. */
+async function devJumpCases() {
+  const sendJump = (n, opts = {}) => w.eval(
+    `(() => { const ev = new KeyboardEvent("keydown", { key: String(${n}), code: "Digit${n}", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true, ...${JSON.stringify(opts)} }); const notCancelled = window.dispatchEvent(ev); return { notCancelled, defaultPrevented: ev.defaultPrevented }; })()`
+  );
+  const noScreenLeak = (lv, stageTxt, hudTxt) => {
+    if (LEAK_RE.test(hudTxt || "")) return false;
+    if (lv === 7) return !/Cooperative|Independent|Contrarian|Lifeline|Auditor|Exploit|Progress\s*\d+\s*\/\s*\d+/i.test(stageTxt);
+    return !LEAK_RE.test(stageTxt);
+  };
+
+  try {
+    // 1. Flag on by default and jump from Sign-in screen (G === null)
+    check("DEV_JUMP flag is enabled in prototype", w.eval("DEV_JUMP === true"));
+    w.eval('endSession(); S = fresh(); render();');
+    await sleep(20);
+    sendJump(3);
+    await sleep(20);
+    const fromLogin = w.eval('({ hasGame: !!G, level: G && G.level, gStep: G && G.step, sStep: S.step, name: S.name, isBot: ME && ME.isBot, idle: ME && ME.idle, running: G && G.running, timer: G && G.timer, stage: document.querySelector("#stage").textContent, hud: document.querySelector("#hud").textContent })');
+    check(
+      "Ctrl+Shift+3 from Sign-in creates session and lands on Level 3 Briefing",
+      fromLogin.hasGame && fromLogin.level === 3 && fromLogin.gStep === "briefing" &&
+        fromLogin.sStep === 5 && fromLogin.name === "Dev" && !fromLogin.isBot && !fromLogin.idle &&
+        fromLogin.running && fromLogin.timer === null &&
+        fromLogin.stage.includes("The Mirror: Presentation Day") &&
+        noScreenLeak(3, fromLogin.stage, fromLogin.hud)
+    );
+
+    // 2. Every Ctrl+Shift+1 to 7 lands on a working screen for that level without leaks
+    let allSevenLanded = true;
+    let allSevenWorked = true;
+    let level3IsMirrorLobby = false;
+    let level5AutoSubmitted = false;
+    let level7ReachedOver = false;
+    let sevenDetail = "";
+
+    for (let lv = 1; lv <= 7; lv++) {
+      sendJump(lv);
+      await sleep(20);
+      const st = w.eval(`({ level: G.level, gStep: G.step, sStep: S.step, where: (document.querySelector("#where") || {}).textContent || "", stage: (document.querySelector("#stage") || {}).textContent || "", hud: (document.querySelector("#hud") || {}).textContent || "", navDis: document.querySelector("#navNext").disabled, hdr: BRIEFINGS[${lv}].header, title: BRIEFINGS[${lv}].title })`);
+      const landed = st.level === lv && st.gStep === "briefing" && st.sStep === 5 &&
+        st.where.includes("Level " + lv) &&
+        st.stage.includes(st.hdr) && st.stage.includes(st.title) &&
+        !st.navDis && noOkFlags() && noScreenLeak(lv, st.stage, st.hud);
+      if (!landed) {
+        allSevenLanded = false;
+        sevenDetail += ` land${lv}`;
+      }
+
+      if (lv < 7) {
+        next(); await sleep(15); // -> Open Floor
+        const ofStep = w.eval('({ gStep: G.step, sStep: S.step, hasWorld: !!document.querySelector("#world") })');
+        next(); await sleep(15); // -> Trial
+        const tr = w.eval('({ gStep: G.step, sStep: S.step, stage: (document.querySelector("#stage") || {}).textContent || "", hud: (document.querySelector("#hud") || {}).textContent || "", sop: !!document.querySelector("#check"), sb: !!document.querySelector("#splitBoard") && !!document.querySelector("#splitNotesFeed"), mirLobby: !!document.querySelector("#mirrorSignalBtn") && !!document.querySelector("#lobbyCd"), autoBtn: !!document.querySelector("#runAuto"), judged: !!(document.querySelector("#subDraft") || document.querySelector("#castVote")), sub5: G.board().submissions.some(s => s.level === 5) })');
+        if (!ofStep.hasWorld || ofStep.gStep !== "openFloor" || tr.gStep !== "trial" || tr.sStep !== 7 || !noScreenLeak(lv, tr.stage, tr.hud)) {
+          allSevenWorked = false;
+          sevenDetail += ` step${lv}`;
+        }
+        if (lv === 1 && !tr.sop) { allSevenWorked = false; sevenDetail += " sop1"; }
+        if (lv === 2 && !tr.sb) { allSevenWorked = false; sevenDetail += " sb2"; }
+        if (lv === 3) {
+          level3IsMirrorLobby = tr.mirLobby && tr.stage.includes("PRESENTATION DAY") &&
+            !tr.autoBtn && !tr.stage.includes("coming in Step") &&
+            w.eval('G.mirrorPhase() === "lobby"') && !/bot/i.test(tr.stage);
+          if (!level3IsMirrorLobby) { allSevenWorked = false; sevenDetail += " mir3"; }
+        }
+        if (lv === 4) {
+          if (!tr.autoBtn) { allSevenWorked = false; sevenDetail += " auto4"; }
+          else {
+            $("#runAuto").click(); await sleep(15);
+            if (!w.eval('G.didRun("runTrial")') || $("#navNext").disabled) { allSevenWorked = false; sevenDetail += " run4"; }
+          }
+        }
+        if (lv === 5 && !tr.judged) { allSevenWorked = false; sevenDetail += " judged5"; }
+        if (lv === 6) {
+          level5AutoSubmitted = tr.sub5;
+          if (!tr.judged || !tr.sub5) { allSevenWorked = false; sevenDetail += " judged6"; }
+        }
+      } else {
+        next(); await sleep(15); // -> Graduation
+        const gradOk = w.eval('G.step === "graduation" && S.step === 9 && document.querySelector("#stage").textContent.includes("Final Performance Review")');
+        for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(x => !x.disabled); if (!b) break; b.click(); await sleep(2); }
+        next(); await sleep(15);
+        level7ReachedOver = gradOk && w.eval('G.over === true') &&
+          /You exited Floor 60|Contract renewed/.test($("#stage").textContent) &&
+          !/Cooperative|Independent|Contrarian|Lifeline|Auditor|Exploit/i.test($("#stage").textContent.replace(/Secret path[\s\S]*?(?=Team standings)/, ""));
+        if (!level7ReachedOver) { allSevenWorked = false; sevenDetail += " grad7"; }
+      }
+    }
+    check("Ctrl+Shift+1 to 7 all land on target Briefing without leaks", allSevenLanded, sevenDetail || "1..7 ok");
+    check("Ctrl+Shift+1 to 7 all advance onto working trial/graduation screens", allSevenWorked && level5AutoSubmitted && level7ReachedOver, sevenDetail || "1..7 ok");
+    check("Jump into Level 3 shows Mirror lobby (not placeholder)", level3IsMirrorLobby);
+
+    // 3. Forward jump keeps the same Game instance and fast-forwards through rules (including mid-Level 3 Showtime)
+    sendJump(1); await sleep(15);
+    w.eval('window._djG1 = G; window._djMe1 = ME; S.found.L = 1;');
+    sendJump(3); await sleep(15);
+    const fwd13 = w.eval('({ sameGame: G === window._djG1, sameMe: ME === window._djMe1, level: G.level, step: G.step, keptClue: S.found.L === 1, res1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", res2: typeof G.teamTrialResults(MYTEAM)[2] === "boolean" })');
+    next(); await sleep(15); // Open Floor
+    next(); await sleep(15); // Mirror Lobby
+    // Connect bots + human cleanly into Mirror Showtime via rules clock, then forward-jump to Level 5
+    w.eval('(() => { const t0 = G.timer.deadline - 30000; G.tick(t0 + 16000); G.mirrorConnect(ME.id); if (G.timer && G.timer.name === "mirrorReveal") afterClose(G.tick(G.timer.deadline)); else render(); })()');
+    await sleep(15);
+    const inShowtimeBeforeJump = w.eval('G.mirrorPhase() === "showtime" && !!currentTrialView');
+    sendJump(5); await sleep(15);
+    const fwd35 = w.eval('({ sameGame: G === window._djG1, level: G.level, gStep: G.step, sStep: S.step, noView: currentTrialView === null, isBot: ME.isBot, idle: ME.idle, res3: typeof G.teamTrialResults(MYTEAM)[3] === "boolean", res4: typeof G.teamTrialResults(MYTEAM)[4] === "boolean" })');
+    check(
+      "Forward jump keeps same Game and fast-forwards rounds (including from mid-Level 3 Showtime)",
+      fwd13.sameGame && fwd13.sameMe && fwd13.level === 3 && fwd13.step === "briefing" &&
+        fwd13.keptClue && fwd13.res1 && fwd13.res2 &&
+        inShowtimeBeforeJump && fwd35.sameGame && fwd35.level === 5 && fwd35.gStep === "briefing" &&
+        fwd35.sStep === 5 && fwd35.noView && !fwd35.isBot && !fwd35.idle && fwd35.res3 && fwd35.res4
+    );
+
+    // 4. Same-level and backward jumps start a new Game and fast-forward; partial V[3] creation jump works
+    w.eval('window._djG5 = G; S.found.L = 1;');
+    sendJump(5); await sleep(15); // same-level jump 5 -> 5
+    const sameLv = w.eval('({ newGame: G !== window._djG5, level: G.level, step: G.step, clearedClues: Object.keys(S.found).length === 0, r1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", r4: typeof G.teamTrialResults(MYTEAM)[4] === "boolean", r5: G.teamTrialResults(MYTEAM)[5] === undefined })');
+    w.eval('window._djG5b = G;');
+    sendJump(2); await sleep(15); // backward jump 5 -> 2
+    const backLv = w.eval('({ newGame: G !== window._djG5b, level: G.level, step: G.step, r1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", r2: G.teamTrialResults(MYTEAM)[2] === undefined })');
+    w.eval('endSession(); S = fresh(); S.email = "dj@icstars.org"; S.code = "CYCLE60"; S.name = "DjTest"; S.step = 3; S.maxStep = 3; S.type = "contra"; render();');
+    await sleep(15);
+    sendJump(3); await sleep(15);
+    const partialCreationOk = w.eval('G.level === 3 && G.step === "briefing" && S.step === 5 && ME.type.key === "contra" && spendLeft() === 0 && JSON.stringify(S.spend) === JSON.stringify(EP.Bots.typicalSpend("contra")) && typeof G.teamTrialResults(MYTEAM)[1] === "boolean" && typeof G.teamTrialResults(MYTEAM)[2] === "boolean"');
+    check(
+      "Same-level and backward jumps start a new Game and fast-forward cleanly",
+      sameLv.newGame && sameLv.level === 5 && sameLv.step === "briefing" && sameLv.clearedClues &&
+        sameLv.r1 && sameLv.r4 && sameLv.r5 &&
+        backLv.newGame && backLv.level === 2 && backLv.step === "briefing" &&
+        backLv.r1 && backLv.r2 && partialCreationOk,
+      JSON.stringify({ sameLv, backLv, partialCreationOk })
+    );
+
+    // 5. Save and load right after a jump, continue normally, and verify seeded EP.Rng determinism
+    sendJump(3); await sleep(15);
+    const saveCheck = w.eval(`(() => {
+      const snap = JSON.stringify(G.toJSON());
+      G = EP.Game.fromJSON(JSON.parse(snap), { hooks: EP.Bots.hooks });
+      ME = G.players.find(p => p.id === ME.id);
+      MYTEAM = G.teamOf(ME);
+      const snapAfter = JSON.stringify(G.toJSON());
+      const stateOk = snap === snapAfter && G.level === 3 && G.step === "briefing" && G.running === true && G.timer === null;
+      resetRoundUI();
+      render();
+      return { stateOk };
+    })()`);
+    next(); await sleep(15); // Open Floor
+    const afterLoadOf = w.eval('G.step === "openFloor" && G.timer && G.timer.name === "openFloor"');
+    next(); await sleep(15); // Mirror Lobby
+    const afterLoadMir = w.eval('G.step === "trial" && G.mirrorPhase() === "lobby" && !!document.querySelector("#mirrorSignalBtn") && !!document.querySelector("#lobbyCd")');
+    const detCheck = w.eval(`(() => {
+      const mk = () => {
+        const g = EP.Bots.soloGame({
+          me: { name: "Det", type: "coop", spend: EP.Bots.typicalSpend("coop") },
+          myTeam: { name: "Alpha", mates: ["M1", "M2", "M3"] },
+          others: [{ name: "Beta", players: ["B1", "B2", "B3", "B4"] }, { name: "Gamma", players: ["C1", "C2", "C3", "C4"] }, { name: "Delta", players: ["D1", "D2", "D3", "D4"] }],
+          rng: EP.Rng.seeded(999),
+          hooks: EP.Bots.hooks,
+        }).game;
+        g._timer.clock = () => 100000;
+        g.jumpToLevel(7);
+        return JSON.stringify(g.toJSON());
+      };
+      const a = mk(), b = mk();
+      const reloaded = EP.Game.fromJSON(JSON.parse(a), { clock: () => 100000, hooks: EP.Bots.hooks });
+      return a === b && JSON.stringify(reloaded.toJSON()) === a && reloaded.level === 7 && reloaded.step === "briefing";
+    })()`);
+    check(
+      "Save/load right after dev jump matches identically, continues normally, and uses seeded EP.Rng",
+      saveCheck.stateOk && afterLoadOf && afterLoadMir && detCheck
+    );
+
+    // 6. With DEV_JUMP flag off, keys and devJump() do nothing
+    sendJump(2); await sleep(15);
+    w.eval('window._djKeep = G; DEV_JUMP = false;');
+    const rOff3 = sendJump(3);
+    await sleep(10);
+    const rOff1 = sendJump(1);
+    await sleep(10);
+    w.eval('devJump(5);');
+    await sleep(10);
+    const offOk = w.eval('G === window._djKeep && G.level === 2 && G.step === "briefing" && S.step === 5') &&
+      !rOff3.defaultPrevented && rOff3.notCancelled && !rOff1.defaultPrevented && rOff1.notCancelled;
+    w.eval('DEV_JUMP = true;');
+    check("With DEV_JUMP flag off, Ctrl+Shift+1..7 keys do nothing", offOk);
+
+    // 7. Attendance popup swallows Ctrl+Shift+N while open (no sleep before keydown so 1s ATT.tick cannot close it first)
+    next(); await sleep(10); // -> Open Floor (unpaused step)
+    w.eval('ATT.show("popup", "<h2>Still there?</h2><p>Test</p>");');
+    const attBefore = w.eval('ATT.isOpen()');
+    const attKey = sendJump(4);
+    await sleep(15);
+    const attSwallowed = w.eval('!ATT.isOpen() && G === window._djKeep && G.level === 2 && G.step === "openFloor"');
+    check(
+      "Attendance popup swallows Ctrl+Shift+N without jumping",
+      attBefore && attKey.defaultPrevented && !attKey.notCancelled && attSwallowed,
+      JSON.stringify({ attBefore, attKey, attSwallowed, lv: w.eval("G.level"), step: w.eval("G.step") })
+    );
+  } finally {
+    w.eval('DEV_JUMP = true; ATT.close(); delete window._djG1; delete window._djMe1; delete window._djG5; delete window._djG5b; delete window._djKeep; endSession(); S = fresh(); render();');
+  }
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -2992,6 +3196,8 @@ w.addEventListener("load", async () => {
     await mirrorStep6dCases();
     log("run 10: Mirror Step 6e trial result and Presentation Day Complete");
     await mirrorStep6eCases();
+    log("run 11: Step 7 dev jump (Ctrl+Shift+1..7)");
+    await devJumpCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");
