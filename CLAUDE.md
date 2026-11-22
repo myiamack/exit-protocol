@@ -4,7 +4,18 @@ Build partner for Exit_ProtocoL, a team game. We are updating the local prototyp
 
 ## Current work
 
-Screen state cleanup on branch `screen-state-cleanup`, one step per task from `docs/screen-state-plan.md`. At the start of every task, read `CLAUDE.md` and `docs/screen-state-plan.md` (for Level 3 work, also read `docs/level3-progress.md` and `docs/level3-report.md`).
+Screen state cleanup on branch `screen-state-cleanup`, one step per task from `docs/screen-state-plan.md`. At the start of every task, read `CLAUDE.md` and `docs/screen-state-plan.md`.
+
+Two parallel tracks:
+- Ben: screen state cleanup on `screen-state-cleanup`, one step per task from `docs/screen-state-plan.md`.
+- Hannah: Levels 4, 5 and 6 on `levels-4-6` (branched from `screen-state-cleanup`). Hannah's designs are final for those levels. She also owns plan Step 7 (Levels 5-6 vote cleanup).
+
+Hannah's file boundaries:
+- New files for each level: rules (for example `rules/Level4Parts.js`), data (for example `rules/level4Data.js`), and screen (for example `level4-view.js`). Same pattern as Level 3.
+- Shared files she may edit, with small, listed changes only: `rules/Game.js` (one-line pass-throughs), `rules/index.js` (exports), `rules/Round.js` (`LEVELS` entries), `rules/Trial.js` (new `Trial` subclass registration only), `game.js` (show her screen), `judged-view.js` and `pages/vote-test.js` (Step 7).
+- If a design needs a change to a shared rule (hearts, step order, costs, glitch, gifts, accusations, vote math), stop and report it. Do not build it.
+- Every commit on `levels-4-6` must pass `npm run build`, `npm test`, `npm run test:screens`, and the new-files guard test.
+- After each of Ben's cleanup steps lands on `screen-state-cleanup`, merge `screen-state-cleanup` into `levels-4-6`.
 
 ## How to work with me
 
@@ -24,7 +35,7 @@ Screen state cleanup on branch `screen-state-cleanup`, one step per task from `d
 - Do not change Level 1 behavior unless the step says so.
 - Update `docs/class-diagram.md` (Mermaid) in the same commit whenever a class in `rules/` changes, including the commit it was made from.
 - Balance simulation reference: `Tests\v2_balance\sim_v2.py`.
-- Level 3 workflow: one step per task on `level3-mirror` from `docs/level3-progress.md`; update `docs/level3-progress.md`, commit, and push to `origin` and `backup`. Hannah Ziegler's reference Level 3 lives in commit `cdf3eff` (`backup/Level3` / `hz-level3`); read with `git show` only, never merge, rebase, or cherry-pick.
+- Level 3 is finished. Hannah Ziegler's reference Level 3 lives in commit `cdf3eff` (`backup/Level3` / `hz-level3`); read with `git show` only, never merge, rebase, or cherry-pick.
 
 ## Terminal (Windows PowerShell 5.1)
 
@@ -99,8 +110,6 @@ Screen state cleanup on branch `screen-state-cleanup`, one step per task from `d
 - `Tests/check_teams.js`: standing team-size win check; in `npm test`, run after any rule change.
 
 ## Final rules
-
-Where this file and the OOAD v2 doc disagree, `CLAUDE.md` wins.
 
 ### Character creation and types
 - 5 attributes: Focus, Collaboration, Initiative, Grit, Composure. Each starts at 1 (5 free), player spends 15 more, +2 in each of type's 2 bonus stats (starting total 24). Max 10 per stat; penalty stat max 4 (boost counts toward max). Free type choice, no limits per type.
@@ -192,7 +201,7 @@ Matches `Tests\v2_balance\sim_v2.py` (fixed seed for repeatable tests): Contrari
 
 ## Parked (not in this build)
 
-- Host mode controls; difficulty dials (R6 cost 7, graduation 23); clue system and special abilities; engine auto-dials; Level 4 mini-game (`AutoTrial` placeholder with on-screen note); no-repeat prompts across games (L5-6); Ollama prompt generation (L5-6).
+- Host mode controls; difficulty dials (R6 cost 7, graduation 23); clue system and special abilities; engine auto-dials; no-repeat prompts across games (L5-6); Ollama prompt generation (L5-6).
 
 ## Known limits (do not try to fix now)
 
