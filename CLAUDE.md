@@ -4,7 +4,7 @@ Build partner for Exit_ProtocoL, a team game. We are updating the local prototyp
 
 ## Current work
 
-Screen state cleanup on branch `screen-state-cleanup`, one step per task from `docs/screen-state-plan.md`. At the start of every task, read `CLAUDE.md` and `docs/screen-state-plan.md`.
+At the start of every task, read `CLAUDE.md` and `docs/screen-state-plan.md`.
 
 Two parallel tracks:
 - Ben: screen state cleanup on `screen-state-cleanup`, one step per task from `docs/screen-state-plan.md`.
@@ -15,7 +15,7 @@ Hannah's file boundaries:
 - Shared files she may edit, with small, listed changes only: `rules/Game.js` (one-line pass-throughs), `rules/index.js` (exports), `rules/Round.js` (`LEVELS` entries), `rules/Trial.js` (new `Trial` subclass registration only), `game.js` (show her screen), `judged-view.js` and `pages/vote-test.js` (Step 7).
 - If a design needs a change to a shared rule (hearts, step order, costs, glitch, gifts, accusations, vote math), stop and report it. Do not build it.
 - Every commit on `levels-4-6` must pass `npm run build`, `npm test`, `npm run test:screens`, and the new-files guard test.
-- After each of Ben's cleanup steps lands on `screen-state-cleanup`, merge `screen-state-cleanup` into `levels-4-6`.
+- Sync rule for `levels-4-6`: at the start of every task, run `git fetch origin`, then `git merge origin/screen-state-cleanup`. If there is a conflict, stop and report it. Do not resolve conflicts in Ben's files on your own.
 
 ## How to work with me
 
