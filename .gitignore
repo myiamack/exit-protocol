@@ -1,3 +1,24 @@
-*.docx
+# Dependencies
 node_modules/
+
+# Word docs and Office temp files
+*.docx
+~$*
+
+# Build, test, and temp output (rules/rules.bundle.js is intentionally tracked)
+dist/
+build/
+coverage/
 output.txt
+*.log
+*.tmp
+*.bundle
+
+# Python cache (for Tests/v2_balance/sim_v2.py)
+__pycache__/
+*.py[cod]
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
