@@ -41,7 +41,6 @@ This prototype is single-player with sample teammates. It covers sign-in, menu, 
 | `docs/class-diagram.md` | Mermaid class diagrams for the `rules/` classes |
 | `docs/design/` | Build notes, Floor 60 room checklist, trial question bank |
 | `docs/research/` | Cycle 60 timeline research, cohort journey interview plan |
-| `docs/ben-coppage/` | Ben Coppage's first brainstorm for the game |
 
 ## Running tests
 First install dev dependencies once (`npm install`, needed for `jsdom` in the screen test). On Windows PowerShell 5.1, run commands one at a time (do not use `&&`).
@@ -55,7 +54,7 @@ Settings → Pages → Build and deployment → Deploy from a branch → `main` 
 
 ## Credits
 - **Myia Mack:** game concept, UI, art direction, the Pixel Intern character system, instructors, Floor 60, and the playable prototype.
-- **Ben Coppage:** game rules, points economy and balance testing. That includes the Character Proposal (Nov 4), the Economy Fix Proposal (Nov 4) and the Rules and Testing doc (Nov 5), which tuned the game to about 71% graduation (68.3% after rules v2). He also came up with the original title, *Performance_Review: Exit_ProtocoL*, and wrote the first brainstorm (`docs/ben-coppage/`).
+- **Ben Coppage:** game rules, points economy and balance testing. That includes the Character Proposal (Nov 4), the Economy Fix Proposal (Nov 4) and the Rules and Testing doc (Nov 5), which tuned the game to about 71% graduation (68.3% after rules v2). He also came up with the original title, *Performance_Review: Exit_ProtocoL*, and wrote the first brainstorm.
 - **Hannah Ziegler:** Level 3 (*The Mirror: Presentation Day*) design and original prototype, rebuilt into the OOAD rules and screen structure.
 - **The Cycle 60 board game team:** design reviews and playtesting.
 - All art is original. The story is inspired by *Death Parade* and *Severance*, but nothing is copied from them.

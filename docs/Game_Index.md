@@ -14,8 +14,8 @@ The newest version is `index.html` in this repo.
 | Character concepts (6 original directions) | https://claude.ai/artifact/RzYThjbpPVeRSHqhfVXmsc | `pages/character-concepts.html` |
 
 ## Level 2 & architecture docs
-- `docs/game-report.md`: High-level report on how Level 1, rules, ghosts/tea guests, and trials work today.
-- `docs/level2-progress.md`: Step-by-step build plan and progress tracker for Level 2 (Split Brief).
+- `docs/archive/game-report.md`: High-level report on how Level 1, rules, ghosts/tea guests, and trials work today.
+- `docs/archive/level2-progress.md`: Step-by-step build plan and progress tracker for Level 2 (Split Brief).
 - `AGENTS.md`: Agent startup and Windows PowerShell 5.1 terminal rules.
 - `rules/scenarios.js`: Level 2 Split Brief scenario data (4 tasks, 5 cards, twist card, pre/post answer keys, and bot notes).
 - `splitbrief-view.js`: Level 2 Split Brief trial screen (private cards, team notes feed, 2-slot board, Lock In, and twist popup).

@@ -1,5 +1,11 @@
-Before any task, read CLAUDE.md and docs/level2-progress.md. CLAUDE.md is the source of truth.
+Before any task, read CLAUDE.md and docs/screen-state-plan.md. CLAUDE.md is the source of truth.
 For Level 3 work, also read docs/level3-progress.md and docs/level3-report.md.
+
+## Screen State Rule
+- Screens display data and pass player actions to `Game`. Screens never change game state.
+- Screen files: `game.js`, `world-map.js`, `pixel-art.js`, all view files, `pages/vote-test.js`.
+- Rules own all game state, every deadline that changes game state (including Level 3 Q&A timeouts, deck reshuffles, mic flash hide, sound hold, and missed dance notes), and all outcome-affecting randomness (using seeded `Rng`).
+- Allowed in screens: pure UI state (open panels, typed text before Submit, focus, scroll, animation drawn from rules data, sound playback, minimap toggle). Mark allowed cosmetic randomness with `// cosmetic-ok`.
 
 ## Terminal (Windows PowerShell 5.1)
 - This terminal is Windows PowerShell 5.1. It does not support && between commands.

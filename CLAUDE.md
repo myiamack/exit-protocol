@@ -4,6 +4,10 @@
 
 You are my build partner for Exit_ProtocoL, a team game. We are updating my local prototype so I can play the final rules. All rules are already decided. Do not reopen them. If a rule is unclear or missing, ask me. Do not invent one.
 
+## Current work
+
+Screen state cleanup on branch screen-state-cleanup, one step per task from docs/screen-state-plan.md. At the start of every task, read CLAUDE.md and docs/screen-state-plan.md.
+
 ## How to work with me
 
 - Give me **one instruction per message**. Wait for me to confirm before the next one.
@@ -14,13 +18,17 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 - Stay close to the original concept. Change something only with a good reason.
 - Do not limit player choice unless necessary.
 - When a step builds a useful skill (data, tech, people), point it out in one line.
+- CLAUDE.md is the source of truth for rules. If code and CLAUDE.md disagree, stop and report it. Do not guess.
+- Give a short progress report before long test runs finish.
 
 ## Where the code lives
 
 - Repo: `C:\Users\shcop\projects\exit-protocol`
-- Branch: **level3-mirror** for Level 3 work (branched from **level2-split-brief**, where the 9 open Level 2 QA bugs stay until carried over). Never merge to main. Never push to main.
+- Branch: **screen-state-cleanup** for screen state cleanup (branched from **level3-mirror**). The 9 Level 2 QA bugs are fixed per docs/screen-state-plan.md. Never push to main directly. Work merges to main by pull request after team review.
 - Never create a branch whose name differs from an existing branch only by upper or lower case. Windows treats them as the same name.
 - Word documents stay off GitHub.
+- Do not edit `docs/design/Mock_Interview*` (partner's file).
+- Do not change Level 1 behavior unless the step says so.
 - Class diagram: docs/class-diagram.md (Mermaid, drawn by GitHub). Update it whenever a class in rules/ changes, in the same commit, and update the commit it says it was made from.
 - Balance simulation already in the repo: `Tests\v2_balance\sim_v2.py` (Python). It is the reference for checking our rules code.
 
@@ -31,11 +39,15 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
 - rg (ripgrep) is not installed. Use Select-String for text searches.
 - git grep and findstr return exit code 1 when nothing matches. That means "not found," not an error.
 
-## Already done (do not redo)
+## Screen State Rule
 
-- Pixel font replaced with a readable mono font (`--px:var(--mono);` in styles.css and pages/character-system.html). Committed on ben-ooad.
-- Checkpoint commit "Checkpoint before OOAD refactor" on ben-ooad. Every file is saved; the working tree is clean except untracked docs.
-- A `rules/` folder already exists in the repo. It may hold earlier refactor work. Read it before creating anything.
+- Screens display data and pass player actions to `Game`. Screens never change game state. Screens call rules through `Game`, never the reverse.
+- Screen files: `game.js`, `world-map.js`, `pixel-art.js`, all view files (`board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `mirror-view.js`, `mirror-dance-view.js`, `judged-view.js`), `pages/vote-test.js`.
+- Game state: anything that affects the outcome or must match for every player (scores, hearts, attributes, points, glitches, anomalies, attendance, timers and deadlines, step changes, trial boards, notes, Lock In, votes, gifts, accusations, rankings, tie-breaks, clues found, random results, save data).
+- Rules own every deadline that changes game state, in every level, including Level 3 Q&A timeouts, deck reshuffles, mic flash hide, sound hold, and missed dance notes.
+- All rule math lives in `rules/`. Screen files only draw screens and call `Game`, with no screen variables duplicating `Game` state.
+- Allowed in screens: pure UI state (open panels, typed text before Submit, focus, scroll, animation drawn from rules data, sound playback, minimap toggle).
+- All randomness uses the seeded `Rng`. Allowed cosmetic randomness is marked with `// cosmetic-ok`.
 
 ## Screen fixes queued (do after the refactor, step 4)
 
@@ -55,6 +67,8 @@ You are my build partner for Exit_ProtocoL, a team game. We are updating my loca
    - Login uses Base44 auth. The `@icstars.org` rule is enforced by the actor rejecting connections from other emails (not yet confirmed that the actor can read the email; test this first).
    - Why: no rebuild of the game in Base44's editor, and almost no AI credits. The backend service is in beta and uses workspace integration credits.
    - v1 is real multiplayer on a Base44 actor.
+   - Base44 Actors sleep after about 10 seconds of quiet and lose anything not saved, so `Game.toJSON` / `fromJSON` must capture all game state.
+   - Attendance on Base44: the server must run `Attendance.check()` for every player, because a closed browser tab never calls `check()`.
    - Base44 handoff checklist: dev jump (`Ctrl+Shift+1` to `7`), flag off in the real game, on in a test copy. The dev jump is not removed.
    - Open question: does the actor see the player's email (test this first).
 
@@ -106,6 +120,9 @@ Player.type is a CharacterType object, not a string. Its `key` ("coop", "indep",
 
 Every import and export in `rules/*.js` must stay on one line, because `tools/build-rules.js` only reads single-line imports and exports.
 
+- **ES modules and bundle:** `rules/*.js` are ES modules (`import` / `export`), `rules/package.json` marks the folder as modules, and `rules/index.js` lists them all for Node tests and Base44. `tools/build-rules.js` (`npm run build`) joins them into `rules/rules.bundle.js`, one plain script that sets the global `EP` for `index.html` and `pages/vote-test.html`. Never edit `rules/rules.bundle.js` by hand.
+- **Save, load, and timers:** `Game.toJSON()` returns the entire state as plain data with players and teams referenced by id. `Game.fromJSON(data)` rebuilds an identical game and closes any passed timer at once. `Game` owns step timers as deadlines (`start`, `tick`, `closeTimer`, `secondsLeft`) on an injected clock; a timer that ends starts the next one from its own deadline, and screens read countdowns from `Game`.
+
 ### File map and screen split
 
 - `rules/`: ES module rule classes (`index.js` exports all; `scenarios.js` holds Level 2 scenario data; `mirrorData.js` holds Level 3 data; `MirrorParts.js` holds `MirrorTrial` private parts; `rules.bundle.js` is built for the browser).
@@ -116,10 +133,13 @@ Every import and export in `rules/*.js` must stay on one line, because `tools/bu
 
 ### Test commands
 
-- `npm run build`: rebuild `rules/rules.bundle.js` from `rules/*.js`.
+- `npm run build`: rebuild `rules/rules.bundle.js` from `rules/*.js`. Run after changing any file in `rules/`.
 - `npm test`: run the baseline checks (19/19: `check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`, `check_mirror_data`, `check_mirror_lobby`, `check_mirror_setup`, `check_mirror_dance`, `check_mirror_score`, `check_mirror_timing`, `check_mirror_bots`).
-- `npm run baseline`: save a new fixed-seed baseline snapshot.
-- `npm run test:screens`: run `Tests/check_screens.js` in jsdom (154 passed; Runs 1 to 12, including Level 3 coverage in Run 4 `fullSevenLevelGame`, Run 6 `mirrorStep6bCases`, Run 7 `mirrorStep6c1Cases`, Run 8 `mirrorStep6c2Cases`, Run 9 `mirrorStep6dCases`, Run 10 `mirrorStep6eCases`, Run 11 `devJumpCases`, and Run 12 `mirrorStep8Cases` [8 tests]).
+- `npm run baseline`: save a new fixed-seed baseline snapshot. Never save a new baseline unless the step says so. Explain any baseline change before saving.
+- `npm run test:screens`: run `Tests/check_screens.js` in jsdom (154 passed; Runs 1 to 12, including Level 3 coverage in Run 4 `fullSevenLevelGame`, Run 6 `mirrorStep6bCases`, Run 7 `mirrorStep6c1Cases`, Run 8 `mirrorStep6c2Cases`, Run 9 `mirrorStep6dCases`, Run 10 `mirrorStep6eCases`, Run 11 `devJumpCases`, and Run 12 `mirrorStep8Cases` [8 tests]). Needs `npm install` once first (installs jsdom from `package.json`).
+- After each step: run `npm run build`, then `npm test`. Run `npm run test:screens` when the step touches screen code.
+- After any rule change: run `Tests/check_cheese.js` (tests cheese strategies against normal play) and `Tests/check_balance.js` (both included in `npm test`).
+- Balance target (`Tests/check_balance.js`): 2,000 seeded bot games per setting at 16 (4 of 4), 20 (5 of 4), and 24 (three of 4 and four of 3) players with random equal-odds type mixes (typical and aware spending). Goal: type gap of 1 to 3 points (labeled PASS or FAIL, overall and by player count). `Tests/check_teams.js` runs 1,000 seeded bot games each at 16, 20, and 24 players.
 
 ## Final rules
 
@@ -143,6 +163,16 @@ These are rules v2 from my OOAD Class Reference v2, plus changes decided after b
 - Starts at 3. Cap 3. Refills 1 at the end of each round.
 - Covers any shortfall below 0, **from any cause** (trial cost, sabotage drain, wrong accusation): 1 heart per point in a bonus attribute, 2 hearts per point in any other attribute.
 - Hearts do not count toward graduation.
+- Quiet heart buff: at the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
+
+### Stat abilities
+Each uses the stat's value at that moment (negative counts as 0, max 10). All chances use the game's seeded `Rng` so tests repeat.
+- **Focus (Accusation):** a wrong accusation has a Focus x 10% chance to cost nothing.
+- **Collaboration (Gift):** a sent gift that is not refused has a Collaboration x 10% chance to cost 1 heart less. Every gift costs at least 1 heart. An overflow refund never returns more than the giver paid.
+- **Initiative (Vote):** each voter's ranking points (3/2/1) are multiplied by 1 + Initiative / 10. The ability line says "applies in Levels 5 and 6".
+- **Grit (end of round, after the normal refill):** Grit x 5% chance of +1 heart, capped at the max.
+- **Composure (Sabotage.drain):** Composure x 10% chance the drain is 1 instead of 2.
+- Show each ability's chance on the player's own screen (for example "Focus 6: 60% safe accusation"). Never show other players' chances.
 
 ### Levels (Package A order; trial activities stay in their original levels)
 | Level | Trial activity | Attribute | Cost | Scored by |
@@ -159,23 +189,33 @@ If game.js scores any trial differently, show me and ask before changing it.
 
 Every trial ranks the teams. **Top half win, rounded up** (5 teams: 3 win; 7 teams: 4 win).
 
-SOP score (Level 1, decided in Part 3): 1 point per step in the right place (0 to 6), +1 if the endless step is left out (max 7). Placing nothing does not count as leaving it out. Higher score ranks higher; ties random. Bot teams get a random score from 0 to 7. The old pass mark (5 right and endless step out) is gone.
+SOP score (Level 1): 1 point per step in the right place (0 to 6), +1 if the endless step is left out (max 7). Placing nothing does not count as leaving it out. Higher score ranks higher; ties random. Bot teams get a random score from 0 to 7. The old pass mark (5 right and endless step out) is gone.
 
 SOP sharing (Level 1): the team SOP is shared. Any active teammate can edit it. The board state when the 60-second timer ends is scored. No input from anyone: it scores as it stands (placing nothing scores 0 steps and no endless-step point).
 
+Light influence (Trial base class, Levels 1 to 4 only): team score += 0.5 x (team's average in the tested attribute, active players only, minus the average of all teams). Judged levels (5 and 6) are unchanged. Base score for Level 4 (AutoTrial): a random whole number 0 to 7 plus the influence.
+
+The tested attribute for a level stays hidden on screen until that level's briefing.
+
 ### Round step order (levels 1 to 6)
 Each level opens with a **Briefing** (no player actions). After Stats Update the game is in **Intermission** until the next level starts; a new game also starts in Intermission. Level 7: Briefing, then Graduation.
-1. **Open Floor:** Contrarians may sabotage. Any player may gift a teammate.
+1. **Open Floor (90 seconds):** Contrarians may sabotage. Any player may gift a teammate. Players may switch teams; teams must stay 3 to 5 members (refuse any switch that would break that), and a player who sabotaged this round cannot switch that round.
 2. **Trial:** every non-Stuck player pays the cost from the tested attribute. **Glitching players pay too.** Hearts cover any shortfall.
 3. **Glitch Report:** accusations. Ends on its own after 30 seconds, with a countdown on screen. No answer counts as Skip.
 4. **Gift window** (about 30 seconds): gifts to any teammate (see Gifts).
 5. **Lock-in:** any player still below 0, or with a missed check-in nobody saved, glitches. Reboot. Empathy.
 6. **Stats Update:** earn points, place them, refill hearts by 1. Ends on its own after 30 seconds, with a countdown on screen. Points not placed by then are placed by the bot placement rule; points the player already placed stay.
 
+Timed steps: first Intermission 90 s, Open Floor 90 s, Level 1 SOP 60 s, Level 2 Split Brief 180 s (twist at 90 s), Level 3 Mirror 30 s lobby / 1 s reveal / 75 s showtime, Levels 5-6 writing 180 s, Glitch Report 30 s, gift window 30 s, Stats Update 30 s, Graduation 60 s.
+
+Untimed steps: Briefing, Level 4 AutoTrial, Levels 5-6 vote, Intermission after Level 1.
+
+The Stats Update timer starts when the gift window closes (when Game enters Stats Update), not when the player opens the Stats Update screen.
+
 ### Glitch, reboot, Stuck
-- Glitching: any attribute below 0. Exactly 0 is safe. A missed Attendance check-in before the gift window closes also sets Glitching (see Attendance glitch below).
+- Glitching: any attribute below 0. Exactly 0 is safe. A missed Attendance check-in before the gift window closes also sets Glitching (see Attendance and idle).
 - A gift that brings the attribute to 0 or more cancels the glitch.
-- Attendance glitch (a missed check-in, see Part 7):
+- Attendance glitch (a missed check-in, see Attendance and idle):
   - Before the gift window closes: the player is Glitching. Teammates see Glitching on the Board. Nothing locks in yet.
   - Any accepted gift to that player during the gift window cancels the pending attendance glitch. Normal gift costs. Points go to the lowest attribute (normal tie order), or to the glitching attribute if one is below 0. It counts for Lifeline.
   - If not saved when the gift window closes, it locks in: glitch count +1, glitched this round, status Glitched, reboot.
@@ -191,10 +231,26 @@ Each level opens with a **Briefing** (no player actions). After Stats Update the
 - At risk flag: shown if any attribute, plus the hearts that could cover it, cannot pay a cost of 3. The check is fixed at 3 for every level (was 4, changed after playtest round 2). It is not the next trial's cost. The flag updates live, after every change.
 - Other players see only flags (Glitching, At risk, Stuck), not numbers.
 
+### Attendance and idle
+- Any input resets a 60-second timer: key press, click, touch, mouse movement, and scrolling. Mouse movement counts at most once per second. At 60 seconds, a popup opens with a 15-second countdown ("Still there?" countdown always shows in full before any glitch). No input before it ends is a missed check-in. Idle time, popup time, and the per-round max are settings (host dials).
+- Max 1 attendance glitch per player per round. A miss saved by a gift still uses the cap. A second miss in the same round adds no glitch, but still sets idle.
+- Popup keys: while the check-in popup is open, a key press only closes it and never reaches any other element. Opening the popup clears focus from the footer button. Space or Enter never advances the game.
+- Attendance runs on every input screen, including the Levels 5-6 submission screen and the Vote screen (`pages/vote-test.html` and `pages/vote-test.js`). It is paused on screens that do not need player input: the intro (starting Intermission), every Briefing, every Intermission, every Glitch Report, and every Stats Update. While paused, nothing opens a popup or adds a glitch; pausing closes any open popup with no glitch; resuming starts a fresh 60-second clock from the resume time. The pause decision lives in `rules/Game.js`, not in screen code.
+- Graduation: the timer runs for a player only until they have placed all Round 7 points (a player with 0 points to place is paused from the start of Graduation). Everyone is paused after `results()`. Lives in `rules/Game.js`.
+- Shared popup UI lives in `attendance-view.js` (used by `index.html` and `pages/vote-test.html`). Rules stay in `rules/Attendance.js` and `rules/Game.js`.
+- Idle auto-pilot: any missed check-in sets idle until the player's next input (including misses over the per-round cap). Any input clears idle, on any screen (paused screens too).
+- Active players = not Stuck and not idle (`Team.active()`). Used by vote math, light influence, early close of Level 5-6 writing, and Level 3 lobby/crews.
+- Idle players cannot give, accept or decline gifts, accuse, sabotage, or vote. Their Glitch Report counts as Skip.
+- Gifts to an idle player can be sent; they expire at the end of the step (Open Floor or the gift window) and the giver is refunded. A player who returns before then can still answer.
+- Trial costs are paid as normal while idle. Unplaced points are placed by the bot placement rule when the timer ends (Stats Update 30 seconds, Graduation 60 seconds).
+- Vote: idle players cannot be ranked. A ballot cast before the voter went idle stays.
+- Not blocked while idle: Cash Out, team switching, being sabotaged.
+- Graduation: idle when `results()` runs gives Contract renewed, even with graduating stats. A completed second path still wins.
+
 ### Sabotage (Contrarian only)
 - Teammates only. Not Stuck targets.
 - Cost: 1 heart for the first in a round, 2 for each extra in the same round.
-- Drain: 2 points from the target's trial attribute for this round. Composure x 10% chance it is only 1 (Part 4b; replaces the old "Composure 6 or more" rule).
+- Drain: 2 points from the target's trial attribute for this round. Composure x 10% chance it is only 1 (see Stat abilities).
 - Hearts cover a drain below 0, same as any shortfall.
 - The victim is told privately.
 
@@ -269,109 +325,6 @@ Use the same assumptions as the balance simulation (`Tests\v2_balance\sim_v2.py`
 - In round 7, bots raise any attribute below 2 first.
 - Bot votes: rank 3 players from other teams at random.
 
-## Build order
-
-Do these in order. Finish and test each before starting the next.
-
-1. **Read first, change nothing.** Read game.js, index.html, styles.css, README.md, and everything in the `rules/` folder. Tell me in plain words how the code is organized, how a round runs, and where the rules live. Then propose a short plan.
-2. **Create or finish the 8 rule classes** in the `rules/` folder as JavaScript modules. Reuse what is already there if it fits. No screen code.
-3. **Check the classes against the simulation.** Write a small Node script that plays 1,000 bot games with 16 players (8 Cooperative, 5 Independent, 3 Contrarian), 4 teams of 4, 50% trial win rate, random guessing (accusers pick the saboteur 1 time in 3). The simulation got about 78% to 80% overall graduation for typical players, with types within 1 to 3 points (type gap target). If our results are far off, find out why before moving on.
-4. **Connect the classes to the existing screens,** replacing the old rule logic. Keep the current look.
-5. **Add the vote screen** for levels 5 and 6.
-6. **Playtest checklist:** a short list of what I should watch for when I play.
-
-## Refactor queue (Parts 1 to 13, decided)
-
-One part at a time. After each: run Tests/check_rules.js, check_steps.js, check_gifts.js, check_screens.js, show results, give commit commands, wait for confirmation. After any rule change, also run check_cheese.js and check_balance.js.
-
-Next up: nothing queued. Parts 1 to 13 are done.
-
-1. Done. Rename backup to hearts everywhere. Hearts class owns the count; only spend, refill, refund, lose, empty change it.
-2. Done. CharacterType base class with Cooperative, Independent, Contrarian subclasses. No type name checks outside them.
-3. Done. Trial base class (see Trial in the class table). Vote uses Math.ceil.
-4. Caught Contrarian: a caught sabotage does not count toward Exploit. A Contrarian cannot sabotage while on a team that caught them; switching teams allows sabotage again. Exploit is never lost. Replace sabotageLocked and pathLost with a list of team ids that caught the player. Skim stays: +1 per uncaught sabotage round, max 2 per game.
-4b. Stat abilities. Each uses the stat's value at that moment (negative counts as 0, max 10). All chances use the game's seeded rng so tests repeat.
-   - Focus (Accusation): a wrong accusation has a Focus x 10% chance to cost nothing.
-   - Collaboration (Gift): a sent gift that is not refused has a Collaboration x 10% chance to cost 1 heart less. Every gift costs at least 1 heart (changed after playtest; was "costs 0 hearts"). An overflow refund never returns more than the giver paid.
-   - Initiative (Vote): each voter's ranking points (3/2/1) are multiplied by 1 + Initiative / 10. The ability line says "applies in Levels 5 and 6".
-   - Grit (end of round, after the normal refill): Grit x 5% chance of +1 heart, capped at the max.
-   - Composure (Sabotage.drain): Composure x 10% chance the drain is 1 instead of 2. Replaces the old "Composure 6 or more" rule.
-   - Light influence (Trial base class, Levels 1 to 4 only): team score += 0.5 x (team's average in the tested attribute, active players only, minus the average of all teams). Judged levels unchanged. Base score for Levels 2 to 4: a random whole number 0 to 7 (same range as SOP), plus the influence.
-   - The tested attribute for a level stays hidden on screen until that level's briefing.
-   - Show each ability's chance on the player's own screen (for example "Focus 6: 60% safe accusation"). Never show other players' chances.
-4c. Done. Tests/check_balance.js. For each setting run 2,000 seeded bot games.
-   - Headcounts: 16 (4 teams of 4), 20 (5 of 4), 24 (three of 4 and four of 3).
-   - Type mix: random. In each game, every player's type is picked at random with equal odds.
-   - Spending: typical (current bot rule) and aware (bots put half their earned points, rounded up, into the next level's attribute; the rest the typical way).
-   - Report per setting: graduation %, win % by type, graduation % by type, type gap, second path % by type, Stuck %, percent of sabotages caught, and how often Level 1 winners win later trials versus Level 1 losers.
-   - Group games by Contrarian count and show the type gap for each group, so extreme mixes do not hide in the average. Groups under 50 games are marked "few games".
-   - Target check: type gap of 1 to 3 points, labeled PASS or FAIL, overall and by player count. This is the goal. Use it in every balance report.
-   - No match check (the old expected numbers came from a fixed mix).
-5. Done. Team switching in Open Floor. Teams stay 3 to 5 members; refuse a switch that would break that. A player who sabotaged this round cannot switch that round.
-5b. Done (closed). Tuning. Goal: find and close cheese strategies, not exact balance across mixes. A cheese is a strategy that wins clearly more than normal play. Tests/check_cheese.js has bots play each one on purpose and compares them to normal play. Report each one before changing any rule. Strategies to test:
-   1. Never pay trial costs with points; let hearts cover them.
-   2. A Contrarian who switches teams after every catch.
-   3. Everyone picks the same type.
-   4. Players form as many 3-person teams as possible to farm the small-team heart (Part 6).
-   First results: 1 not a cheese (-2 to -3). 2 cheese (+3.6 to +10.6). 3 all Cooperative is a cheese (+23 to +28). 4 not a cheese (small teams lose); but odd team counts lift win rates (rounding up), and the player vote favors bigger teams (Levels 5-6: 4-person teams win 73%, 3-person 45%).
-   Fix (a), switcher, try 1 (undone): caught = lose 1 point from highest. Switcher edge +9.1 / +6.3 / +1.4 (16 / 20 / 24); all Contrarians weaker (type gap 17.7 typical).
-   Fix (a), try 2 (current): after any catch, no sabotage on any team next round (see Accusations). Wrong accusation ties now use the usual order. Switcher edge +7.5 / +6.5 / +0.5. Still a cheese at 16 and 20 (Exploit 21% vs 15%). check_balance.js unchanged from Part 4c (type gap 10.5 typical, 15.8 aware), because bots that do not switch were already blocked on their own team.
-   Fix (c), vote favors big teams: team vote total divided by active players (see Judged trials). Levels 5-6 now favor small teams instead: 3-person vs 4-person 60% / 54% (24 players), 62% / 50% (16); 3-person vs 5-person 54% / 30% (20). Cause: a player cannot be ranked by their own team, so a bigger team has fewer possible voters per member. Switcher edge now +3.9 / +3.6 / +2.5. Type gap 10.1 typical, 15.8 aware.
-   Fix (c), try 2 (current): also divide by active players not on that team. Levels 5-6 by size: 3 vs 4-person 57% / 57% (24 players), 60% / 60% (16); 3 vs 5-person 51% / 45 to 47% (20). Cheese (c) closed; a small 5-person gap remains. Switcher edge +3.9 / +5.3 / +2.3 (16 / 20 / 24): cheese (a) still open at 16 and 20. Type gap (rerun 2026-11-15, after Parts 9 to 11): check_balance typical 3.9 / 1.0 / 3.5 (16 / 20 / 24 players; all 2.2), aware 11.6 / 8.3 / 7.3 (all 8.8). check_teams typical 4.7 / 2.3 / 4.6.
-   Tests/check_balance.js stays as a general check (type gap 1 to 3 under random mixes, typical and aware). Known issues it shows:
-   1. Aware spending finishes lower than typical, because free heart refills make paying trial costs with hearts cheaper than with points. Careful play must not lose to careless play.
-   2. Independents lead because Auditor gets easier as Contrarians increase. The gap grows from 1.6 at 2 Contrarians to 13.3 at 6 (16 players, typical spending).
-   Final status:
-   - Closed: (c) vote favoring big teams.
-   - Accepted: (a) Contrarian switcher. Edge +3.9 at 16 players (+5.3 at 20, +2.3 at 24), kept on purpose as the reward for switching.
-   - Parked, not fixed: (b) all-Cooperative lobby; odd team counts at 20 players; aware play not paying off; the small 5-person vote gap.
-   - Standing checks: Tests/check_cheese.js and Tests/check_balance.js. Run both after any rule change.
-   - Standing check: Tests/check_screens.js plays Level 1 in a fake browser, replays it, and checks the gift window closes on time with no console errors, then walks a Contrarian to the Breakout Room and checks the USE label. Run it after every part (about 105 seconds).
-   - Standing check: Tests/check_teams.js (Part 11). Run it after every part (about 1 second).
-   - Standing check: Tests/check_bundle.js (Part 12). Fails if rules/rules.bundle.js does not match the modules in rules/. After changing any rule file, run "npm run build". Run it after every part (under 1 second).
-   - Standing check: Tests/check_save.js (Part 13). Saves and reloads bot games after every action, loads after passed deadlines, checks the JSON is plain data. Run it after every part (about 5 seconds).
-   - check_screens.js needs "npm install" once first (installs jsdom from package.json).
-   - Tested, not adopted: Cooperative heart cap 4 (start 3). Type gap 12.5 typical / 16.2 aware (cap 3: 12.8 / 16.0). Cooperative Lifeline falls from about 15% to 5%; all-Cooperative lobby is no longer a cheese (Lifeline 0%, nobody glitches).
-6. Done. Quiet heart buff. At the start of each round, every non-Stuck player on a team with 3 or fewer active players (not Stuck, not idle) gets +1 heart, capped at the normal max. Not shown on screen. Logged for the host only.
-7. Attendance class. Any input resets a 60-second timer: key press, click, touch, mouse movement and scrolling. Mouse movement counts at most once per second. At 60 seconds, a popup with a 15-second countdown. No input before it ends: a missed check-in. Idle time, popup time and the per-round max are settings (host dials).
-   Attendance rules (changed after playtest):
-   - Attendance is one more way to get a glitch. A missed check-in follows the normal glitch path (see Glitch, reboot, Stuck).
-   - Max 1 attendance miss per player per round. A miss saved by a gift still uses the cap. A second miss in the same round does nothing.
-   - An attendance glitch never changes ANOMALIES. ANOMALIES counts clues only.
-   - An attendance glitch and an attribute glitch in the same round count as one glitch.
-   - Two locked glitches of any kind = Stuck.
-   - Popup keys: while the check-in popup is open, a key press only closes it. The key never reaches any other element. Opening the popup clears focus from the footer button. Space or Enter never advances the game.
-   - Attendance runs on every input screen, including the Levels 5-6 submission screen and the Vote screen (pages/vote-test.html and pages/vote-test.js).
-   - Attendance does not fire on the Glitch Report or Stats Update (both end on their own after 30 seconds).
-   - Screen code for the popup is shared in attendance-view.js (used by index.html and pages/vote-test.html). Rules stay in rules/Attendance.js and rules/Game.js.
-   Done. The "Still there?" countdown always shows in full before any glitch. The timer runs only on screens that need player input: it is paused on the intro, every briefing, every intermission, every Glitch Report and every Stats Update. While paused, nothing opens a popup or adds a glitch, however long. Pausing closes any open popup with no glitch. Resuming starts a fresh 60-second clock from the resume time.
-   The pause decision lives in rules/Game.js, not in screen code. Game keeps the list of paused steps (Briefing, Intermission, Glitch Report, Stats Update) and pauses or resumes every player on each step change, for every level. The intro happens while the game is still in its starting Intermission, so it is paused too; game.js has no pause calls.
-   Graduation: the timer runs for a player only until they have placed all their Round 7 points. Once placed, that player is paused for the rest of the game. A player with 0 points to place (already at their maxes) is paused from the start of Graduation. Everyone is paused after results(). Also in Game.js.
-8. Done. Idle auto-pilot. Missing an Attendance check makes a player idle until their next input. Idle players take no optional actions (no gifts, accusations, sabotage, votes). Gifts to them expire. Trial costs are paid as normal. Points are auto-placed by the bot placement rule. Idle at Graduation: ending is Contract renewed.
-   Idle details (decided):
-   - Any miss sets idle, including a miss over the per-round cap. The cap limits glitches only.
-   - Any input clears idle, on any screen (paused screens too).
-   - Active players = not Stuck and not idle (Team.active()). Used by the vote math, the light influence and the early close of Level 5-6 writing.
-   - Idle players cannot give, accept or decline gifts, accuse, sabotage or vote. Their Glitch Report counts as Skip.
-   - Gifts to an idle player can be sent. They expire at the end of the step (Open Floor or the gift window) and the giver is refunded. A player who comes back before then can still answer.
-   - Idle players' points are placed when the timer ends (Stats Update 30 seconds, Graduation 60 seconds), the same way as anyone's unplaced points.
-   - Vote: idle players cannot be ranked. A ballot cast before the voter went idle stays.
-   - Not blocked while idle: Cash Out, team switching, being sabotaged.
-   - Graduation: idle is checked when results() runs. Idle = Contract renewed, even with graduating stats. A completed second path still wins.
-   Note for Base44: the server must run the Attendance check() for every player, because a closed browser tab never calls check().
-9. Move all rule math out of game.js (checkSop, payCost, lockPoints and any other). game.js only draws screens and calls the rules classes. Remove global rule state that duplicates Game.
-10. Full screen button on the game screens.
-11. Tests/check_teams.js: 1,000 games each at 16 players (4 teams of 4), 20 players (5 teams of 4), 24 players (7 teams: three of 4, four of 3). Report graduation, win by type, type gap, win by team size.
-   Done. Random types (equal odds), players shuffled into even teams, typical spending, seed 11. Report only, no tuning.
-   First results: 16 players: graduation 60.9%, type gap 4.7 FAIL. 20: 72.9%, gap 2.3 PASS. 24: 69.7%, gap 4.6 FAIL.
-   Team size at 24: 4-person win 78.9%, 3-person 77.0% (spread 1.8). Full run about 1 second.
-12. Convert every file in rules/ to ES modules (export class / import). Browser prototype keeps working (script type="module"); all Node tests keep passing.
-   Done (Option A, decided): browsers block ES modules on file://, so double-click needs a build step. rules/*.js are ES modules (import / export). rules/index.js lists them all; Node tests and Base44 import from it. rules/package.json marks the folder as modules. tools/build-rules.js ("npm run build") joins them into rules/rules.bundle.js, one plain script that sets the global EP; index.html and pages/vote-test.html load only that file. Never edit the bundle by hand.
-13. Save and load. Game.toJSON() returns the whole state as plain data (players, teams, hearts, glitches, round, step, gifts, sabotages, accusations, votes, attendance, idle flags, rng state), with players and teams referenced by id. Game.fromJSON(data) rebuilds an identical game. Tests/check_save.js plays random bot games, saves and reloads after every step, and confirms final results match games that never reload. Reason: Base44 Actors sleep after about 10 seconds of quiet and lose anything not saved.
-   Done. Decisions: steps with no timer in the rules (Briefing, Trial in Levels 2-4, the Level 5-6 vote, Intermission after Level 1) stay untimed; the SOP board and unlocked point picks moved into Game; bots act through Game hooks (Bots.hooks: onStart, beforeClose); a timer that ends starts the next one from its own deadline.
-   How: rules/Rng.js is the seeded, saveable rng. Game owns the step timers as deadlines (start, tick, closeTimer, secondsLeft) on an injected clock. Timed: first Intermission 90 s, Open Floor 90 s, SOP 60 s, writing 180 s, Glitch Report 30 s, gift window 30 s, Stats Update 30 s, Graduation 60 s. Game.fromJSON closes any passed timer at once. Screens read countdowns from Game.
-   Screen change to notice: the Stats Update timer now starts when the gift window closes (when Game enters Stats Update), not when you open the Stats Update screen.
-
 ## Levels 5-6 submissions and vote
 - Each active player writes one named submission to a prompt, max 300 characters.
 - Writing timer: 3 minutes. Closes early when every active player has submitted.
@@ -416,7 +369,6 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 
 ## Not in this build (parked)
 
-- Base44 build and real multiplayer.
 - Host mode controls.
 - Difficulty dials (round 6 cost 7, graduation total 23).
 - Clue system and special abilities.
@@ -430,18 +382,8 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - Balance depends on trial win rate, guessing skill, and how players spend points. Package A meets 1 to 3 points only at about a 50% win rate with random guessing.
 - With 0 Contrarians, Independents cannot complete Auditor.
 - Sabotage victims graduate much less often than others. Known and accepted for now.
-
-## Level 2 work rules (for every agent)
-
-- Level 2 is built one step at a time from docs/level2-progress.md. Do one step per task, then stop.
-- At the start of every task, read CLAUDE.md, docs/level2-progress.md, and docs/game-report.md.
-- CLAUDE.md is the source of truth for rules. If code and CLAUDE.md disagree, stop and report it. Do not guess.
-- After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only when the step touches screen code (`game.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`).
-- Never save a new baseline unless the step says so. Explain any baseline change before saving.
-- Give a short progress report before long test runs finish.
-- At the end of every step: update `docs/level2-progress.md` (mark the step done, list files changed, test results, any open issues), commit on `level2-split-brief`, and push.
-- Do not edit `docs/design/Mock_Interview*` (partner's file).
-- Do not change Level 1 behavior unless the step says so.
+- Accepted on purpose: Contrarian switcher edge (+3.9 at 16 players, +5.3 at 20, +2.3 at 24), kept as the reward for switching.
+- Parked balance issues: all-Cooperative lobby, odd team counts at 20 players, aware spending finishing lower than typical (free heart refills make paying trial costs with hearts cheaper than with points), Independents leading as Contrarian count rises, and the small 5-person vote gap.
 
 ## Level 2 trial: Split Brief
 
@@ -497,14 +439,14 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 
 ## Level 3 work rules (for every agent)
 
-- Level 3 is built one step at a time from `docs/level3-progress.md` on branch `level3-mirror` (made from `level2-split-brief`). Do one step per task, then stop.
+- Level 3 is built one step at a time from `docs/level3-progress.md` on branch `level3-mirror`. Do one step per task, then stop.
 - At the start of every task, read `CLAUDE.md`, `docs/level3-progress.md`, and `docs/level3-report.md`.
 - Hannah Ziegler is the Level 3 designer. Her first version of Level 3 lives in commit `cdf3eff` on `backup/Level3`. Her code is a reference only: read it with `git show cdf3eff:<path>` or `git show hz-level3:<path>` (same commit as `cdf3eff`). Never merge, rebase, or cherry-pick it.
 - CLAUDE.md is the source of truth for rules. If code and CLAUDE.md disagree, stop and report it. Do not guess.
 - After each step: `npm run build`, then `npm test`. Run `npm run test:screens` only when the step touches screen code (`game.js`, `mirror-view.js`, `mirror-dance-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `index.html`, `styles.css`).
 - Never save a new baseline unless the step says so. Explain any baseline change before saving.
 - At the end of every step: update `docs/level3-progress.md` (mark the step done, list files changed, test results, any open issues), commit on `level3-mirror`, and push to `origin` and `backup`.
-- The 9 open Level 2 QA bugs stay on `level2-split-brief` and will be carried into `level3-mirror` later.
+- The 9 Level 2 QA bugs are fixed per `docs/screen-state-plan.md`.
 - Do not edit `docs/design/Mock_Interview*` (partner's file).
 
 ## Level 3 trial: The Mirror: Presentation Day
@@ -512,7 +454,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
 - **Designer:** Hannah Ziegler (original prototype in `cdf3eff` on `backup/Level3`; rebuilt in our OOAD rules and screen structure).
 - **Name, class, cost:** Name is **The Mirror: Presentation Day**. `trialKind` is `"mirror"`, class `MirrorTrial`. Tests Focus, costs 3 (unchanged in `Round.LEVELS`).
 - **Lobby:** Its own 30-second timer. Each active player connects themselves with Hannah's signal-grab tile (moving cursor 0 to 100, start speed 7 to 10, green band width 14; tap when the moving cursor is in the green band; a miss wobbles the line and speeds up that tile by +2 up to 16, her numbers from `cdf3eff`). Stuck and Idle players are not in the lobby or the crews (`Team.active()` only). If any active player is still out when the doors close, the team's trial fails with score 0. Bots always connect after a random 3 to 15 seconds.
-  After a sleep, a missed mirrorLobby deadline closes at the deadline, not at the last bot's connect time (same as the Part 13 wake-up rule). Live play and slept play can differ by a few seconds; there is only one game copy, so players never see different timelines.
+  After a sleep, a missed mirrorLobby deadline closes at the deadline, not at the last bot's connect time (same as the save/load wake-up rule). Live play and slept play can differ by a few seconds; there is only one game copy, so players never see different timelines.
 - **Crew deal and reveal:** Seeded `Rng`, active players only. Setup Crew gets half rounded up, max 3 (`Math.min(3, Math.ceil(activeCount / 2))`). The rest are Dance Crew. Then a 1-second `CREW LOCKED` reveal before showtime starts.
 - **Setup split and turn order:** Setup Crew works the 5 steps in order, each turn starting when the previous Setup player finishes:
   - 1 Setup player: does all 5 steps (cables, sound, mic, deck, Q&A).
@@ -536,7 +478,7 @@ Level 6 prompts (Sprint 3, finishing and delivering):
   - Dance Crew: bot dancers gain +1 boost every 1.5 to 2.5 seconds up to 45, no misses.
   - Bot-only teams: roll a random attention 0 to 100 and score from it (`Math.round(attention / 100 * 7)`).
   - Idle humans: follow the existing idle auto-pilot rule (bot rule plays their part).
-- **Multiplayer and code split:** Each player plays their own part on their own device. The screen handles motion and timing (belts, notes). The screen reports results to the rules (hit, miss, held, feedback, answer, timeout); the rules never run per-tick motion. The rules engine holds all Level 3 state, step order, penalties, boosts, content picks (mic sequences, file order, Q&A order), and scoring. All randomness uses the seeded `Rng`. `Game.toJSON` and `Game.fromJSON` must capture mid-trial Level 3 state.
+- **Multiplayer and code split:** Each player plays their own part on their own device. Screens draw motion from rules data and report player input. The rules own all Level 3 deadlines, timeouts, penalties, content picks, randomness and scoring. The rules engine holds all Level 3 state, step order, and boosts. All randomness uses the seeded `Rng`. `Game.toJSON` and `Game.fromJSON` must capture mid-trial Level 3 state.
 - **Class split:** `MirrorTrial` coordinates three private parts (`#lobby`: `MirrorLobby`, `#setup`: `SetupCrew`, `#dance`: `DanceCrew`) defined in `rules/MirrorParts.js` (exported through `rules/index.js`, following the one-line import/export rule). Outside code (`Game`, screens, bots) only calls `MirrorTrial`. Each part has its own `toJSON`/`fromJSON` and uses the seeded `Rng` passed in from `MirrorTrial`.
 - **No hardcoded team names:** Never hardcode team names anywhere in Level 3.
 
