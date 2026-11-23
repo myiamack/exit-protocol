@@ -248,7 +248,7 @@ function resetRoundUI(){
   S.trialUI={draft:"",msg:"",picks:["","",""],noteDraft:"",confirmLock:false,twistDismissed:false};
   S.pay=null;S.acc={target:"",result:null};S.gw={received:[],sent:[]};
 }
-function startLevel(){if(!G.round){if(G.timer)G.closeTimer();else G.startNextRound()}S.prog.level=Math.max(S.prog.level,G.level);go(5)}
+function startLevel(){if(!G.round){if(G.timer)G.closeTimer();else{G.startNextRound();if(!G.running)G.start()}}S.prog.level=Math.max(S.prog.level,G.level);go(5)}
 function startNextLevel(){
   if(!G||!roundDone()||G.level>=7)return;
   resetRoundUI();
@@ -276,22 +276,44 @@ const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3
 /* Timers live in Game (Part 13): each timed step has a deadline. The countdown reads it.
    One page clock asks Game to close any timer that ran out (G.tick), then follows on screen. */
 function drawTimer(poll=true){
-  const s=G?G.secondsLeft():null,txt=fmt(s==null?0:s),low=s!=null&&s<=10;
+  const tv=G?G.timerView():null,s=tv?tv.secondsLeft:null,txt=fmt(s==null?0:s),low=s!=null&&s<=10;
+  const b=$("#banner"),bt=$("#bannerT"),cin=S.step===4&&!S.arrived;
+  const label=tv?TIMER_LABELS[tv.name]||null:null;
+  const showB=!cin&&!!label;
+  if(b){b.hidden=!showB;if(showB&&bt)bt.textContent=label}
   for(const id of ["#tmr","#floorTmr","#gwTmr"]){const e=$(id);if(e){e.textContent=txt;e.classList.toggle("low",low)}}
   if(currentTrialView&&currentTrialView.tick)currentTrialView.tick(txt,low);
   if(poll&&G&&ATT)ATT.sync(G.pollAttendance());
 }
+function stepForGame(){
+  if(!G)return S.step;
+  switch(G.step){
+    case "intermission":return G.level===0?4:9;
+    case "briefing":return 5;
+    case "openFloor":return 6;
+    case "trial":return 7;
+    case "glitchReport":case "giftWindow":case "lockIn":return 8;
+    case "statsUpdate":case "graduation":return 9;
+    default:return S.step;
+  }
+}
 function afterClose(closed){
+  let target=null;
   for(const n of closed){
-    if(n==="intermission"){S.prog.level=Math.max(S.prog.level,G.level);if(S.step===4){go(5);continue}}
-    else if(n==="openFloor"){if(S.step===6){go(7);continue}}
+    if(n==="intermission"){S.prog.level=Math.max(S.prog.level,G.level);if(S.step===4)target=5}
+    else if(n==="openFloor"){if(S.step===6)target=7}
     else if(n==="sop"){S.sop.inTime=false;sopScored()}
     else if(n==="writing"){S.trialUI.msg=""}
     else if(n==="glitchReport"){S.acc.target="";S.acc.result=null}   /* time up: Skip */
+    else if(n==="giftWindow"){if(S.step===8)target=9}
     else if(n==="statsUpdate"||n==="graduation")S.prog.done=Math.max(S.prog.done,G.level);
   }
-  render();
-  if(G&&ATT)ATT.sync(G.pollAttendance())}
+  const synced=closed.length?stepForGame():null;
+  if(synced!=null)target=synced;
+  if(target!=null&&target!==S.step)go(target);
+  else render();
+  if(G&&ATT)ATT.sync(G.pollAttendance());
+}
 setInterval(()=>{if(!G)return;const closed=G.tick();if(closed.length)afterClose(closed);else drawTimer()},250);
 
 /* ---------- navigation ---------- */
@@ -345,7 +367,11 @@ function updateNav(){
 }
 
 /* ---------- chrome ---------- */
-const BANNER={4:"Intermission",6:"Open Floor",7:"The Trial"};
+const TIMER_LABELS={
+  intermission:"Intermission",openFloor:"Open Floor",
+  sop:"The Trial",splitBrief:"The Trial",mirrorLobby:"The Trial",mirrorReveal:"The Trial",mirrorShowtime:"The Trial",writing:"The Trial",
+  glitchReport:"Glitch Report",giftWindow:"Gift Window",statsUpdate:"Stats Update",graduation:"Graduation"
+};
 function chrome(){
   const inGame=S.step>=5;
   setRain(S.step===0?1:S.step===1?.18:.06);
@@ -360,10 +386,8 @@ function chrome(){
   const stepLabel=S.step===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):S.step===9&&roundDone()&&milestoneTitle()?milestoneTitle():STEPS[S.step];
   $("#steps").innerHTML=STEPS.map((t,i)=>`<li class="${i===S.step?"on":i<S.step?"done":""}">${i===9&&R().isFinal?(G&&G.over?"Results":"Graduation"):i===9&&roundDone()&&milestoneTitle()?milestoneTitle():t}</li>`).join("");
   $("#fac").innerHTML=`<span class="label">Host script · ${stepLabel}</span><ul>${facLines(S.step,R().n).map(l=>`<li>${esc(l)}</li>`).join("")}</ul>`;
-  const bl=S.step===7?(G&&G.timer?"The Trial":null):S.step===8?(!accDone()?"Glitch Report":!gwClosed()?"Gift Window":null):S.step===9?(R().isFinal?(G&&G.over?null:"Graduation"):(roundDone()?null:"Stats Update")):BANNER[S.step];
   const cin=S.step===4&&!S.arrived;
-  const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&trialDone())&&!(S.step===6&&!floorOpen());
-  $("#banner").hidden=!showB;if(showB){$("#bannerT").textContent=bl;drawTimer(false)}
+  drawTimer(false);
   const h=$("#hud");
   if(!ME||S.step<4||cin){h.hidden=true}else{h.hidden=false;
   h.innerHTML=A.map(a=>{const v=ME.attrs[a.k];return `<div class="attr ${isBonus(a.k)?"bonus":""}"><div class="top"><span>${a.n}</span><span class="v ${v<0?"neg":""}">${v}/${maxOf(a.k)}</span></div><span class="trk"><i style="width:${Math.max(0,v)/maxOf(a.k)*100}%"></i></span></div>`}).join("")+
@@ -800,7 +824,6 @@ function bind(){
     $$("[data-inc]").forEach(b=>b.onclick=()=>{const k=b.dataset.inc;if(EP.Player.canRaise(S.type,S.spend,k)){S.spend[k]++;render()}});
     $$("[data-dec]").forEach(b=>b.onclick=()=>{const k=b.dataset.dec;if(EP.Player.canLower(S.spend,k)){S.spend[k]--;render()}});
   }
-  if(S.step===4&&S.arrived&&S.maxStep<5&&!G.running)G.start();   /* the first intermission's timer starts now */
   if(S.step===4)on("#skipIntro",skipArrival);
   if(S.step===4||S.step===6)on("#closeP",()=>{S.panel=false;render()});
   if(S.step===6){

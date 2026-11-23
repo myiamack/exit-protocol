@@ -4866,6 +4866,10 @@ class Game {
   }
   refreshTimer() { this._timer.refresh(); }
   secondsLeft(now) { return this._timer.secondsLeft(now); }
+  timerView(now) {
+    const cur = this._timer.current;
+    return cur ? { name: cur.name, secondsLeft: this._timer.secondsLeft(now) } : null;
+  }
   _startSplitBrief() {
     const t = this.round && this.round.trial;
     if (!(t instanceof Trial.SplitBriefTrial)) return;

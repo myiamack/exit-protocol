@@ -9,7 +9,7 @@ No rules, balance numbers, timer lengths, copy, or features are redesigned in th
 
 - [x] **Step 0:** Add Screen State Rule and doc cleanup to `CLAUDE.md` and `AGENTS.md` (done)
 - [x] **Step 1:** Attendance injected clock and server-ready tick (`V-18, V-19`)
-- [ ] **Step 2:** Game clock sync, Gift Window auto-advance, and timer banner alignment (`V-01, V-02, V-11`)
+- [x] **Step 2:** Game clock sync, Gift Window auto-advance, and timer banner alignment (`V-01, V-02, V-11`)
 - [ ] **Step 3a:** Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` (`V-28, V-32, V-33`)
 - [ ] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
 - [ ] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
@@ -46,7 +46,7 @@ No rules, balance numbers, timer lengths, copy, or features are redesigned in th
 - **QA bugs fixed:** None (fixes clock skew and closed-tab idle bypass for multiplayer).
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
-#### Step 2: Game clock sync, Gift Window auto-advance, and timer banner alignment
+#### Step 2: Game clock sync, Gift Window auto-advance, and timer banner alignment — DONE
 - **Violations covered:** `V-01, V-02, V-11`
 - **Files touched:** `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `Tests/check_screens.js`
 - **Where logic moves:** Existing `Timer` (`rules/Timer.js`) and `Game` (`rules/Game.js`). Add a read-only `Game.timerView()` pass-through returning `{ name, secondsLeft }` so `game.js` renders the banner label and countdown strictly from `G.timer` (never guessing from `S.step`). In `game.js`: add `giftWindow` -> `go(9)` to `afterClose()` so All-Hands auto-advances when the gift window closes; sync `S.step` to `G.step` on timer close; limit the `G.start()` change to "the elevator cutscene no longer starts the game clock" (no lobby work); use the banner timer only from `Game.timerView()` (no inline countdown in Glitch Report or Stats Update panels; answers Q8).

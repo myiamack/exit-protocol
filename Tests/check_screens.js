@@ -86,10 +86,9 @@ async function level1(trialWait) {
   $("#skipAcc").click(); await sleep(50);
   log("gift window open, timer " + ($("#tmr") ? $("#tmr").textContent : "?"));
   const start = Date.now();
-  for (let i = 0; i < 40 && $("#navNext").disabled; i++) await sleep(1000);
+  for (let i = 0; i < 40 && w.eval("S.step === 8"); i++) await sleep(1000);
   const secs = (Date.now() - start) / 1000;
-  check("gift window closed on time (about 30 s)", !$("#navNext").disabled && secs < 35, secs.toFixed(0) + " s");
-  next(); await sleep(50);   // > stats update
+  check("gift window auto-advanced on time (about 30 s)", w.eval('S.step === 9 && G.step === "statsUpdate"') && secs < 35, secs.toFixed(0) + " s");
   for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(5); }
   next(); await sleep(50);   // lock in
   check("points locked, Level 2 unlocked", /Start Level 2/.test($("#navNext").textContent) && !$("#navNext").disabled, $("#navNext").textContent);
@@ -550,8 +549,8 @@ async function fullSevenLevelGame() {
     }
     $("#skipAcc").click(); await sleep(20); // -> Gift Window
     w.eval('if (G.timer && G.timer.name === "giftWindow") afterClose(G.tick(G.timer.deadline));');
-    await sleep(20); // Gift Window closed, Stats Update button enabled
-    next(); await sleep(30); // -> Stats Update
+    await sleep(20); // Gift Window closed, auto-advanced to Stats Update
+    check("Level " + lv + " Gift Window auto-advances All-Hands to Stats Update", w.eval('S.step === 9 && G.step === "statsUpdate"'));
     for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
     next(); await sleep(30); // Lock in points -> roundDone
     if (lv === 2) {
@@ -2479,14 +2478,15 @@ async function mirrorStep6dCases() {
             gameCtx.setNow(G.timer.deadline);
             afterClose(G.tick());
           }
-          goForward(); // -> Stats Update (step 9)
+          const gwAutoAdvancedOk = S.step === 9 && G.step === "statsUpdate";
           for (let i = 0; i < 10; i++) {
             const pInc = document.querySelector("[data-pinc]:not([disabled])");
             if (!pInc) break;
             pInc.click();
           }
           goForward(); // -> lockPoints
-          fullDanceLv3EndOk = stageHitCount >= 1 &&
+          fullDanceLv3EndOk = gwAutoAdvancedOk &&
+            stageHitCount >= 1 &&
             danceLaneClean &&
             danceTrialEndedClean &&
             G.level === 3 &&
@@ -3422,7 +3422,7 @@ async function mirrorStep8Cases() {
         tNow = G.timer.deadline;
         afterClose(G.tick());
       }
-      goForward(); // -> Stats Update (step 9)
+      const gwAutoAdvancedOk = S.step === 9 && G.step === "statsUpdate";
       for (let i = 0; i < 15; i++) {
         const pInc = document.querySelector("[data-pinc]:not([disabled])");
         if (!pInc) break;
@@ -3433,6 +3433,7 @@ async function mirrorStep8Cases() {
       const resPanel = [...document.querySelectorAll("#stage .panel")].find(p => p.textContent.includes("Your trial results"));
       const resRows = resPanel ? [...resPanel.querySelectorAll(".row")] : [];
       const setupReachesPdcOk = setupTrialResultOk &&
+        gwAutoAdvancedOk &&
         G.level === 3 && G.step === "intermission" && roundDone() &&
         pdcTxt.includes("Presentation Day Complete") &&
         resRows.length === 3 &&
@@ -3788,6 +3789,155 @@ async function attendanceClockAndTickCases() {
   check("Entering a paused step closes open Attendance popup cleanly", res.pauseClosesPopupOk);
 }
 
+/* Step 2: Game clock sync, Gift Window auto-advance, and timer banner alignment (V-01, V-02, V-11). */
+async function timerBannerAndSyncCases() {
+  const res = w.eval(`(() => {
+    try {
+      endSession();
+      S = fresh();
+      S.email = "step2@icstars.org";
+      S.code = "CYCLE60";
+      S.name = "Step2Me";
+      S.draft = "Step2Me";
+      S.type = "coop";
+      S.spend = EP.Bots.typicalSpend("coop");
+      S.step = 3;
+      S.maxStep = 3;
+      render();
+
+      // 1. Arrival cutscene does not start the game clock
+      goForward(); // -> Step 4 arrival cutscene (elev)
+      const elevNoClockOk = S.step === 4 && !S.arrived &&
+        G.running === false &&
+        G.timerView() === null &&
+        document.querySelector("#banner").hidden === true;
+
+      skipArrival(); // -> role briefing
+      const roleLines = ROLE_BRIEF[S.type].lines.length;
+      for (let i = 0; i < roleLines; i++) arrivalAdvance();
+      if (!S.arrived) arrivalAdvance();
+      const lobbyNoClockOk = S.step === 4 && S.arrived === true &&
+        G.running === false &&
+        G.timerView() === null &&
+        document.querySelector("#banner").hidden === true;
+
+      // Clicking Start Level 1 starts the game clock and enters Briefing (untimed)
+      goForward();
+      const startLevelStartsClockOk = S.step === 5 && G.level === 1 && G.step === "briefing" &&
+        G.running === true &&
+        G.timerView() === null &&
+        document.querySelector("#banner").hidden === true;
+
+      let simNow = 20000000;
+      G._timer.clock = () => simNow;
+
+      goForward(); // -> Open Floor (90s)
+      const tvOpen = G.timerView();
+      const openFloorBannerOk = S.step === 6 && G.step === "openFloor" &&
+        !!tvOpen && tvOpen.name === "openFloor" && tvOpen.secondsLeft === 90 &&
+        document.querySelector("#banner").hidden === false &&
+        document.querySelector("#bannerT").textContent === "Open Floor" &&
+        document.querySelector("#tmr").textContent === "1:30";
+
+      goForward(); // -> SOP Trial
+      G.setSopBoard(ME, EP.Trial.SopTrial.STEPS);
+      render();
+      document.querySelector("#check").click();
+      goForward(); // -> Glitch Report (30s)
+
+      const tvGlitch0 = G.timerView();
+      const glitchStartBannerOk = S.step === 8 && G.step === "glitchReport" &&
+        !!tvGlitch0 && tvGlitch0.name === "glitchReport" && tvGlitch0.secondsLeft === 30 &&
+        document.querySelector("#banner").hidden === false &&
+        document.querySelector("#bannerT").textContent === "Glitch Report" &&
+        document.querySelector("#tmr").textContent === "0:30" &&
+        !document.querySelector("#gwTmr");
+
+      // Mutating returned timerView object does not mutate Game state
+      tvGlitch0.secondsLeft = 999;
+      tvGlitch0.name = "bogus";
+      const timerViewReadOnlyOk = G.timerView().name === "glitchReport" && G.timerView().secondsLeft === 30;
+
+      simNow += 12000;
+      drawTimer();
+      const tvGlitch18 = G.timerView();
+      const glitchTickBannerOk = !!tvGlitch18 && tvGlitch18.name === "glitchReport" && tvGlitch18.secondsLeft === 18 &&
+        document.querySelector("#bannerT").textContent === "Glitch Report" &&
+        document.querySelector("#tmr").textContent === "0:18";
+
+      // Banner reads strictly from G.timerView(), never guessing from S.step (even if S.step lags)
+      S.step = 7;
+      render();
+      const bannerIgnoresStaleStepOk = document.querySelector("#banner").hidden === false &&
+        document.querySelector("#bannerT").textContent === "Glitch Report" &&
+        document.querySelector("#tmr").textContent === "0:18";
+
+      // Closing Glitch Report timer syncs S.step to G.step (8) and updates banner to Gift Window
+      simNow += 18000;
+      afterClose(G.tick());
+      const tvGift0 = G.timerView();
+      const glitchCloseSyncsOk = S.step === 8 && G.step === "giftWindow" &&
+        !!tvGift0 && tvGift0.name === "giftWindow" && tvGift0.secondsLeft === 30 &&
+        document.querySelector("#banner").hidden === false &&
+        document.querySelector("#bannerT").textContent === "Gift Window" &&
+        document.querySelector("#tmr").textContent === "0:30" &&
+        (document.querySelector("#gwTmr") || {}).textContent === "0:30";
+
+      simNow += 10000;
+      drawTimer();
+      const giftTickOk = G.timerView().secondsLeft === 20 &&
+        document.querySelector("#bannerT").textContent === "Gift Window" &&
+        document.querySelector("#tmr").textContent === "0:20" &&
+        (document.querySelector("#gwTmr") || {}).textContent === "0:20";
+
+      // Gift Window auto-advances All-Hands to Stats Update when it closes; banner matches G.timerView()
+      simNow += 20000;
+      afterClose(G.tick());
+      const tvStats0 = G.timerView();
+      const giftAutoAdvanceOk = S.step === 9 && G.step === "statsUpdate" &&
+        !!tvStats0 && tvStats0.name === "statsUpdate" && tvStats0.secondsLeft === 30 &&
+        document.querySelector("#banner").hidden === false &&
+        document.querySelector("#bannerT").textContent === "Stats Update" &&
+        document.querySelector("#tmr").textContent === "0:30" &&
+        !document.querySelector("#gwTmr");
+
+      simNow += 11000;
+      drawTimer();
+      const tvStats19 = G.timerView();
+      const statsTickBannerOk = !!tvStats19 && tvStats19.name === "statsUpdate" && tvStats19.secondsLeft === 19 &&
+        document.querySelector("#bannerT").textContent === "Stats Update" &&
+        document.querySelector("#tmr").textContent === "0:19";
+
+      // Stats Update close ends round (intermission) and hides banner
+      simNow += 19000;
+      afterClose(G.tick());
+      const statsCloseBannerOk = S.step === 9 && G.step === "intermission" && roundDone() &&
+        G.timerView() === null &&
+        document.querySelector("#banner").hidden === true;
+
+      return {
+        arrivalNoClockOk: elevNoClockOk && lobbyNoClockOk && startLevelStartsClockOk,
+        openFloorBannerOk,
+        glitchBannerOk: glitchStartBannerOk && timerViewReadOnlyOk && glitchTickBannerOk && bannerIgnoresStaleStepOk,
+        giftBannerAndSyncOk: glitchCloseSyncsOk && giftTickOk,
+        giftAutoAdvanceAndStatsOk: giftAutoAdvanceOk && statsTickBannerOk && statsCloseBannerOk,
+      };
+    } finally {
+      elevTimers.forEach(clearTimeout);
+      elevTimers = [];
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  check("Arrival cutscene does not start game clock until Start Level 1", res.arrivalNoClockOk);
+  check("Open Floor banner reads label and countdown from Game.timerView()", res.openFloorBannerOk);
+  check("Glitch Report banner label and seconds match Game.timerView() even if S.step lags", res.glitchBannerOk);
+  check("Timer close syncs S.step to G.step and Gift Window banner matches Game.timerView()", res.giftBannerAndSyncOk);
+  check("All-Hands auto-advances to Stats Update on Gift Window close and Stats Update banner matches Game.timerView()", res.giftAutoAdvanceAndStatsOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -3831,6 +3981,8 @@ w.addEventListener("load", async () => {
     await mirrorStep8Cases();
     log("run 13: Step 1 attendance injected clock and server-ready tick");
     await attendanceClockAndTickCases();
+    log("run 14: Step 2 timer banner alignment, gift window auto-advance, and arrival clock");
+    await timerBannerAndSyncCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

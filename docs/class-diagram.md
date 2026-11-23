@@ -32,7 +32,7 @@ classDiagram
     +step  current step, read-only
     +over  results ran, read-only
     +timer, running  from Timer
-    +start(), tick(), closeTimer(), secondsLeft()
+    +start(), tick(), closeTimer(), secondsLeft(), timerView()
     +startNextRound(), advance(), finishRound(), jumpToLevel(targetLevel)
     +activity(), checkAttendance(), pollAttendance()
     +sabotage(), gift(), answerGift(), switchTeam()
@@ -431,5 +431,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 1, from commit `a0b0908`).
+Made from the rules code on branch `screen-state-cleanup` (Step 2, from commit `261327d`).
 Update this diagram whenever a class in `rules/` changes.
