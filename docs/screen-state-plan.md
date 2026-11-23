@@ -8,7 +8,7 @@ No rules, balance numbers, timer lengths, copy, or features are redesigned in th
 ## Checklist
 
 - [x] **Step 0:** Add Screen State Rule and doc cleanup to `CLAUDE.md` and `AGENTS.md` (done)
-- [ ] **Step 1:** Attendance injected clock and server-ready tick (`V-18, V-19`)
+- [x] **Step 1:** Attendance injected clock and server-ready tick (`V-18, V-19`)
 - [ ] **Step 2:** Game clock sync, Gift Window auto-advance, and timer banner alignment (`V-01, V-02, V-11`)
 - [ ] **Step 3a:** Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` (`V-28, V-32, V-33`)
 - [ ] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
@@ -39,7 +39,7 @@ No rules, balance numbers, timer lengths, copy, or features are redesigned in th
 
 ### Phase 1: Timers and Deadlines
 
-#### Step 1: Attendance injected clock and server-ready tick
+#### Step 1: Attendance injected clock and server-ready tick — DONE
 - **Violations covered:** `V-18, V-19`
 - **Files touched:** `rules/Game.js`, `rules/rules.bundle.js`, `attendance-view.js`, `game.js`, `pages/vote-test.js`, `Tests/check_screens.js`
 - **Where logic moves:** Existing `Game` (`rules/Game.js`) and `Attendance` (`rules/Attendance.js`). Default `now = this.now()` in `Game.checkAttendance(now = this.now())` (matching `Game.activity`), and run attendance checks from `Game`'s own tick path (or a single `Game.pollAttendance()` call using `this.now()`) so screens never pass `Date.now()` into rules and Base44 actor wakes check all players even when a tab is closed. Keep the 1s mouse-move throttle in `attendance-view.js` on `performance.now()` (pure input debounce) rather than passing wall-clock time to rules.

@@ -17,7 +17,7 @@
   FullscreenView.mount(document.querySelector("#fsBtn"));   // full screen button (screen code only)
   /* Attendance check on the submission and Vote screens. Rules in rules/Attendance.js and rules/Game.js;
      the popup is shared screen code (attendance-view.js). Game pauses it in briefings and intermissions. */
-  AttendanceView.mount({ game: () => G, me: () => ME, onChange: () => render() });
+  const ATT = AttendanceView.mount({ game: () => G, me: () => ME, onChange: () => render() });
   const S = { screen: "setup", name: "You", type: "coop", host: false, draft: "", msg: "", picks: ["", "", ""] };
 
   /* ----- game setup: 16 players, 4 teams of 4 (8 Cooperative, 5 Independent, 3 Contrarian) ----- */
@@ -70,17 +70,31 @@
     EP.Bots.submit(G);   // bots submit "Bot answer" right away
     render();
     if (G.round.trial.writing !== "open") { toVote(); return; }   // e.g. you are Stuck: everyone active already submitted
+    startPoll();
+  }
+  function startPoll() {
     stopTimer();
-    /* The writing timer is a deadline in Game. Game.tick closes writing when it runs out. */
+    /* The writing timer is a deadline in Game. Game.tick closes writing when it runs out.
+       Game.pollAttendance checks all players on Game's own clock during both writing and vote. */
     timer = setInterval(() => {
+      if (!G || !G.round) return;
+      const wasWriting = G.round.trial && G.round.trial.writing === "open";
       G.tick();
-      const left = G.secondsLeft() || 0, t = $("#tmr");
-      if (t) { t.textContent = fmt(left); t.classList.toggle("low", left <= 10); }
-      if (G.round.trial.writing !== "open") toVote();
+      ATT.sync(G.pollAttendance());
+      if (wasWriting) {
+        const left = G.secondsLeft() || 0, t = $("#tmr");
+        if (t) { t.textContent = fmt(left); t.classList.toggle("low", left <= 10); }
+        if (G.round.trial.writing !== "open") toVote();
+      }
     }, 1000);
   }
   function stopTimer() { clearInterval(timer); timer = null; }
-  function toVote() { stopTimer(); if (!G.round.trial.vote && !G.didRun("runTrial")) G.startVote(); S.msg = ""; render(); }
+  function toVote() {
+    if (!G.round.trial.vote && !G.didRun("runTrial")) G.startVote();
+    S.msg = "";
+    render();
+    if (!timer && !G.didRun("runTrial")) startPoll();
+  }
 
   /* ----- screens ----- */
   const V = {};
@@ -156,7 +170,7 @@
       });
     }
     if (S.screen === "trial" && trialView && trialView.bind) trialView.bind($("#stage"));
-    if (S.screen === "done") on("#again", () => { G = null; ME = null; S.screen = "setup"; render(); });
+    if (S.screen === "done") on("#again", () => { stopTimer(); ATT.close(); G = null; ME = null; S.screen = "setup"; render(); });
   }
 
   render();

@@ -235,7 +235,7 @@ class Game {
   /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
      Returns [{ player, state, msLeft }] for players with the popup open, and for a miss
      [{ player, state: "missed", counted, pending, locked, stuck }] (see attendanceMiss). */
-  checkAttendance(now) {
+  checkAttendance(now = this.now()) {
     const out = [];
     this.syncAttendance(now);
     for (const p of this.players) {
@@ -249,6 +249,11 @@ class Game {
       if (r.state === "popup" || r.state === "missed") out.push({ player: p, ...r });
     }
     return out;
+  }
+  /* Server-ready attendance check on Game's own clock (this.now()). Checks every human player so
+     a closed browser tab never skips a player's check. */
+  pollAttendance() {
+    return this.checkAttendance(this.now());
   }
 
   /* True while a missed check-in can still be saved: from Open Floor until the gift window closes

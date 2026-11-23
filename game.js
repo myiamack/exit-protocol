@@ -275,10 +275,11 @@ const flag=s=>`<span class="flag ${s==="At risk"?"risk":s}">${s}</span>`;
 const HEART=on=>`<svg viewBox="0 0 24 22" aria-hidden="true"><path d="M12 20.5 3.2 12A5.3 5.3 0 0 1 12 4.6 5.3 5.3 0 0 1 20.8 12Z" fill="${on?"#e0394d":"#3a1520"}" stroke="#0b0e13" stroke-width="2.4" stroke-linejoin="round"/>${on?'<path d="M7 8.5a2.5 2.5 0 0 1 3-1.5" stroke="#ffb3bd" stroke-width="1.8" fill="none" stroke-linecap="round"/>':""}</svg>`;
 /* Timers live in Game (Part 13): each timed step has a deadline. The countdown reads it.
    One page clock asks Game to close any timer that ran out (G.tick), then follows on screen. */
-function drawTimer(){
+function drawTimer(poll=true){
   const s=G?G.secondsLeft():null,txt=fmt(s==null?0:s),low=s!=null&&s<=10;
   for(const id of ["#tmr","#floorTmr","#gwTmr"]){const e=$(id);if(e){e.textContent=txt;e.classList.toggle("low",low)}}
   if(currentTrialView&&currentTrialView.tick)currentTrialView.tick(txt,low);
+  if(poll&&G&&ATT)ATT.sync(G.pollAttendance());
 }
 function afterClose(closed){
   for(const n of closed){
@@ -289,7 +290,8 @@ function afterClose(closed){
     else if(n==="glitchReport"){S.acc.target="";S.acc.result=null}   /* time up: Skip */
     else if(n==="statsUpdate"||n==="graduation")S.prog.done=Math.max(S.prog.done,G.level);
   }
-  render()}
+  render();
+  if(G&&ATT)ATT.sync(G.pollAttendance())}
 setInterval(()=>{if(!G)return;const closed=G.tick();if(closed.length)afterClose(closed);else drawTimer()},250);
 
 /* ---------- navigation ---------- */
@@ -361,7 +363,7 @@ function chrome(){
   const bl=S.step===7?(G&&G.timer?"The Trial":null):S.step===8?(!accDone()?"Glitch Report":!gwClosed()?"Gift Window":null):S.step===9?(R().isFinal?(G&&G.over?null:"Graduation"):(roundDone()?null:"Stats Update")):BANNER[S.step];
   const cin=S.step===4&&!S.arrived;
   const showB=!cin&&!!bl&&!(S.step===4&&S.maxStep>=5)&&!(S.step===7&&trialDone())&&!(S.step===6&&!floorOpen());
-  $("#banner").hidden=!showB;if(showB){$("#bannerT").textContent=bl;drawTimer()}
+  $("#banner").hidden=!showB;if(showB){$("#bannerT").textContent=bl;drawTimer(false)}
   const h=$("#hud");
   if(!ME||S.step<4||cin){h.hidden=true}else{h.hidden=false;
   h.innerHTML=A.map(a=>{const v=ME.attrs[a.k];return `<div class="attr ${isBonus(a.k)?"bonus":""}"><div class="top"><span>${a.n}</span><span class="v ${v<0?"neg":""}">${v}/${maxOf(a.k)}</span></div><span class="trk"><i style="width:${Math.max(0,v)/maxOf(a.k)*100}%"></i></span></div>`}).join("")+

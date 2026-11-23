@@ -34,7 +34,7 @@ classDiagram
     +timer, running  from Timer
     +start(), tick(), closeTimer(), secondsLeft()
     +startNextRound(), advance(), finishRound(), jumpToLevel(targetLevel)
-    +activity(), checkAttendance()
+    +activity(), checkAttendance(), pollAttendance()
     +sabotage(), gift(), answerGift(), switchTeam()
     +setSopBoard(), closeSop(), splitBrief(), closeSplitBrief()
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
@@ -431,5 +431,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code at commit `ce6661f` (branch `level3-mirror`).
+Made from the rules code on branch `screen-state-cleanup` (Step 1, from commit `a0b0908`).
 Update this diagram whenever a class in `rules/` changes.

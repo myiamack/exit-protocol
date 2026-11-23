@@ -3639,6 +3639,155 @@ async function mirrorStep8Cases() {
   check("Backward and same-level dev jump from mid-Level 3 Dance Showtime cleans up loop and starts fresh Game", res.devJumpCleanupOk);
 }
 
+/* Step 1: Attendance injected clock and server-ready tick (V-18, V-19). */
+async function attendanceClockAndTickCases() {
+  const attSrc = fs.readFileSync(path.join(repo, "attendance-view.js"), "utf8");
+  check("attendance-view.js has no Date.now()", !/\bDate\.now\b/.test(attSrc));
+  check("attendance-view.js has no setInterval", !/\bsetInterval\b/.test(attSrc));
+  check("attendance-view.js uses performance.now() for mouse-move throttle", /\bperformance\.now\s*\(\)/.test(attSrc));
+
+  const res = w.eval(`(() => {
+    const origPerfNow = window.performance.now.bind(window.performance);
+    const origPerfDesc = Object.getOwnPropertyDescriptor(window.performance, "now");
+    let fakePerf = origPerfNow() + 2000;
+    Object.defineProperty(window.performance, "now", { configurable: true, writable: true, value: () => fakePerf });
+    try {
+      let simNow = 10000000;
+      const sess = EP.Bots.soloGame({
+        me: { name: "AttMe", type: "coop", spend: EP.Bots.typicalSpend("coop") },
+        myTeam: { name: "Team Kestrel", mates: TEAM.map(p => p.n) },
+        others: OTHERS.map(o => ({ name: o.t, players: o.p })),
+        rng: EP.Rng.seeded(105),
+        hooks: EP.Bots.hooks,
+      });
+      const g = sess.game;
+      g._timer.clock = () => simNow;
+      const human2 = sess.team.members[1];
+      human2.isBot = false;
+      g.start();
+      g.startNextRound();
+      g.advance(); // -> openFloor (Attendance active for both humans)
+
+      G = g;
+      ME = sess.me;
+      MYTEAM = sess.team;
+      S = {
+        ...fresh(),
+        email: "att@icstars.org",
+        code: "CYCLE60",
+        name: ME.name,
+        type: ME.type.key,
+        spend: EP.Bots.typicalSpend(ME.type.key),
+        arrived: true,
+        step: 6,
+        maxStep: 6,
+      };
+      resetRoundUI();
+      render();
+
+      simNow = 10059000;
+      const before60 = G.checkAttendance();
+      simNow = 10060000;
+      const at60 = G.checkAttendance();
+      const defaultClockPopupOk = before60.length === 0 &&
+        at60.length === 2 &&
+        at60.every(e => e.state === "popup" && e.msLeft === 15000);
+
+      ATT.sync(at60);
+      const syncShowOk = ATT.isOpen() &&
+        ATT.kind() === "popup" &&
+        (document.querySelector("#attSec") || {}).textContent === "15";
+
+      simNow = 10065000;
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "a", code: "KeyA", bubbles: true, cancelable: true }));
+      window.dispatchEvent(new KeyboardEvent("keyup", { key: "a", code: "KeyA", bubbles: true, cancelable: true }));
+      const keyUsesGameClockOk = !ATT.isOpen() && ME.lastActivity === 10065000;
+
+      simNow = 10075000;
+      const poll75 = G.pollAttendance();
+      const h2Miss = poll75.find(e => e.player === human2);
+      const closedTabOtherHumanMissedOk = !!h2Miss &&
+        h2Miss.state === "missed" &&
+        human2.idle === true &&
+        human2.attendancePending === true &&
+        !ME.idle &&
+        !ME.attendancePending;
+
+      simNow = 10125000;
+      drawTimer();
+      const popupAt15Ok = ATT.isOpen() &&
+        ATT.kind() === "popup" &&
+        (document.querySelector("#attSec") || {}).textContent === "15";
+
+      simNow = 10130000;
+      drawTimer();
+      const popupCountdownOk = ATT.isOpen() &&
+        ATT.kind() === "popup" &&
+        (document.querySelector("#attSec") || {}).textContent === "10";
+
+      simNow = 10140000;
+      drawTimer();
+      const missShownOk = ME.idle === true &&
+        ME.attendancePending === true &&
+        ATT.isOpen() &&
+        ATT.kind() === "missed" &&
+        ((document.querySelector("#attT") || {}).parentElement || {}).textContent.includes("You missed the check-in. You are Glitching.");
+
+      document.querySelector("#attOk").click();
+      const okClickClearsOk = !ATT.isOpen() && !ME.idle && ME.lastActivity === 10140000;
+
+      simNow = 10145000;
+      window.dispatchEvent(new Event("pointermove"));
+      const move1Ok = ME.lastActivity === 10145000;
+
+      simNow = 10146000;
+      fakePerf += 500;
+      window.dispatchEvent(new Event("pointermove"));
+      const moveThrottledOk = ME.lastActivity === 10145000;
+
+      fakePerf += 500;
+      window.dispatchEvent(new Event("pointermove"));
+      const moveAfterThrottleOk = ME.lastActivity === 10146000;
+
+      simNow = 10206000;
+      drawTimer();
+      const openBeforePause = ATT.isOpen() && ATT.kind() === "popup";
+      G.advance();
+      G.runTrial();
+      G.endTrial(); // -> glitchReport (paused step)
+      drawTimer();
+      const pauseClosesPopupOk = openBeforePause && !ATT.isOpen() && ME.attendancePaused === true;
+
+      return {
+        defaultClockPopupOk,
+        syncShowOk,
+        keyUsesGameClockOk,
+        closedTabOtherHumanMissedOk,
+        popupAt15Ok,
+        popupCountdownOk,
+        missShownOk,
+        okClickClearsOk,
+        moveThrottleOk: move1Ok && moveThrottledOk && moveAfterThrottleOk,
+        pauseClosesPopupOk,
+      };
+    } finally {
+      if (origPerfDesc) Object.defineProperty(window.performance, "now", origPerfDesc);
+      else delete window.performance.now;
+      ATT.close();
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  check("Game.checkAttendance() defaults to Game clock and checks all human players", res.defaultClockPopupOk);
+  check("AttendanceView.sync() displays popup from Game.pollAttendance() and key answer uses Game clock", res.syncShowOk && res.keyUsesGameClockOk);
+  check("Game.pollAttendance() checks other human players even with no open tab", res.closedTabOtherHumanMissedOk);
+  check("drawTimer() polls attendance, updates popup countdown, shows missed dialog, and OK clears idle", res.popupAt15Ok && res.popupCountdownOk && res.missShownOk && res.okClickClearsOk);
+  check("attendance-view.js 1s mouse-move throttle uses performance.now() while Game.activity uses Game clock", res.moveThrottleOk);
+  check("Entering a paused step closes open Attendance popup cleanly", res.pauseClosesPopupOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -3680,6 +3829,8 @@ w.addEventListener("load", async () => {
     await devJumpCases();
     log("run 12: Step 8 Level 3 mid-trial save/reload and live-stage flows");
     await mirrorStep8Cases();
+    log("run 13: Step 1 attendance injected clock and server-ready tick");
+    await attendanceClockAndTickCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");
