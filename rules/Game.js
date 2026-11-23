@@ -765,12 +765,16 @@ class Game {
       if (runChrono()) return true;
     }
     if (!this._isMirrorShowtimeActive()) return true;
+    const left = this.mirrorShowtimeSecondsLeft(targetNow);
+    for (const team of this.teams) {
+      if (!t.isBotOnlyTeam(team)) t.checkAttention(team, left);
+    }
+    if (this._maybeCloseMirrorShowtime(targetNow)) return true;
     const activeHumanIdsEnd = this._activeMirrorHumanIds();
     for (const team of this.teams) {
       if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
       t.tickDance(team, targetNow, { activeHumanIds: activeHumanIdsEnd });
     }
-    const left = this.mirrorShowtimeSecondsLeft(targetNow);
     for (const team of this.teams) {
       if (!t.isBotOnlyTeam(team)) t.checkAttention(team, left);
     }
