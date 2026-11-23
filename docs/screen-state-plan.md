@@ -14,7 +14,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 3a:** Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` (`V-28, V-32, V-33`)
 - [x] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
 - [x] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
-- [ ] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
+- [x] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
 - [ ] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
 - [ ] **Step 7 (BLOCKED):** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`) — blocked until Ben decides when the Levels 5-6 vote closes (Q10)
 - [ ] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
@@ -87,14 +87,15 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 
 ### Phase 2: Step and Phase Flow
 
-#### Step 5: Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early
+#### Step 5: Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early — DONE
 - **Violations covered:** `V-03, V-04, V-05`
-- **Files touched:** `rules/Game.js`, `rules/bots.js`, `rules/rules.bundle.js`, `game.js`, `Tests/check_steps.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
+- **Files touched:** `rules/Game.js`, `rules/bots.js`, `rules/rules.bundle.js`, `game.js`, `Tests/check_steps.js`, `Tests/check_screens.js`, `Tests/baseline/check_steps.txt`, `Tests/baseline/check_save.txt`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** Existing `Game` (`rules/Game.js`) and `Bots.hooks` (`rules/bots.js`).
   - Disable `◀ Back` in `game.js:296` whenever a live round step is active (`S.step >= 5`, keeping Back only for pre-game screens `1..4` and menu navigation) so `S.step` cannot desync from `G.step`.
   - Add an `onGift(game, gift)` hook in `Bots.hooks` (invoked from `Game.gift()` if present) and delete the direct `EP.Bots.answer(G, r.gift, G.rng)` call from `game.js:596`.
   - Timed steps (`SOP`, `Glitch Report`, `Stats Update`, `Graduation`) close only when their timer runs out. One player's click never closes a timed step for others. Only Levels 5-6 writing and Split Brief close early (answers Q4). Replace raw `G.closeTimer()`, `G.placeAllRemaining()`, `G.finishRound()`, and `G.results()` clicks in `game.js` with player-action methods (`G.submitSop(p)` / saving draft picks) that never close timed steps early.
 - **QA bugs fixed:** Reinforces **Bug 5** (eliminates Back-button timer desync) and fixes Level 3 QA Step 10 #2.
+- **Done notes:** Added `Game.submitSop(p, built)`, `Game.skipAccusation(p)`, and `Bots.hooks.onGift(game, gift)` (answering bot-receiver gifts via `game.rng` while leaving gifts to humans `pending`); locked `canBack()` on `S.step >= 5` and replaced early-close clicks on Open Floor, SOP, Glitch Report, Stats Update, and Graduation in `game.js` with waiting states while leaving untimed buttons (`Start Level`, Briefing, L4 AutoTrial, `All-hands ▶`, L5-6 vote, Intermission) intact. Updated old `Tests/check_screens.js` helpers to advance timed steps on the fake clock via `finishTimedStep()` and refreshed `check_steps.txt` and `check_save.txt` baselines (new Step 5 assertions; `5987` saves from `onGift`), building on prerequisite Mirror catch-up fixes in commits `4fd2dab` (`_advanceMirrorShowtime` attention check order) and `9fa7c16` (`DanceCrew.nextDeadline` `includeSpawns` option passed from `MirrorTrial.nextShowtimeEventAt`).
 - **Checks:** `npm run build`, `npm test` (explain any baseline diff if bot games change before saving a new baseline), `npm run test:screens`.
 
 #### Step 6: Route Split Brief actions and player-scoped reads through `Game`
@@ -201,6 +202,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - **Q7. Team standings ties (Bug 7):** On `Sprint 1 Complete`, `Presentation Day Complete`, and `Final Results`, should teams tied on `trialWins` share the same place number (e.g. `1, 1, 3, 4`) or show a tie note?
 - **Q9. Open Floor tap speed (Bug 3):** For tapped movement keys on Floor 60, do you prefer a longer tap impulse (e.g. ~80-100px per tap) or grid-step movement?
 - **Q10. When the Levels 5-6 vote closes (blocks Step 7):** When should the Levels 5-6 player vote close (e.g. when all active voters cast, on a timer, or both)?
+- **Q11. Untimed step ownership in multiplayer:** Untimed steps that one click advances for everyone (Briefing 'Open the floor', post-trial 'All-hands' which pays trial costs, Start Level): who owns these in multiplayer, host or actor?
 
 ### Answered
 - **Q3. Reception `WATCHER` anomaly — ANSWERED:** `WATCHER` counts once, from the `ATTEMPT 02` badge printed at Reception check-in. Any second trigger is a bug (see Step 9).

@@ -84,7 +84,7 @@ class Game {
   /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }.
      clock: returns the time in ms. Times Attendance and the step timers. Tests pass a fake one.
      rng: the game's random numbers. Use Rng.seeded(seed) if the game will be saved (toJSON).
-     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName), onTick(game, now) }.
+     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName), onTick(game, now), onGift(game, gift) }.
        The prototype passes Bots.hooks so bots act at the same moments as before. Base44 passes none. */
   constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now(), hooks = {} }) {
     this.teams = teams;
@@ -596,6 +596,19 @@ class Game {
     if (why) return { ok: false, reason: why };
     return this.round.trial.setSopBoard(this.round, p, this.teamOf(p), built);
   }
+  /* Player clicks Submit SOP: saves/validates their team's SOP board only; never closes the SOP timer early. */
+  submitSop(p, built) {
+    const team = this.teamOf(p);
+    const why = this.wrongStep("trial") ||
+      (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null) ||
+      (!team ? "No team for player." : null) ||
+      (p.idle ? "You are idle." : null);
+    if (why) return { ok: false, reason: why };
+    const board = built === undefined ? this.sopBoard(team) : built;
+    const res = this.round.trial.setSopBoard(this.round, p, team, board);
+    if (!res.ok) return res;
+    return { ok: true, board: this.sopBoard(team).slice() };
+  }
   /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
      stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
      Results per team id: { right, endlessOut, score } in round.sopResults. */
@@ -986,6 +999,15 @@ class Game {
     if (why) return { ok: false, reason: why };
     return this.round.accuse(accuser, target, this.teamOf(accuser), this.rng);
   }
+  /* Player clicks Skip on Glitch Report: validates step/eligibility only; never closes the Glitch Report timer early. */
+  skipAccusation(p) {
+    const why = this.wrongStep("glitchReport") ||
+      (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null) ||
+      (p.accusedThisRound ? "You already accused this round." : null) ||
+      (p.idle ? "You are idle." : null);
+    if (why) return { ok: false, reason: why };
+    return { ok: true, skipped: true };
+  }
   endGlitchReport() {
     this.mustBe("glitchReport");
     this.once("endGlitchReport");
@@ -1004,7 +1026,9 @@ class Game {
     const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
       "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
     if (why) return { ok: false, reason: why };
-    return this.round.gift(giver, receiver, this.teamOf(giver), pts, this.rng);
+    const res = this.round.gift(giver, receiver, this.teamOf(giver), pts, this.rng);
+    if (res.ok && this.hooks.onGift) this.hooks.onGift(this, res.gift);
+    return res;
   }
   /* The receiver answers a pending gift: accept (true) or decline (false). */
   answerGift(gift, accept) {

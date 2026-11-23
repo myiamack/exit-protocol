@@ -301,5 +301,14 @@ PASS  Spend more than you have is refused  -> 3
 PASS  Refill and refund stop at the cap of 3  -> 3
 PASS  Lose never goes below 0
 PASS  Empty sets hearts to 0
+PASS  Bots.hooks.onGift answers human-to-bot gift at once  -> accepted
+PASS  Without onGift hook, human-to-bot gift stays pending  -> pending
+PASS  onGift uses g.rng in the same order as Bots.answer  -> accepted vs accepted
+PASS  Bots.hooks.onGift leaves a gift to a human pending  -> pending
+PASS  Human can answer the pending gift later  -> accepted
+PASS  submitSop saves board without closing SOP timer
+PASS  skipAccusation validates without closing Glitch Report timer
+PASS  lockPoints saves player picks without closing Stats Update timer
+PASS  lockPoints on Graduation saves final picks without closing Graduation timer
 
-303 passed, 0 failed
+312 passed, 0 failed

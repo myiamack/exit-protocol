@@ -39,6 +39,17 @@ const w = dom.window, d = w.document;
 const $ = s => d.querySelector(s), $$ = s => [...d.querySelectorAll(s)];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const next = () => $("#navNext").click();
+const finishTimedStep = expectedName => {
+  w.eval(`(() => {
+    if (!G || !G.timer) return;
+    if (${JSON.stringify(expectedName || "")} && G.timer.name !== ${JSON.stringify(expectedName || "")}) return;
+    G._testClockOffset = G.timer.deadline - Date.now();
+    G._timer.clock = () => Date.now() + G._testClockOffset;
+    G.activity(ME);
+    const closed = G.tick();
+    if (closed.length) afterClose(closed);
+  })()`);
+};
 const t0 = Date.now(), at = () => ((Date.now() - t0) / 1000).toFixed(1) + "s";
 const log = (...a) => console.log(at(), ...a);
 let passed = 0;
@@ -78,12 +89,14 @@ async function creation(type = "coop") {
 async function level1(trialWait) {
   next(); await sleep(50);   // > briefing
   next(); await sleep(50);   // > open floor
-  next(); await sleep(50);   // > trial
+  finishTimedStep("openFloor"); await sleep(50);   // > trial
   if (trialWait) { log("waiting " + trialWait / 1000 + " s in the trial"); await sleep(trialWait); }
   for (let i = 0; i < 6; i++) { const c = $("[data-pile]"); if (c) { c.click(); await sleep(5); } }
   $("#check").click(); await sleep(50);
+  finishTimedStep("sop"); await sleep(50);
   next(); await sleep(50);   // > glitch report
   $("#skipAcc").click(); await sleep(50);
+  finishTimedStep("glitchReport"); await sleep(50);
   log("gift window open, timer " + ($("#tmr") ? $("#tmr").textContent : "?"));
   const start = Date.now();
   for (let i = 0; i < 40 && w.eval("S.step === 8"); i++) await sleep(1000);
@@ -91,6 +104,7 @@ async function level1(trialWait) {
   check("gift window auto-advanced on time (about 30 s)", w.eval('S.step === 9 && G.step === "statsUpdate"') && secs < 35, secs.toFixed(0) + " s");
   for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(5); }
   next(); await sleep(50);   // lock in
+  finishTimedStep("statsUpdate"); await sleep(50);
   check("points locked, Level 2 unlocked", /Start Level 2/.test($("#navNext").textContent) && !$("#navNext").disabled, $("#navNext").textContent);
 }
 
@@ -192,6 +206,7 @@ async function fullSevenLevelGame() {
       check("Level 7 reaches Graduation screen", w.eval('S.step === 9 && G.step === "graduation"') && $("#stage").textContent.includes("Graduation check"));
       for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
       next(); await sleep(30); // Lock in final points -> Final Results
+      finishTimedStep("graduation"); await sleep(30);
       const fin = w.eval('({ over: G.over, ending: ME.ending(), players: G.players.length, teams: G.teams.map(t => t.name) })');
       const finalText = $("#stage").textContent;
       check(
@@ -206,13 +221,16 @@ async function fullSevenLevelGame() {
     }
 
     if (lv === 3) {
-      w.eval('window._mirSimNow = Date.now(); G._timer.clock = () => window._mirSimNow;');
+      w.eval('window._mirSimNow = G.timer.deadline; G._timer.clock = () => window._mirSimNow; G.activity(ME); afterClose(G.tick());');
+      await sleep(30);
+    } else {
+      finishTimedStep("openFloor"); await sleep(30); // Open Floor -> Trial
     }
-    next(); await sleep(30); // Open Floor -> Trial
     const kind = w.eval("R().trialKind");
     if (kind === "sop") {
       for (let i = 0; i < 6; i++) { const c = $("[data-pile]"); if (c) { c.click(); await sleep(2); } }
       $("#check").click(); await sleep(30);
+      finishTimedStep("sop"); await sleep(30);
     } else if (kind === "splitBrief") {
       const hasUI = !!$("#splitTmr") && !!$("#splitCards") && !!$("#splitNotesFeed") && !!$("#splitNoteIn") && !!$("#splitBoard") && !!$("#splitLockBtn");
       check("Level 2 renders Split Brief UI with timer, cards, notes, board, and Lock In", hasUI);
@@ -551,12 +569,14 @@ async function fullSevenLevelGame() {
       const reportText = ($(".report") || {}).textContent || "";
       check("Level 2 All-Hands shows no Level 1 anomaly lines", $$(".report .clue").length === 0 && !/spelled wrong|badge flickered|SOP/i.test(reportText));
     }
-    $("#skipAcc").click(); await sleep(20); // -> Gift Window
-    w.eval('if (G.timer && G.timer.name === "giftWindow") afterClose(G.tick(G.timer.deadline));');
+    $("#skipAcc").click(); await sleep(20); // -> Glitch Report saved
+    finishTimedStep("glitchReport"); await sleep(20); // -> Gift Window
+    finishTimedStep("giftWindow");
     await sleep(20); // Gift Window closed, auto-advanced to Stats Update
     check("Level " + lv + " Gift Window auto-advances All-Hands to Stats Update", w.eval('S.step === 9 && G.step === "statsUpdate"'));
     for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(b => !b.disabled); if (!b) break; b.click(); await sleep(2); }
     next(); await sleep(30); // Lock in points -> roundDone
+    finishTimedStep("statsUpdate"); await sleep(30);
     if (lv === 2) {
       const s1 = w.eval('({ teams: G.teams.map(t => t.name), myTeam: MYTEAM.name, wins: MYTEAM.trialWins, lv2Win: !!MYTEAM.won, lv1Win: (MYTEAM.trialWins - (MYTEAM.won ? 1 : 0)) > 0, hearts: ME.hearts.count, glitches: ME.glitches, status: ME.boardStatus(), sortedWins: [...G.teams].sort((a, b) => b.trialWins - a.trialWins).map(t => t.trialWins) })');
       const s1Text = $("#stage").textContent;
@@ -2528,6 +2548,10 @@ async function mirrorStep6dCases() {
           goForward(); // -> Glitch Report (step 8)
           const skipBtn = document.querySelector("#skipAcc");
           if (skipBtn) skipBtn.click();
+          if (G.timer && G.timer.name === "glitchReport") {
+            gameCtx.setNow(G.timer.deadline);
+            afterClose(G.tick());
+          }
           if (G.timer && G.timer.name === "giftWindow") {
             gameCtx.setNow(G.timer.deadline);
             afterClose(G.tick());
@@ -2539,6 +2563,10 @@ async function mirrorStep6dCases() {
             pInc.click();
           }
           goForward(); // -> lockPoints
+          if (G.timer && G.timer.name === "statsUpdate") {
+            gameCtx.setNow(G.timer.deadline);
+            afterClose(G.tick());
+          }
           fullDanceLv3EndOk = gwAutoAdvancedOk &&
             stageHitCount >= 1 &&
             danceLaneClean &&
@@ -3065,7 +3093,7 @@ async function devJumpCases() {
       if (lv < 7) {
         next(); await sleep(15); // -> Open Floor
         const ofStep = w.eval('({ gStep: G.step, sStep: S.step, hasWorld: !!document.querySelector("#world") })');
-        next(); await sleep(15); // -> Trial
+        finishTimedStep("openFloor"); await sleep(15); // -> Trial
         const tr = w.eval('({ gStep: G.step, sStep: S.step, stage: (document.querySelector("#stage") || {}).textContent || "", hud: (document.querySelector("#hud") || {}).textContent || "", sop: !!document.querySelector("#check"), sb: !!document.querySelector("#splitBoard") && !!document.querySelector("#splitNotesFeed"), mirLobby: !!document.querySelector("#mirrorSignalBtn") && !!document.querySelector("#lobbyCd"), autoBtn: !!document.querySelector("#runAuto"), judged: !!(document.querySelector("#subDraft") || document.querySelector("#castVote")), sub5: G.board().submissions.some(s => s.level === 5) })');
         if (!ofStep.hasWorld || ofStep.gStep !== "openFloor" || tr.gStep !== "trial" || tr.sStep !== 7 || !noScreenLeak(lv, tr.stage, tr.hud)) {
           allSevenWorked = false;
@@ -3096,6 +3124,7 @@ async function devJumpCases() {
         const gradOk = w.eval('G.step === "graduation" && S.step === 9 && document.querySelector("#stage").textContent.includes("Final Performance Review")');
         for (let i = 0; i < 20; i++) { const b = $$("[data-pinc]").find(x => !x.disabled); if (!b) break; b.click(); await sleep(2); }
         next(); await sleep(15);
+        finishTimedStep("graduation"); await sleep(15);
         level7ReachedOver = gradOk && w.eval('G.over === true') &&
           /You exited Floor 60|Contract renewed/.test($("#stage").textContent) &&
           !/Cooperative|Independent|Contrarian|Lifeline|Auditor|Exploit/i.test($("#stage").textContent.replace(/Secret path[\s\S]*?(?=Team standings)/, ""));
@@ -3112,7 +3141,7 @@ async function devJumpCases() {
     sendJump(3); await sleep(15);
     const fwd13 = w.eval('({ sameGame: G === window._djG1, sameMe: ME === window._djMe1, level: G.level, step: G.step, keptClue: S.found.L === 1, res1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", res2: typeof G.teamTrialResults(MYTEAM)[2] === "boolean" })');
     next(); await sleep(15); // Open Floor
-    next(); await sleep(15); // Mirror Lobby
+    finishTimedStep("openFloor"); await sleep(15); // Mirror Lobby
     // Connect bots + human cleanly into Mirror Showtime via rules clock, then forward-jump to Level 5
     w.eval('(() => { const t0 = G.timer.deadline - 30000; G.tick(t0 + 16000); G.mirrorConnect(ME.id); if (G.timer && G.timer.name === "mirrorReveal") afterClose(G.tick(G.timer.deadline)); else render(); })()');
     await sleep(15);
@@ -3162,7 +3191,7 @@ async function devJumpCases() {
     })()`);
     next(); await sleep(15); // Open Floor
     const afterLoadOf = w.eval('G.step === "openFloor" && G.timer && G.timer.name === "openFloor"');
-    next(); await sleep(15); // Mirror Lobby
+    finishTimedStep("openFloor"); await sleep(15); // Mirror Lobby
     const afterLoadMir = w.eval('G.step === "trial" && G.mirrorPhase() === "lobby" && !!document.querySelector("#mirrorSignalBtn") && !!document.querySelector("#lobbyCd")');
     const detCheck = w.eval(`(() => {
       const mk = () => {
@@ -3476,6 +3505,10 @@ async function mirrorStep8Cases() {
 
       goForward(); // -> Glitch Report (step 8)
       document.querySelector("#skipAcc").click();
+      if (G.timer && G.timer.name === "glitchReport") {
+        tNow = G.timer.deadline;
+        afterClose(G.tick());
+      }
       if (G.timer && G.timer.name === "giftWindow") {
         tNow = G.timer.deadline;
         afterClose(G.tick());
@@ -3487,6 +3520,10 @@ async function mirrorStep8Cases() {
         pInc.click();
       }
       goForward(); // -> Presentation Day Complete
+      if (G.timer && G.timer.name === "statsUpdate") {
+        tNow = G.timer.deadline;
+        afterClose(G.tick());
+      }
       const pdcTxt = (document.querySelector("#stage") || {}).textContent || "";
       const resPanel = [...document.querySelectorAll("#stage .panel")].find(p => p.textContent.includes("Your trial results"));
       const resRows = resPanel ? [...resPanel.querySelectorAll(".row")] : [];
@@ -3905,10 +3942,15 @@ async function timerBannerAndSyncCases() {
         document.querySelector("#bannerT").textContent === "Open Floor" &&
         document.querySelector("#tmr").textContent === "1:30";
 
-      goForward(); // -> SOP Trial
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      G.activity(ME); // -> SOP Trial
       G.setSopBoard(ME, EP.Trial.SopTrial.STEPS);
       render();
       document.querySelector("#check").click();
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      G.activity(ME);
       goForward(); // -> Glitch Report (30s)
 
       const tvGlitch0 = G.timerView();
@@ -4441,6 +4483,203 @@ async function mirrorStep4DanceCases() {
   check("Idle human dancer gets 0 misses on Game.tick() and mirrorDancePress rejects idle players", res.idleGateOk);
 }
 
+/* Step 5: Back button locked on S.step >= 5 (V-04), human-to-bot gifts answered via Bots.hooks.onGift (V-05),
+   and clicks never close timed steps early (V-03). */
+async function step5CleanupCases() {
+  const gameSrc = fs.readFileSync(path.join(repo, "game.js"), "utf8");
+  const noDirectBotAnswer = !/\bBots\.answer\b/.test(gameSrc);
+  const closeTimerLines = gameSrc.split(/\r?\n/).filter(l => /\bcloseTimer\b/.test(l));
+  const onlyStartLevelClosesTimer = closeTimerLines.length === 1 && /function startLevel/.test(closeTimerLines[0]);
+  check("game.js has no EP.Bots.answer call and calls closeTimer only in startLevel()", noDirectBotAnswer && onlyStartLevelClosesTimer);
+
+  const res = w.eval(`(() => {
+    try {
+      endSession();
+      S = fresh();
+      S.email = "step5@icstars.org";
+      S.code = "CYCLE60";
+      S.name = "StepFive";
+      S.draft = "StepFive";
+
+      // 1. Pre-game Back works on steps 1..4 before entering live game
+      S.step = 1; S.maxStep = 1; render();
+      const back1Ok = canBack() && !document.querySelector("#navBack").disabled;
+      S.step = 2; S.maxStep = 2; render();
+      const back2Ok = canBack() && !document.querySelector("#navBack").disabled;
+      S.step = 3; S.maxStep = 3; render();
+      const back3Ok = canBack() && !document.querySelector("#navBack").disabled;
+      S.type = "coop";
+      S.spend = EP.Bots.typicalSpend("coop");
+      goForward(); // -> step 4 arrival
+      skipArrival();
+      while (!S.arrived) arrivalAdvance();
+      const back4Ok = canBack() && !document.querySelector("#navBack").disabled;
+
+      // Start Level 1 (starts game clock) -> Briefing (step 5)
+      goForward();
+      let simNow = 60000000;
+      G._timer.clock = () => simNow;
+      G.activity(ME);
+
+      const checkBackBlocked = expectedStep => {
+        const beforeStep = S.step;
+        const can = canBack();
+        const dis = document.querySelector("#navBack").disabled;
+        document.querySelector("#navBack").click();
+        return beforeStep === expectedStep && !can && dis && S.step === expectedStep && S.step === stepForGame();
+      };
+
+      const back5Ok = checkBackBlocked(5);
+
+      // 2. Open Floor (timed 90s): Back off, Forward disabled and does not close step until timer runs out
+      goForward(); // -> Open Floor (step 6)
+      const back6Ok = checkBackBlocked(6);
+      const ofWaitBtn = document.querySelector("#navNext");
+      const ofClicksBlocked = G.step === "openFloor" && ofWaitBtn.disabled && !fwd().ok;
+      goForward();
+      const ofStillOpen = G.step === "openFloor" && S.step === 6 && G.timerView().name === "openFloor";
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      G.activity(ME);
+
+      // 3. SOP Trial (timed 60s): Back off, Submit SOP saves board + shows waiting state without closing timer
+      const back7Ok = checkBackBlocked(7);
+      for (const stepText of EP.Trial.SopTrial.STEPS) {
+        const idx = sopPile().indexOf(stepText);
+        if (idx >= 0) {
+          const btn = document.querySelector('[data-pile="' + idx + '"]');
+          if (btn) btn.click();
+        }
+      }
+      document.querySelector("#check").click();
+      const sopWaitOk = G.step === "trial" && !G.didRun("runTrial") &&
+        G.timerView() && G.timerView().name === "sop" &&
+        !document.querySelector("#banner").hidden &&
+        !!document.querySelector("#sopWait") &&
+        S.sop.submitted === true;
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      G.activity(ME);
+      const sopClosedOnTimer = G.didRun("runTrial");
+
+      // Advance untimed trial result -> Glitch Report (timed 30s)
+      goForward(); // -> step 8
+      const back8Ok = checkBackBlocked(8);
+
+      // 4. Glitch Report: Skip saves choice + shows waiting state without closing timer
+      document.querySelector("#skipAcc").click();
+      const grWaitOk = G.step === "glitchReport" && !G.didRun("endGlitchReport") &&
+        G.timerView() && G.timerView().name === "glitchReport" &&
+        !document.querySelector("#banner").hidden &&
+        !!document.querySelector("#accWait") &&
+        S.acc.done === true;
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      G.activity(ME);
+      render();
+
+      // 5. Gift Window: UI human-to-bot gift is answered via Bots.hooks.onGift
+      const botTarget = MYTEAM.mates(ME).find(m => m.isBot && !m.isStuck() && m.type.canAcceptGifts()) ||
+        MYTEAM.mates(ME).find(m => m.isBot && !m.isStuck());
+      const giftBtn = botTarget ? document.querySelector('[data-gift="' + botTarget.name + '"][data-pts="1"]') : null;
+      let giftHookOk = false;
+      if (giftBtn && !giftBtn.disabled) {
+        giftBtn.click();
+        const sentGift = G.round.gifts.find(x => x.giver === ME && x.receiver === botTarget);
+        giftHookOk = !!sentGift && sentGift.status !== "pending";
+      } else {
+        const resG = G.gift(ME, botTarget, 1);
+        giftHookOk = resG.ok && resG.gift.status !== "pending";
+      }
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      G.activity(ME);
+
+      // 6. Stats Update (timed 30s): Back off, Lock In saves picks + shows waiting state without closing timer
+      const back9Ok = checkBackBlocked(9);
+      for (let i = 0; i < 20; i++) {
+        const b = document.querySelector("[data-pinc]:not([disabled])");
+        if (!b) break;
+        b.click();
+      }
+      goForward(); // Lock in points
+      const statsWaitOk = G.step === "statsUpdate" && !G.didRun("finishRound") &&
+        ME.earned === 0 && ME.placedThisRound > 0 &&
+        G.timerView() && G.timerView().name === "statsUpdate" &&
+        !document.querySelector("#banner").hidden &&
+        !!document.querySelector("#statsWait");
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      const statsClosedOnTimer = G.step === "intermission" && roundDone();
+
+      // 7. Accuse path in Glitch Report also waits for timer
+      devJump(1);
+      G._timer.clock = () => simNow;
+      G.activity(ME);
+      goForward(); // -> openFloor
+      simNow = G.timer.deadline; afterClose(G.tick()); G.activity(ME); // -> trial
+      simNow = G.timer.deadline; afterClose(G.tick()); G.activity(ME); // close sop
+      goForward(); // -> glitchReport
+      G.activity(ME);
+      render();
+      const mateOpt = document.querySelector("#accSel option[value]:not([value=''])") || [...document.querySelectorAll("#accSel option")].find(o => o.textContent && !o.textContent.includes("Choose"));
+      if (mateOpt) document.querySelector("#accSel").value = mateOpt.textContent;
+      document.querySelector("#accuse").click();
+      const accWaitOk = G.step === "glitchReport" && !G.didRun("endGlitchReport") &&
+        G.timerView() && G.timerView().name === "glitchReport" &&
+        !!document.querySelector("#accWait") && S.acc.done === true;
+
+      // 8. Graduation (timed 60s): Lock in final points saves picks + waits for timer
+      devJump(7);
+      G._timer.clock = () => simNow;
+      G.activity(ME);
+      goForward(); // -> graduation
+      G.activity(ME);
+      const backGradOk = checkBackBlocked(9);
+      for (let i = 0; i < 20; i++) {
+        const b = document.querySelector("[data-pinc]:not([disabled])");
+        if (!b) break;
+        b.click();
+      }
+      goForward(); // Lock in final points
+      const gradWaitOk = G.step === "graduation" && !G.over &&
+        ME.earned === 0 && ME.placedThisRound > 0 &&
+        G.timerView() && G.timerView().name === "graduation" &&
+        !document.querySelector("#banner").hidden &&
+        !!document.querySelector("#gradWait");
+      simNow = G.timer.deadline;
+      afterClose(G.tick());
+      const gradClosedOnTimer = G.over === true && G.step === "graduation";
+
+      return {
+        preGameBackOk: back1Ok && back2Ok && back3Ok && back4Ok,
+        liveBackOffOk: back5Ok && back6Ok && back7Ok && back8Ok && back9Ok && backGradOk,
+        openFloorWaitOk: ofClicksBlocked && ofStillOpen,
+        sopWaitOk: sopWaitOk && sopClosedOnTimer,
+        glitchReportWaitOk: grWaitOk && accWaitOk,
+        giftHookOk,
+        statsWaitOk: statsWaitOk && statsClosedOnTimer,
+        gradWaitOk: gradWaitOk && gradClosedOnTimer,
+      };
+    } finally {
+      elevTimers.forEach(clearTimeout);
+      elevTimers = [];
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  check("Back button allowed on pre-game steps 1..4", res.preGameBackOk);
+  check("Back button disabled and does not change S.step on live round steps 5..9", res.liveBackOffOk);
+  check("Open Floor click does not close Open Floor before timer", res.openFloorWaitOk);
+  check("Submit SOP saves board and waits for SOP timer", res.sopWaitOk);
+  check("Glitch Report Accuse and Skip save choice and wait for timer", res.glitchReportWaitOk);
+  check("Human-to-bot gift is answered via Bots.hooks.onGift", res.giftHookOk);
+  check("Stats Update Lock In saves points and waits for timer", res.statsWaitOk);
+  check("Graduation Lock In saves final points and waits for timer", res.gradWaitOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -4492,6 +4731,8 @@ w.addEventListener("load", async () => {
     await mirrorStep3bDeadlineCases();
     log("run 17: Step 4 Level 3 Dance Crew note chart, judging, miss deadlines, and idle gating");
     await mirrorStep4DanceCases();
+    log("run 18: Step 5 Back lock, onGift hook, and timed steps wait for timer");
+    await step5CleanupCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

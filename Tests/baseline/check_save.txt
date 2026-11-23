@@ -1,4 +1,4 @@
--- 1. Save and load after every action (20 games, 6097 saves)
+-- 1. Save and load after every action (20 games, 5987 saves)
 PASS  both copies hold the same state after every action  -> all equal
 PASS  final endings match the game that never reloaded
 PASS  saved and loaded at every round step  -> intermission, briefing, openFloor, trial, glitchReport, giftWindow, lockIn, statsUpdate, graduation
@@ -24,4 +24,4 @@ PASS  mid-Q&A save/reload times out at exact same timestamp
 -- 6. Mid-dance save and load restores chart, counter, and tempo
 PASS  mid-dance save/reload restores chart, spawnedCount, tempo gapTicks, and fires identical misses/spawns
 
-19 passed, 0 failed  (4.2 s)
+19 passed, 0 failed  (4.1 s)

@@ -1161,5 +1161,89 @@ throws("Finish the round before points are placed", () => game.finishRound());
   expect("Empty sets hearts to 0", h.count === 0, h.count);
 }
 
+// Step 5: Bots.hooks.onGift and non-closing player actions on timed steps.
+{
+  const mk = (hooks, seed = 42) => {
+    const ps = ["coop", "coop", "indep", "contra", "coop", "coop", "indep", "coop"].map((t, i) => EP.Bots.makePlayer(900 + i, "H" + i, t));
+    ps[0].isBot = false;
+    const ts = [0, 1].map(i => new EP.Team({ id: i, name: "HT" + i, members: ps.slice(i * 4, i * 4 + 4) }));
+    const clock = { now: 1000000 };
+    const rng = EP.Rng.seeded(seed);
+    const g = new EP.Game({ teams: ts, rng, clock: () => clock.now, hooks });
+    return { g, ps, ts, me: ps[0], botMate: ps[1], clock };
+  };
+
+  // onGift hook answers human-to-bot gift using g.rng in the exact same order as EP.Bots.answer; without hook it stays pending.
+  {
+    const a = mk(EP.Bots.hooks, 42);
+    const b = mk({}, 42);
+    for (const x of [a, b]) { x.g.startNextRound(); x.g.advance(); }
+    const ra = a.g.gift(a.me, a.botMate, 1);
+    const rb = b.g.gift(b.me, b.botMate, 1);
+    expect("Bots.hooks.onGift answers human-to-bot gift at once", ra.ok && ra.gift.status !== "pending", ra.gift && ra.gift.status);
+    expect("Without onGift hook, human-to-bot gift stays pending", rb.ok && rb.gift.status === "pending", rb.gift && rb.gift.status);
+    const manual = EP.Bots.answer(b.g, rb.gift, b.g.rng);
+    expect("onGift uses g.rng in the same order as Bots.answer",
+           manual && ra.gift.status === rb.gift.status && a.g.rng() === b.g.rng(),
+           ra.gift.status + " vs " + rb.gift.status);
+  }
+
+  // onGift answers only when the receiver is a bot; a gift to a human stays pending until answered.
+  {
+    const { g, me, botMate } = mk(EP.Bots.hooks, 43);
+    g.startNextRound(); g.advance();
+    const toHuman = g.gift(botMate, me, 1);
+    expect("Bots.hooks.onGift leaves a gift to a human pending",
+           toHuman.ok && toHuman.gift.status === "pending",
+           toHuman.gift && toHuman.gift.status);
+    const ans = g.answerGift(toHuman.gift, true);
+    expect("Human can answer the pending gift later",
+           ans.ok && toHuman.gift.status === "accepted",
+           toHuman.gift && toHuman.gift.status);
+  }
+
+  // Player actions on timed steps (submitSop, skipAccusation, lockPoints) save choice only and never close the running timer.
+  {
+    const { g, me, clock } = mk(EP.Bots.hooks, 77);
+    g.startNextRound();
+    g.start();
+    g.advance();
+    clock.now = g.timer.deadline;
+    g.tick(clock.now);   // -> trial (sop)
+    const sopRes = g.submitSop(me, EP.Trial.SopTrial.STEPS);
+    expect("submitSop saves board without closing SOP timer",
+           sopRes.ok && g.step === "trial" && !g.didRun("runTrial") && g.timerView().name === "sop" &&
+           JSON.stringify(g.sopBoard(g.teamOf(me))) === JSON.stringify(EP.Trial.SopTrial.STEPS));
+    clock.now = g.timer.deadline;
+    g.tick(clock.now);   // closes sop
+    g.endTrial();        // -> glitchReport
+    const skipRes = g.skipAccusation(me);
+    expect("skipAccusation validates without closing Glitch Report timer",
+           skipRes.ok && g.step === "glitchReport" && !g.didRun("endGlitchReport") && g.timerView().name === "glitchReport");
+    clock.now = g.timer.deadline;
+    g.tick(clock.now);   // -> giftWindow
+    clock.now = g.timer.deadline;
+    g.tick(clock.now);   // -> statsUpdate
+    for (const k of EP.Player.KEYS) {
+      while (me.placeLeft(me.draft) > 0 && me.canPlace(me.draft, k)) g.draftPoint(me, k, 1);
+    }
+    const lpRes = g.lockPoints(me);
+    expect("lockPoints saves player picks without closing Stats Update timer",
+           lpRes.ok && me.earned === 0 && me.placedThisRound > 0 && g.step === "statsUpdate" &&
+           !g.didRun("finishRound") && g.timerView().name === "statsUpdate");
+    clock.now = g.timer.deadline;
+    g.tick(clock.now);   // -> intermission
+    g.jumpToLevel(7);
+    g.advance();         // -> graduation
+    for (const k of EP.Player.KEYS) {
+      while (me.placeLeft(me.draft) > 0 && me.canPlace(me.draft, k)) g.draftPoint(me, k, 1);
+    }
+    const gradRes = g.lockPoints(me);
+    expect("lockPoints on Graduation saves final picks without closing Graduation timer",
+           gradRes.ok && me.earned === 0 && me.placedThisRound > 0 && g.step === "graduation" &&
+           !g.over && g.timerView().name === "graduation");
+  }
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

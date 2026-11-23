@@ -358,6 +358,7 @@ const Bots = {
      onStart: Split Brief and Mirror initialize/process bot actions; bots gift when the gift window opens;
        place points when Stats Update or Graduation opens.
      onTick: Split Brief and Mirror bots advance scheduled actions as time passes.
+     onGift: bot receiver answers an incoming gift immediately using game.rng.
      Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
   hooks: {
     beforeClose(game, name) {
@@ -376,6 +377,9 @@ const Bots = {
     onTick(game, now) {
       Bots.splitBrief(game, now);
       Bots.mirror(game, now);
+    },
+    onGift(game, gift) {
+      Bots.answer(game, gift, game.rng);
     },
     onFastForward(game, phase) {
       if (phase === "writing") Bots.submit(game);
