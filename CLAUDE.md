@@ -15,7 +15,6 @@ Hannah's file boundaries:
 - Shared files she may edit, with small, listed changes only: `rules/Game.js` (one-line pass-throughs), `rules/index.js` (exports), `rules/Round.js` (`LEVELS` entries), `rules/Trial.js` (new `Trial` subclass registration only), `game.js` (show her screen), `judged-view.js` and `pages/vote-test.js` (Step 7).
 - If a design needs a change to a shared rule (hearts, step order, costs, glitch, gifts, accusations, vote math), stop and report it. Do not build it.
 - Every commit on `levels-4-6` must pass `npm run build`, `npm test`, `npm run test:screens`, and the new-files guard test.
-- Sync rule for `levels-4-6`: at the start of every task, run `git fetch origin`, then `git merge origin/screen-state-cleanup`. If there is a conflict, stop and report it. Do not resolve conflicts in Ben's files on your own.
 
 ## How to work with me
 
