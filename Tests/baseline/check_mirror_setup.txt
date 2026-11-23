@@ -35,5 +35,9 @@ PASS  MirrorTrial gates setup actions until startShowtime and routes full setup 
 -- 8. Save and load (SetupCrew direct and MirrorTrial / Trial.fromJSON)
 PASS  SetupCrew.fromJSON produces plain data and continues identically after mid-mic reload
 PASS  MirrorTrial mid-showtime save/load restores setup state and continues identically
+-- 9. Seeded Cables bag, Sound spikes & jitter, and mid-trial save/load
+PASS  SetupCrew nextCable/returnCable repeat on same seed, vary across seeds, return missed ports, and filter connected ports  -> distinct=15
+PASS  SetupCrew nextSoundSpike/nextSoundJitter stay in bounds without -0, repeat on seed, and vary  -> distinct=20
+PASS  MirrorTrial gates nextCable/sound helpers, saves/loads mid-Cables, mid-Sound, and older saves with 0 extra Game.rng draws
 
-29 passed, 0 failed.
+32 passed, 0 failed.

@@ -398,5 +398,130 @@ console.log("-- 5. Save and load (MirrorLobby direct and MirrorTrial / Trial.fro
   );
 }
 
+console.log("-- 6. Seeded lobby cursor start, private #seedRng mix, and save/load compatibility");
+{
+  // (a) Direct MirrorLobby cursorStartOf repeatability & bounds
+  const runCursor = seed => {
+    const t = makeTeam(0, 4, { humans: 2, prefix: "Cur_" });
+    t.members[3].idle = true;
+    const lb = new MirrorLobby(Rng.seeded(seed), [t]);
+    return {
+      p0: lb.cursorStartOf(t.members[0].id),
+      p1: lb.cursorStartOf(t.members[1].id),
+      p2: lb.cursorStartOf(t.members[2].id),
+      inactive: lb.cursorStartOf(t.members[3].id),
+      missing: lb.cursorStartOf(99999),
+    };
+  };
+  const cA = runCursor(1201);
+  const cB = runCursor(1201);
+  const seenPos = new Set();
+  const seenDir = new Set();
+  let cursorBoundsOk = cA.inactive === null && cA.missing === null && JSON.stringify(cA) === JSON.stringify(cB);
+  for (let s = 1; s <= 30; s++) {
+    const r = runCursor(s);
+    for (const k of ["p0", "p1", "p2"]) {
+      const c = r[k];
+      if (!c || !Number.isInteger(c.pos) || c.pos < 0 || c.pos >= 100 || (c.dir !== -1 && c.dir !== 1)) {
+        cursorBoundsOk = false;
+      } else {
+        seenPos.add(c.pos);
+        seenDir.add(c.dir);
+      }
+    }
+  }
+  expect(
+    "MirrorLobby cursorStartOf yields integer pos 0..99, dir -1/1, repeats on seed, and returns null for inactive/unknown",
+    cursorBoundsOk && seenPos.size > 10 && seenDir.has(-1) && seenDir.has(1),
+    "distinctPos=" + seenPos.size
+  );
+
+  // (b) Private #seedRng mixes Game.rng.getState() with 0x9E3779B9 using 0 draws (plus 1-draw test fallback)
+  const parentRng = Rng.seeded(1203);
+  const stateBeforeCtor = parentRng.getState();
+  const trialIso = new MirrorTrial(parentRng);
+  const stateAfterCtor = parentRng.getState();
+  const expectedSeedState = (stateBeforeCtor ^ 0x9E3779B9) | 0;
+  const trialSeedState = trialIso.toJSON().seedRngState;
+
+  const isoTeams = [makeTeam(0, 4, { humans: 2, prefix: "Iso0_" }), makeTeam(1, 4, { humans: 0, prefix: "Iso1_" })];
+  trialIso.startLobby(isoTeams);
+  const stateBeforeCursorRead = parentRng.getState();
+  const cursorT0 = trialIso.lobbyCursorStart(isoTeams[0].members[0].id);
+  const stateAfterCursorRead = parentRng.getState();
+
+  const trialIso2 = new MirrorTrial(Rng.seeded(1203));
+  trialIso2.startLobby([makeTeam(0, 4, { humans: 2, prefix: "Iso0_" }), makeTeam(1, 4, { humans: 0, prefix: "Iso1_" })]);
+  const cursorT0Copy = trialIso2.lobbyCursorStart(isoTeams[0].members[0].id);
+
+  let plainDraws = 0;
+  const plainRng = () => { plainDraws++; return 0.25; };
+  const trialPlain = new MirrorTrial(plainRng);
+  trialPlain.startLobby([makeTeam(2, 3, { humans: 1, prefix: "Pln_" })]);
+  const plainCursor = trialPlain.lobbyCursorStart(20);
+
+  expect(
+    "MirrorTrial seeds #seedRng from mixed Game.rng state with 0 extra draws, repeats cursorStart, and supports test RNG fallback",
+    stateBeforeCtor === stateAfterCtor &&
+      stateBeforeCursorRead === stateAfterCursorRead &&
+      trialSeedState === expectedSeedState &&
+      trialSeedState !== stateBeforeCtor &&
+      cursorT0 !== null &&
+      JSON.stringify(cursorT0) === JSON.stringify(cursorT0Copy) &&
+      plainDraws >= 1 &&
+      plainCursor !== null &&
+      typeof trialPlain.toJSON().seedRngState === "number"
+  );
+
+  // (c) seedRngState saves/restores in toJSON/fromJSON and older saves missing it still load with 0 draws
+  const tSave = makeTeam(0, 3, { humans: 2, prefix: "Sav_" });
+  const rngSaveA = Rng.seeded(1202);
+  const trSaveA = new MirrorTrial(rngSaveA);
+  trSaveA.startLobby([tSave]);
+  trSaveA.miss(tSave.members[0].id);
+  const trSaveJson = trSaveA.toJSON();
+  const rngSaveB = Rng.seeded(0);
+  rngSaveB.setState(rngSaveA.getState());
+  const byIdSave = new Map(tSave.members.map(p => [p.id, p]));
+  const trSaveB = Trial.fromJSON(JSON.parse(JSON.stringify(trSaveJson)), { rng: rngSaveB, teams: [tSave], byId: byIdSave });
+
+  // Older save without seedRngState / cursorPos / cursorDir
+  const oldTrialJson = JSON.parse(JSON.stringify(trSaveJson));
+  delete oldTrialJson.seedRngState;
+  delete oldTrialJson.lobby.seedRngState;
+  delete oldTrialJson.setup.seedRngState;
+  for (const td of oldTrialJson.lobby.teams) {
+    for (const pd of td.players) {
+      delete pd.cursorPos;
+      delete pd.cursorDir;
+    }
+  }
+  const rngOld = Rng.seeded(0);
+  rngOld.setState(rngSaveA.getState());
+  const oldStateBefore = rngOld.getState();
+  const trOldLoaded = Trial.fromJSON(oldTrialJson, { rng: rngOld, teams: [tSave], byId: byIdSave });
+  const oldStateAfter = rngOld.getState();
+
+  const lbOrig = new MirrorLobby(Rng.seeded(1205), [tSave]);
+  const lbOldJson = JSON.parse(JSON.stringify(lbOrig.toJSON()));
+  delete lbOldJson.seedRngState;
+  for (const td of lbOldJson.teams) {
+    for (const pd of td.players) { delete pd.cursorPos; delete pd.cursorDir; }
+  }
+  const rngLbOld = Rng.seeded(1205);
+  const lbOldLoaded = MirrorLobby.fromJSON(lbOldJson, { rng: rngLbOld });
+
+  expect(
+    "MirrorTrial and MirrorLobby save/restore seedRngState and load older saves without cursor or seedRngState cleanly",
+    typeof trSaveJson.seedRngState === "number" &&
+      JSON.stringify(trSaveB.toJSON()) === JSON.stringify(trSaveJson) &&
+      JSON.stringify(trSaveB.lobbyCursorStart(tSave.members[0].id)) === JSON.stringify(trSaveA.lobbyCursorStart(tSave.members[0].id)) &&
+      oldStateBefore === oldStateAfter &&
+      JSON.stringify(trOldLoaded.lobbyCursorStart(tSave.members[0].id)) === '{"pos":0,"dir":1}' &&
+      rngLbOld.getState() === Rng.seeded(1205).getState() &&
+      JSON.stringify(lbOldLoaded.cursorStartOf(tSave.members[0].id)) === '{"pos":0,"dir":1}'
+  );
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed.");
 process.exit(fail ? 1 : 0);

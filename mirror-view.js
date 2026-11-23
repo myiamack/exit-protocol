@@ -26,15 +26,6 @@
     return pos >= zone && pos <= zone + width;
   }
 
-  function shuffleArr(list) {
-    const out = list.slice();
-    for (let i = out.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [out[i], out[j]] = [out[j], out[i]];
-    }
-    return out;
-  }
-
   function milestoneLabel(step) {
     const found = EP.MirrorData.bots.setupMilestones.find(m => m.step === step);
     return found ? found.label : step;
@@ -117,8 +108,8 @@
     m.danceCamMsg = "";
     m.danceCamCount = 0;
     m.dance = null;
-    m.cables = { tick: 0, belt: [], bag: [], nextSpawn: 0, nextId: 1 };
-    m.sound = { tick: 0, level: S.start, holdTicks: 0, spikeAt: 0 };
+    m.cables = { tick: 0, belt: [], nextSpawn: 0, nextId: 1 };
+    m.sound = { tick: 0, level: S.start, holdTicks: 0, spikeAt: 0, spikeBoost: 0 };
     m.mic = { tick: 0, hideAt: 0, flashKey: null };
     m.deck = { tick: 0, shuffleAt: 0, active: false };
     m.qa = { tick: 0, deadline: 0, qKey: null };
@@ -150,10 +141,11 @@
     if (!state.mirror || state.mirror.key !== trialKey) {
       const seenConnected = {};
       for (const p of lobbyPlayers) if (p.connected) seenConnected[p.playerId] = true;
+      const cursorStart = G.mirrorLobbyCursorStart(ME);
       state.mirror = {
         key: trialKey,
-        pos: Math.floor(Math.random() * 100),
-        dir: Math.random() < 0.5 ? -1 : 1,
+        pos: cursorStart ? cursorStart.pos : 0,
+        dir: cursorStart ? cursorStart.dir : 1,
         msg: "",
         wobble: false,
         seenConnected,
@@ -1134,16 +1126,8 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
             const connectedCount = st.cables.connected.length;
             const gap = connectedCount >= 3 ? C.spawnGapFast : connectedCount >= 1 ? C.spawnGapMid : C.spawnGapInitial;
             if (c.tick >= c.nextSpawn) {
-              if (!c.bag.length) c.bag = shuffleArr(needed.concat(needed));
-              let chosen = null;
-              while (c.bag.length) {
-                const candidate = c.bag.pop();
-                if (needed.includes(candidate)) { chosen = candidate; break; }
-              }
-              if (!chosen) {
-                c.bag = shuffleArr(needed.concat(needed));
-                chosen = c.bag.pop() || needed[0];
-              }
+              const next = G.mirrorNextCable(MYTEAM);
+              const chosen = next && next.ok ? next.port : needed[0];
               c.belt.push({ id: c.nextId++, port: chosen, t0: c.tick, judged: null, judgedAt: 0 });
               c.nextSpawn = c.tick + gap;
             }
@@ -1152,7 +1136,7 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
                 item.judged = "past";
                 item.judgedAt = c.tick;
                 if (needed.includes(item.port)) {
-                  c.bag.push(item.port);
+                  G.mirrorReturnCable(MYTEAM, item.port);
                   ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.cableMissed, { port: item.port });
                 }
               }
@@ -1167,15 +1151,27 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
           const snd = ms.sound;
           snd.tick += 1;
           if (!snd.spikeAt) {
-            snd.spikeAt = snd.tick + S.spikeInitialMinTicks + Math.floor(Math.random() * S.spikeInitialRangeTicks);
+            const sp = G.mirrorNextSoundSpike(MYTEAM);
+            if (sp && sp.ok) {
+              snd.spikeAt = snd.tick + sp.delayTicks;
+              snd.spikeBoost = sp.boost;
+            }
           }
-          if (snd.tick >= snd.spikeAt) {
-            snd.level = Math.min(S.max, snd.level + S.spikeBoostMin + Math.floor(Math.random() * S.spikeBoostRange));
-            snd.spikeAt = snd.tick + S.spikeIntervalMinTicks + Math.floor(Math.random() * S.spikeIntervalRangeTicks);
+          if (snd.spikeAt && snd.tick >= snd.spikeAt) {
+            snd.level = Math.min(S.max, snd.level + snd.spikeBoost);
+            const sp = G.mirrorNextSoundSpike(MYTEAM);
+            if (sp && sp.ok) {
+              snd.spikeAt = snd.tick + sp.delayTicks;
+              snd.spikeBoost = sp.boost;
+            } else {
+              snd.spikeAt = 0;
+              snd.spikeBoost = 0;
+            }
             ms.msg = EP.MirrorData.flavor.statusMessages.soundSpike;
           }
           const drift = snd.level > S.start ? -S.driftStep : snd.level < S.start ? S.driftStep : 0;
-          const jitter = Math.round(Math.random() * (S.jitterHalf * 2) - S.jitterHalf);
+          const jr = G.mirrorNextSoundJitter(MYTEAM);
+          const jitter = jr && jr.ok ? jr.jitter : 0;
           snd.level = Math.max(S.min, Math.min(S.max, snd.level + drift + jitter));
           if (snd.level >= S.feedbackAt) {
             const r = G.mirrorSoundFeedback(ME);

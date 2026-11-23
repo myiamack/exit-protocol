@@ -538,5 +538,164 @@ console.log("-- 8. Save and load (SetupCrew direct and MirrorTrial / Trial.fromJ
   );
 }
 
+console.log("-- 9. Seeded Cables bag, Sound spikes & jitter, and mid-trial save/load");
+{
+  // (a) Direct SetupCrew Cables bag order (refill, connected filter, returnCable)
+  const drawCables = seed => {
+    const tm = makeTeam(0, 1, { humans: 1, prefix: "Cab_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [tm]);
+    const pid = sc.slotsFor(tm)[0].playerId;
+    const seq = [];
+    for (let i = 0; i < 10; i++) seq.push(sc.nextCable(tm).port);
+    sc.returnCable(tm, "VGA");
+    const afterReturn = sc.nextCable(tm).port;
+    sc.cableHit(pid, "HDMI");
+    const afterConnect = [];
+    for (let i = 0; i < 6; i++) afterConnect.push(sc.nextCable(tm).port);
+    return { seq, afterReturn, afterConnect };
+  };
+  const cabA = drawCables(1301);
+  const cabB = drawCables(1301);
+  const cabDistinct = new Set();
+  for (let s = 1; s <= 15; s++) cabDistinct.add(JSON.stringify(drawCables(s).seq));
+  expect(
+    "SetupCrew nextCable/returnCable repeat on same seed, vary across seeds, return missed ports, and filter connected ports",
+    JSON.stringify(cabA) === JSON.stringify(cabB) &&
+      cabDistinct.size > 1 &&
+      cabA.seq.every(p => MirrorData.ports.includes(p)) &&
+      cabA.afterReturn === "VGA" &&
+      cabA.afterConnect.every(p => p !== "HDMI"),
+    "distinct=" + cabDistinct.size
+  );
+
+  // (b) Direct SetupCrew Sound spikes (+8..+17, initial 12..17, later 12..20) & jitter (-2..+2, no -0)
+  const drawSound = seed => {
+    const tm = makeTeam(0, 1, { humans: 1, prefix: "Snd_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [tm]);
+    const pid = sc.slotsFor(tm)[0].playerId;
+    for (const port of MirrorData.ports) sc.cableHit(pid, port);
+    const spikes = [];
+    for (let i = 0; i < 5; i++) spikes.push(sc.nextSoundSpike(tm));
+    const jitters = [];
+    for (let i = 0; i < 20; i++) jitters.push(sc.nextSoundJitter(tm).jitter);
+    return { spikes, jitters };
+  };
+  const sndA = drawSound(1302);
+  const sndB = drawSound(1302);
+  const sndDistinct = new Set();
+  let rangesOk = sndA.spikes[0].initial === true && sndA.spikes.slice(1).every(sp => !sp.initial);
+  for (let s = 1; s <= 20; s++) {
+    const r = drawSound(s);
+    sndDistinct.add(JSON.stringify(r));
+    r.spikes.forEach((sp, idx) => {
+      const minD = idx === 0 ? MirrorData.sound.spikeInitialMinTicks : MirrorData.sound.spikeIntervalMinTicks;
+      const maxD = minD + (idx === 0 ? MirrorData.sound.spikeInitialRangeTicks : MirrorData.sound.spikeIntervalRangeTicks) - 1;
+      if (!sp.ok || sp.delayTicks < minD || sp.delayTicks > maxD || sp.boost < 8 || sp.boost > 17) rangesOk = false;
+    });
+    for (const j of r.jitters) {
+      if (!Number.isInteger(j) || j < -2 || j > 2 || Object.is(j, -0)) rangesOk = false;
+    }
+  }
+  expect(
+    "SetupCrew nextSoundSpike/nextSoundJitter stay in bounds without -0, repeat on seed, and vary",
+    rangesOk && JSON.stringify(sndA) === JSON.stringify(sndB) && sndDistinct.size > 1,
+    "distinct=" + sndDistinct.size
+  );
+
+  // (c) MirrorTrial gates helpers, keeps parent Rng untouched during cable/sound draws, and saves/loads cleanly
+  const parentRng = Rng.seeded(1303);
+  const tmGate = makeTeam(0, 1, { humans: 1, prefix: "GateS_" });
+  const byIdGate = new Map(tmGate.members.map(p => [p.id, p]));
+  const stateBeforeCtor = parentRng.getState();
+  const tr = new MirrorTrial(parentRng);
+  const stateAfterCtor = parentRng.getState();
+  const blockedLobby = tr.nextCable(tmGate);
+  tr.startLobby([tmGate]);
+  tr.connect(tmGate.members[0].id);
+  tr.closeDoors();
+  const blockedReveal = tr.nextSoundSpike(tmGate);
+  tr.startShowtime();
+  const wrongStepSound = tr.nextSoundSpike(tmGate);
+
+  const stateBeforeCables = parentRng.getState();
+  tr.nextCable(tmGate);
+  tr.nextCable(tmGate);
+  tr.returnCable(tmGate, "AirLink");
+  const stateAfterCables = parentRng.getState();
+  const cabSaveJson = tr.toJSON();
+  const cabSaveErr = plainProblem(cabSaveJson);
+  const rngCabReload = Rng.seeded(0);
+  rngCabReload.setState(parentRng.getState());
+  const trCabReload = Trial.fromJSON(JSON.parse(JSON.stringify(cabSaveJson)), {
+    rng: rngCabReload,
+    teams: [tmGate],
+    byId: byIdGate,
+  });
+  const cabOrigNext = [];
+  const cabLoadNext = [];
+  for (let i = 0; i < 10; i++) {
+    cabOrigNext.push(tr.nextCable(tmGate).port);
+    cabLoadNext.push(trCabReload.nextCable(tmGate).port);
+  }
+  const stateAfterCabDraws = parentRng.getState();
+
+  // Advance both identically to sound step, draw 1 spike + 3 jitters, reload again, and continue identically
+  const pidGate = tr.setupCurrentPlayerId(tmGate);
+  for (const port of MirrorData.ports) {
+    tr.cableHit(pidGate, port);
+    trCabReload.cableHit(pidGate, port);
+  }
+  const stateBeforeSound = parentRng.getState();
+  tr.nextSoundSpike(tmGate);
+  trCabReload.nextSoundSpike(tmGate);
+  for (let i = 0; i < 3; i++) {
+    tr.nextSoundJitter(tmGate);
+    trCabReload.nextSoundJitter(tmGate);
+  }
+  const stateAfterSound = parentRng.getState();
+  const sndSaveJson = tr.toJSON();
+  const sndSaveErr = plainProblem(sndSaveJson);
+  const rngSndReload = Rng.seeded(0);
+  rngSndReload.setState(parentRng.getState());
+  const trSndReload = Trial.fromJSON(JSON.parse(JSON.stringify(sndSaveJson)), {
+    rng: rngSndReload,
+    teams: [tmGate],
+    byId: byIdGate,
+  });
+  const sndOrigCont = [tr.nextSoundSpike(tmGate), tr.nextSoundJitter(tmGate), tr.nextSoundSpike(tmGate), tr.nextSoundJitter(tmGate)];
+  const sndLoadCont = [trSndReload.nextSoundSpike(tmGate), trSndReload.nextSoundJitter(tmGate), trSndReload.nextSoundSpike(tmGate), trSndReload.nextSoundJitter(tmGate)];
+  const stateAfterSoundCont = parentRng.getState();
+
+  // Older save missing seedRngState, cables.bag, and sound.spikesRolled still loads with 0 parent Rng draws
+  const oldSndJson = JSON.parse(JSON.stringify(sndSaveJson));
+  delete oldSndJson.seedRngState;
+  delete oldSndJson.lobby.seedRngState;
+  delete oldSndJson.setup.seedRngState;
+  for (const td of oldSndJson.setup.teams) {
+    if (td.cables) delete td.cables.bag;
+    if (td.sound) delete td.sound.spikesRolled;
+  }
+  const rngOld = Rng.seeded(0);
+  rngOld.setState(parentRng.getState());
+  const trOld = Trial.fromJSON(oldSndJson, { rng: rngOld, teams: [tmGate], byId: byIdGate });
+  const oldLoadDrawsOk = rngOld.getState() === parentRng.getState();
+  const oldSpike = trOld.nextSoundSpike(tmGate);
+  const oldJitter = trOld.nextSoundJitter(tmGate);
+
+  expect(
+    "MirrorTrial gates nextCable/sound helpers, saves/loads mid-Cables, mid-Sound, and older saves with 0 extra Game.rng draws",
+    !blockedLobby.ok && !blockedReveal.ok && !wrongStepSound.ok &&
+      !cabSaveErr && !sndSaveErr &&
+      stateBeforeCtor === stateAfterCtor &&
+      stateBeforeCables === stateAfterCables &&
+      stateBeforeCables === stateAfterCabDraws &&
+      stateBeforeSound === stateAfterSound &&
+      stateBeforeSound === stateAfterSoundCont &&
+      JSON.stringify(cabOrigNext) === JSON.stringify(cabLoadNext) &&
+      JSON.stringify(sndOrigCont) === JSON.stringify(sndLoadCont) &&
+      oldLoadDrawsOk && oldSpike.ok && oldSpike.initial === true && oldJitter.ok
+  );
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed.");
 process.exit(fail ? 1 : 0);

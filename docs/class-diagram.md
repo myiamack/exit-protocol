@@ -38,8 +38,8 @@ classDiagram
     +sabotage(), gift(), answerGift(), switchTeam()
     +setSopBoard(), closeSop(), splitBrief(), closeSplitBrief()
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
-    +mirrorCableHit()..mirrorWrapUp(), mirrorDanceHit()..mirrorDanceStray()
-    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorDanceTeam()
+    +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorDanceHit()..mirrorDanceStray()
+    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorDanceTeam()
     +startWriting(), submit(), closeWriting(), startVote(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
     +payTrialCosts(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
@@ -323,14 +323,15 @@ classDiagram
   }
   class MirrorTrial {
     Level 3
+    -rng #seedRng
     -MirrorLobby #lobby
     -SetupCrew #setup
     -DanceCrew #dance
     +phase  idle, lobby, reveal, showtime, failed
     +int MAX_SCORE = 7$, LOBBY_SECONDS = 30$, REVEAL_SECONDS = 1$, SHOWTIME_SECONDS = 75$
     +score(attention)$, setupCrewSize(n)$
-    +startLobby(teams), connect(id), miss(id), closeDoors(), startShowtime()
-    +cableHit(), cableMiss(), soundHeld(), soundFeedback(), micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +startLobby(teams), connect(id), miss(id), lobbyCursorStart(id), closeDoors(), startShowtime()
+    +nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundHeld(), soundFeedback(), micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
     +danceHit(), danceMiss(), danceStray(), advanceBotSetup(), advanceBotDance()
     +attentionFor(), scoreFor(), checkAttention(), finishTeam(), closeMirror(round, teams)
     +crewFor(), roleOf(), lobbyTeamState(), setupTeamState(), danceTeamState(), failReasonOf()
@@ -339,16 +340,16 @@ classDiagram
   }
   class MirrorLobby {
     <<MirrorParts.js>>
-    -rng, bool #started, bool #closed, #teams, #playerIndex
-    +start(teams), connect(id), miss(id), closeDoors()
+    -rng, -seedRng, bool #started, bool #closed, #teams, #playerIndex
+    +start(teams), connect(id), miss(id), cursorStartOf(id), closeDoors()
     +botConnectTimes(), allConnected(), isTeamFailed(), teamState(), playerState()
     +toJSON(), fromJSON(data, opts)$
   }
   class SetupCrew {
     <<MirrorParts.js>>
-    -rng, bool #started, #teams, #playerIndex
+    -rng, -seedRng, bool #started, #teams, #playerIndex
     +crewSize(n)$, splitSteps(slots)$, botStepDuration(step)$
-    +start(entries), cableHit(), cableMiss(), soundHeld(), soundFeedback()
+    +start(entries), nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundHeld(), soundFeedback()
     +micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
     +completeBotStep(), advanceBotSetup(), botStepDueAt()
     +currentStep(), currentPlayerId(), penaltiesFor(), teamState()
@@ -400,6 +401,7 @@ classDiagram
   MirrorTrial "1" *-- "1" MirrorLobby : #lobby
   MirrorTrial "1" *-- "1" SetupCrew : #setup
   MirrorTrial "1" *-- "1" DanceCrew : #dance
+  MirrorTrial ..> Rng : owns private #seedRng
   MirrorTrial ..> MirrorData : reads constants
   MirrorLobby ..> MirrorData : lobby rules
   SetupCrew ..> MirrorData : steps, items, penalties
@@ -431,5 +433,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 2, from commit `261327d`).
+Made from the rules code on branch `screen-state-cleanup` (Step 3a, from commit `3d675f8`).
 Update this diagram whenever a class in `rules/` changes.

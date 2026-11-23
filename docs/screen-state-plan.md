@@ -10,7 +10,7 @@ No rules, balance numbers, timer lengths, copy, or features are redesigned in th
 - [x] **Step 0:** Add Screen State Rule and doc cleanup to `CLAUDE.md` and `AGENTS.md` (done)
 - [x] **Step 1:** Attendance injected clock and server-ready tick (`V-18, V-19`)
 - [x] **Step 2:** Game clock sync, Gift Window auto-advance, and timer banner alignment (`V-01, V-02, V-11`)
-- [ ] **Step 3a:** Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` (`V-28, V-32, V-33`)
+- [x] **Step 3a:** Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` (`V-28, V-32, V-33`)
 - [ ] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
 - [ ] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
 - [ ] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
@@ -53,11 +53,12 @@ No rules, balance numbers, timer lengths, copy, or features are redesigned in th
 - **QA bugs fixed:** **Bug 4** (All-Hands advances automatically after the gift window), **Bug 5** (Glitch Report and Stats Update timers match their text and banner).
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
-#### Step 3a: Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng`
+#### Step 3a: Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` — DONE
 - **Violations covered:** `V-28, V-32, V-33`
 - **Files touched:** `rules/MirrorParts.js`, `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `mirror-view.js`, `Tests/check_mirror_lobby.js`, `Tests/check_mirror_setup.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
 - **Where logic moves:** Existing `MirrorLobby` and `SetupCrew` (`rules/MirrorParts.js`), coordinated through `MirrorTrial` (`rules/Trial.js`) and `Game` pass-throughs (`rules/Game.js`). Seed Lobby cursor initial `pos`/`dir`, Cables bag order, and Sound Check spikes and jitter from `MirrorTrial`'s seeded `Rng` (persisted in `MirrorLobby`/`SetupCrew` `toJSON`/`fromJSON`), so `mirror-view.js` has zero `Math.random()` calls and reload restores exact seeded sequences.
 - **QA bugs fixed:** None from Level 2 QA (fixes Level 3 QA Step 10 #4).
+- **Done notes:** Implemented Option A: `MirrorTrial`, `MirrorLobby`, and `SetupCrew` keep existing Level 3 draws on `Game.rng` and use a private `#seedRng` seeded from `(Game.rng.getState() ^ 0x9E3779B9) >>> 0` with 0 extra draws on `Game.rng` (plus a test-only 1-draw fallback for non-saveable RNGs). `seedRngState` saves and restores in `toJSON`/`fromJSON` while older saves missing `seedRngState` or cursor fields still load cleanly, and `mirror-view.js` has zero `Math.random()` calls.
 - **Checks:** `npm run build`, `npm test` (note: explain any diff in `check_mirror_*` / `check_save` baselines if new seeded draws or JSON fields are added; verify Level 1 and Level 2 snapshots are unchanged; no baseline save without explaining diffs), `npm run test:screens`.
 
 #### Step 3b: Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick`

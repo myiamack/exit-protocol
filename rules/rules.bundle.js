@@ -1545,19 +1545,28 @@ const MirrorParts = (() => {
    Outside code calls MirrorTrial, never these classes directly. */
 
 const idOf = x => (x && typeof x === "object" ? x.id : x);
+const SEED_MIX = 0x9E3779B9;
+
+function deriveSeedRng(rng) {
+  if (Rng.canSave(rng)) return Rng.seeded((rng.getState() ^ SEED_MIX) >>> 0);
+  // Test-only 1-draw fallback for non-saveable RNGs; real games always use a saveable Rng.
+  return Rng.seeded((Math.floor(rng() * 4294967296) ^ SEED_MIX) >>> 0);
+}
 
 /* Lobby state for Presentation Day: active players per team (Team.active()),
    connect and miss results, tile speed-up, bot connect delays, and doors-close lockout. */
 class MirrorLobby {
   #rng;
+  #seedRng;
   #started = false;
   #closed = false;
   #teams = new Map();       // teamId -> { teamId, order: playerId[], players: Map<playerId, rec>, failed: bool }
   #playerIndex = new Map(); // playerId -> { teamId, rec }
 
-  constructor(rng, teams = null) {
+  constructor(rng, teams = null, { seedRng = null } = {}) {
     if (typeof rng !== "function") throw new Error("MirrorLobby requires a seeded rng.");
     this.#rng = rng;
+    this.#seedRng = typeof seedRng === "function" ? seedRng : deriveSeedRng(rng);
     if (teams !== null) this.start(teams);
   }
 
@@ -1590,6 +1599,8 @@ class MirrorLobby {
         const speed = speedMin + Math.floor(this.#rng() * speedRange);
         const zone = zoneMin + Math.floor(this.#rng() * zoneRange);
         const botConnectAt = p.isBot ? botMin + Math.floor(this.#rng() * (botMax - botMin + 1)) : null;
+        const cursorPos = Math.floor(this.#seedRng() * 100);
+        const cursorDir = this.#seedRng() < 0.5 ? -1 : 1;
         const rec = {
           playerId: p.id,
           name: p.name,
@@ -1599,6 +1610,8 @@ class MirrorLobby {
           speed,
           zone,
           botConnectAt,
+          cursorPos,
+          cursorDir,
         };
         ts.order.push(p.id);
         ts.players.set(p.id, rec);
@@ -1685,6 +1698,11 @@ class MirrorLobby {
   playerState(playerId) {
     const entry = this.#lookupPlayer(playerId);
     return entry ? { ...entry.rec, teamId: entry.teamId } : null;
+  }
+
+  cursorStartOf(playerId) {
+    const entry = this.#lookupPlayer(playerId);
+    return entry ? { pos: entry.rec.cursorPos, dir: entry.rec.cursorDir } : null;
   }
 
   playersForTeam(teamOrId) {
@@ -1774,6 +1792,7 @@ class MirrorLobby {
     return {
       started: this.#started,
       closed: this.#closed,
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
       teams: [...this.#teams.values()].map(ts => ({
         teamId: ts.teamId,
         failed: ts.failed,
@@ -1782,9 +1801,14 @@ class MirrorLobby {
     };
   }
 
-  static fromJSON(data, { rng } = {}) {
+  static fromJSON(data, { rng, seedRng = null } = {}) {
     if (!data || typeof data !== "object") throw new Error("Invalid MirrorLobby save data.");
-    const lobby = new MirrorLobby(rng);
+    let useSeedRng = typeof seedRng === "function" ? seedRng : null;
+    if (!useSeedRng && typeof data.seedRngState === "number") {
+      useSeedRng = Rng.seeded(0);
+      useSeedRng.setState(data.seedRngState);
+    }
+    const lobby = new MirrorLobby(rng, null, { seedRng: useSeedRng });
     lobby.#started = !!data.started;
     lobby.#closed = !!data.closed;
     for (const td of (data.teams || [])) {
@@ -1799,6 +1823,8 @@ class MirrorLobby {
           speed: pd.speed,
           zone: pd.zone,
           botConnectAt: pd.botConnectAt ?? null,
+          cursorPos: typeof pd.cursorPos === "number" ? pd.cursorPos : 0,
+          cursorDir: pd.cursorDir === -1 ? -1 : 1,
         };
         ts.order.push(rec.playerId);
         ts.players.set(rec.playerId, rec);
@@ -1815,6 +1841,7 @@ class MirrorLobby {
    bot setup schedule/hiccups, and wrap-up. Outside code calls MirrorTrial only. */
 class SetupCrew {
   #rng;
+  #seedRng;
   #started = false;
   #teams = new Map();       // teamId -> team setup state
   #playerIndex = new Map(); // playerId -> { teamId, slotIndex, name, isBot }
@@ -1822,6 +1849,9 @@ class SetupCrew {
   constructor(rng, entries = null, options = {}) {
     if (typeof rng !== "function") throw new Error("SetupCrew requires a seeded rng.");
     this.#rng = rng;
+    this.#seedRng = options && typeof options.seedRng === "function"
+      ? options.seedRng
+      : deriveSeedRng(rng);
     if (entries !== null) this.start(entries, options);
   }
 
@@ -1849,10 +1879,10 @@ class SetupCrew {
     return found ? found.label : step;
   }
 
-  #shuffle(list) {
+  #shuffle(list, rng = this.#rng) {
     const out = list.slice();
     for (let i = out.length - 1; i > 0; i--) {
-      const j = Math.floor(this.#rng() * (i + 1));
+      const j = Math.floor(rng() * (i + 1));
       [out[i], out[j]] = [out[j], out[i]];
     }
     return out;
@@ -1987,8 +2017,8 @@ class SetupCrew {
         stepStartedAt: 0,
         botHiccups: 0,
         completedSteps: [],
-        cables: { connected: [], sparks: 0 },
-        sound: { locked: false, feedbacks: 0 },
+        cables: { connected: [], sparks: 0, bag: [] },
+        sound: { locked: false, feedbacks: 0, spikesRolled: 0 },
         mic: { round: 0, index: 0, sequence: null, done: false, wrongs: 0 },
         deck: { fileOrder: null, filesTried: [], grabbed: false, reshuffles: 0 },
         qa: { order: null, index: 0, right: 0, wrong: 0, timeouts: 0, done: false },
@@ -2108,6 +2138,84 @@ class SetupCrew {
       stepDone: false,
       nextStep: "sound",
       nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 1 (cables): draw the next needed port from the seeded spawn bag (refilling lazily). */
+  nextCable(teamOrId) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "cables") return { ok: false, reason: "Cables step is not active." };
+    const needed = MirrorData.ports.filter(p => !ts.cables.connected.includes(p));
+    if (!needed.length) return { ok: false, reason: "All cables are already connected." };
+    if (!ts.cables.bag.length) ts.cables.bag = this.#shuffle(needed.concat(needed), this.#seedRng);
+    let chosen = null;
+    while (ts.cables.bag.length) {
+      const candidate = ts.cables.bag.pop();
+      if (needed.includes(candidate)) { chosen = candidate; break; }
+    }
+    if (!chosen) {
+      ts.cables.bag = this.#shuffle(needed.concat(needed), this.#seedRng);
+      chosen = ts.cables.bag.pop() || needed[0];
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      port: chosen,
+      remainingInBag: ts.cables.bag.length,
+    };
+  }
+
+  /* Step 1 (cables): push a missed cable port back into the spawn bag. */
+  returnCable(teamOrId, port) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "cables") return { ok: false, reason: "Cables step is not active." };
+    if (!MirrorData.ports.includes(port)) return { ok: false, reason: "Unknown cable port." };
+    if (ts.cables.connected.includes(port)) return { ok: false, reason: "Port is already connected." };
+    ts.cables.bag.push(port);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      port,
+      remainingInBag: ts.cables.bag.length,
+    };
+  }
+
+  /* Step 2 (sound): roll the next crowd spike delay (in ticks) and boost (+8 to +17). */
+  nextSoundSpike(teamOrId) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "sound") return { ok: false, reason: "Sound step is not active." };
+    const S = MirrorData.sound;
+    const initial = ts.sound.spikesRolled === 0;
+    const delayTicks = initial
+      ? S.spikeInitialMinTicks + Math.floor(this.#seedRng() * S.spikeInitialRangeTicks)
+      : S.spikeIntervalMinTicks + Math.floor(this.#seedRng() * S.spikeIntervalRangeTicks);
+    const boost = S.spikeBoostMin + Math.floor(this.#seedRng() * S.spikeBoostRange);
+    ts.sound.spikesRolled += 1;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      initial,
+      delayTicks,
+      boost,
+      spikesRolled: ts.sound.spikesRolled,
+    };
+  }
+
+  /* Step 2 (sound): roll one per-tick sound meter jitter from seeded Rng. */
+  nextSoundJitter(teamOrId) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "sound") return { ok: false, reason: "Sound step is not active." };
+    const half = MirrorData.sound.jitterHalf;
+    const raw = Math.round(this.#seedRng() * (half * 2) - half);
+    const jitter = raw === 0 ? 0 : raw;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      jitter,
     };
   }
 
@@ -2595,8 +2703,8 @@ class SetupCrew {
       stepStartedAt: ts.stepStartedAt,
       botHiccups: ts.botHiccups,
       completedSteps: ts.completedSteps.slice(),
-      cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks },
-      sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks },
+      cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks, bag: ts.cables.bag.slice() },
+      sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks, spikesRolled: ts.sound.spikesRolled },
       mic: {
         round: ts.mic.round,
         index: ts.mic.index,
@@ -2631,6 +2739,7 @@ class SetupCrew {
   toJSON() {
     return {
       started: this.#started,
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
       teams: [...this.#teams.values()].map(ts => ({
         teamId: ts.teamId,
         slots: ts.slots.map(s => ({ ...s, steps: s.steps.slice() })),
@@ -2643,8 +2752,8 @@ class SetupCrew {
         stepStartedAt: ts.stepStartedAt,
         botHiccups: ts.botHiccups,
         completedSteps: ts.completedSteps.slice(),
-        cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks },
-        sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks },
+        cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks, bag: ts.cables.bag.slice() },
+        sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks, spikesRolled: ts.sound.spikesRolled },
         mic: {
           round: ts.mic.round,
           index: ts.mic.index,
@@ -2670,9 +2779,14 @@ class SetupCrew {
     };
   }
 
-  static fromJSON(data, { rng } = {}) {
+  static fromJSON(data, { rng, seedRng = null } = {}) {
     if (!data || typeof data !== "object") throw new Error("Invalid SetupCrew save data.");
-    const sc = new SetupCrew(rng);
+    let useSeedRng = typeof seedRng === "function" ? seedRng : null;
+    if (!useSeedRng && typeof data.seedRngState === "number") {
+      useSeedRng = Rng.seeded(0);
+      useSeedRng.setState(data.seedRngState);
+    }
+    const sc = new SetupCrew(rng, null, { seedRng: useSeedRng });
     sc.#started = !!data.started;
     for (const td of (data.teams || [])) {
       const ts = {
@@ -2696,10 +2810,12 @@ class SetupCrew {
         cables: {
           connected: ((td.cables && td.cables.connected) || []).slice(),
           sparks: (td.cables && td.cables.sparks) || 0,
+          bag: ((td.cables && td.cables.bag) || []).slice(),
         },
         sound: {
           locked: !!(td.sound && td.sound.locked),
           feedbacks: (td.sound && td.sound.feedbacks) || 0,
+          spikesRolled: (td.sound && td.sound.spikesRolled) || 0,
         },
         mic: {
           round: (td.mic && td.mic.round) || 0,
@@ -3656,10 +3772,18 @@ class SplitBriefTrial extends Trial {
 }
 
 const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
+const MIRROR_SEED_MIX = 0x9E3779B9;
+
+function deriveMirrorSeedRng(rng) {
+  if (Rng.canSave(rng)) return Rng.seeded((rng.getState() ^ MIRROR_SEED_MIX) >>> 0);
+  // Test-only 1-draw fallback for non-saveable RNGs; real games always use a saveable Rng.
+  return Rng.seeded((Math.floor(rng() * 4294967296) ^ MIRROR_SEED_MIX) >>> 0);
+}
 
 /* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup, and #dance.
    Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
 class MirrorTrial extends Trial {
+  #seedRng;
   #lobby;
   #setup;
   #dance;
@@ -3673,11 +3797,12 @@ class MirrorTrial extends Trial {
   #lockedAttention = new Map();  // teamId -> 0..100 attention frozen at wrap-up, attention 0, or close
   #crews = new Map();            // teamId -> { setupIds: [], danceIds: [] }
 
-  constructor(rng) {
+  constructor(rng, { seedRng = null } = {}) {
     if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
     super(rng);
-    this.#lobby = new MirrorParts.MirrorLobby(rng);
-    this.#setup = new MirrorParts.SetupCrew(rng);
+    this.#seedRng = typeof seedRng === "function" ? seedRng : deriveMirrorSeedRng(rng);
+    this.#lobby = new MirrorParts.MirrorLobby(rng, null, { seedRng: this.#seedRng });
+    this.#setup = new MirrorParts.SetupCrew(rng, null, { seedRng: this.#seedRng });
     this.#dance = new MirrorParts.DanceCrew(rng);
   }
 
@@ -3850,6 +3975,7 @@ class MirrorTrial extends Trial {
   lobbyState() { return this.#lobby.state(); }
   lobbyTeamState(teamOrId) { return this.#lobby.teamState(teamOrId); }
   lobbyPlayerState(playerOrId) { return this.#lobby.playerState(playerOrId); }
+  lobbyCursorStart(playerOrId) { return this.#lobby.cursorStartOf(playerOrId); }
   botConnectTimes(teamOrId = null) { return this.#lobby.botConnectTimes(teamOrId); }
   botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
   allConnected() { return this.#lobby.allConnected(); }
@@ -3899,6 +4025,14 @@ class MirrorTrial extends Trial {
     return { ok: true, phase: this.#phase, setup: this.#setup.state(), dance: this.#dance.state() };
   }
 
+  nextCable(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextCable(teamOrId);
+  }
+  returnCable(teamOrId, port) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.returnCable(teamOrId, port);
+  }
   cableHit(playerId, port, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.cableHit(playerId, port, opts);
@@ -3906,6 +4040,14 @@ class MirrorTrial extends Trial {
   cableMiss(playerId, port, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.cableMiss(playerId, port, opts);
+  }
+  nextSoundSpike(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextSoundSpike(teamOrId);
+  }
+  nextSoundJitter(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextSoundJitter(teamOrId);
   }
   soundHeld(playerId, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
@@ -4228,6 +4370,7 @@ class MirrorTrial extends Trial {
   toJSON() {
     return {
       ...super.toJSON(),
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
       phase: this.#phase,
       teamIds: this.#teamIds.slice(),
       lobby: this.#lobby.toJSON(),
@@ -4248,12 +4391,24 @@ class MirrorTrial extends Trial {
   static fromJSON(data, { rng, teams = [] } = {}) {
     if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
     const teamById = new Map(teams.map(t => [t.id, t]));
-    const t = new MirrorTrial(rng);
+    const savedSeedState = typeof data.seedRngState === "number"
+      ? data.seedRngState
+      : (data.setup && typeof data.setup.seedRngState === "number"
+        ? data.setup.seedRngState
+        : (data.lobby && typeof data.lobby.seedRngState === "number" ? data.lobby.seedRngState : null));
+    let seedRng;
+    if (savedSeedState !== null) {
+      seedRng = Rng.seeded(0);
+      seedRng.setState(savedSeedState);
+    } else {
+      seedRng = deriveMirrorSeedRng(rng);
+    }
+    const t = new MirrorTrial(rng, { seedRng });
     t.#phase = data.phase || "idle";
     t.#teamIds = (data.teamIds || []).slice();
     t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
-    if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng });
-    if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng });
+    if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng, seedRng });
+    if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng, seedRng });
     if (data.dance) t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng });
     t.#failedTeams = new Set(data.failedTeams || []);
     t.#failReasons = new Map(data.failReasons || []);
@@ -5447,8 +5602,12 @@ class Game {
     });
   }
   mirrorMiss(playerOrId) { return this._mirrorCall(t => t.miss(playerOrId)); }
+  mirrorNextCable(teamOrId) { return this._mirrorCall(t => t.nextCable(teamOrId)); }
+  mirrorReturnCable(teamOrId, port) { return this._mirrorCall(t => t.returnCable(teamOrId, port)); }
   mirrorCableHit(playerOrId, port, opts) { return this._mirrorCall(t => t.cableHit(playerOrId, port, this._mirrorElapsedOpts(opts))); }
   mirrorCableMiss(playerOrId, port, opts) { return this._mirrorCall(t => t.cableMiss(playerOrId, port, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorNextSoundSpike(teamOrId) { return this._mirrorCall(t => t.nextSoundSpike(teamOrId)); }
+  mirrorNextSoundJitter(teamOrId) { return this._mirrorCall(t => t.nextSoundJitter(teamOrId)); }
   mirrorSoundHeld(playerOrId, opts) { return this._mirrorCall(t => t.soundHeld(playerOrId, this._mirrorElapsedOpts(opts))); }
   mirrorSoundFeedback(playerOrId) { return this._mirrorCall(t => t.soundFeedback(playerOrId), { checkAttention: true }); }
   mirrorMicTap(playerOrId, micNumber, opts) { return this._mirrorCall(t => t.micTap(playerOrId, micNumber, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
@@ -5470,6 +5629,7 @@ class Game {
   }
   mirrorPhase() { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.phase : null; }
   mirrorLobbyTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.lobbyTeamState(teamOrId) : null; }
+  mirrorLobbyCursorStart(playerOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.lobbyCursorStart(playerOrId) : null; }
   mirrorCrew(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.crewFor(teamOrId) : null; }
   mirrorSetupSlots(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupSlots(teamOrId) : []; }
   mirrorRole(playerOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.roleOf(playerOrId) : null; }

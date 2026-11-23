@@ -11,6 +11,7 @@
    Rule code only. No screen code. Works in the browser and in Node. */
 import { MirrorData } from "./mirrorData.js";
 import { MirrorParts } from "./MirrorParts.js";
+import { Rng } from "./Rng.js";
 import { Scenarios } from "./scenarios.js";
 import { Vote } from "./Vote.js";
 
@@ -512,10 +513,18 @@ class SplitBriefTrial extends Trial {
 }
 
 const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
+const MIRROR_SEED_MIX = 0x9E3779B9;
+
+function deriveMirrorSeedRng(rng) {
+  if (Rng.canSave(rng)) return Rng.seeded((rng.getState() ^ MIRROR_SEED_MIX) >>> 0);
+  // Test-only 1-draw fallback for non-saveable RNGs; real games always use a saveable Rng.
+  return Rng.seeded((Math.floor(rng() * 4294967296) ^ MIRROR_SEED_MIX) >>> 0);
+}
 
 /* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup, and #dance.
    Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
 class MirrorTrial extends Trial {
+  #seedRng;
   #lobby;
   #setup;
   #dance;
@@ -529,11 +538,12 @@ class MirrorTrial extends Trial {
   #lockedAttention = new Map();  // teamId -> 0..100 attention frozen at wrap-up, attention 0, or close
   #crews = new Map();            // teamId -> { setupIds: [], danceIds: [] }
 
-  constructor(rng) {
+  constructor(rng, { seedRng = null } = {}) {
     if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
     super(rng);
-    this.#lobby = new MirrorParts.MirrorLobby(rng);
-    this.#setup = new MirrorParts.SetupCrew(rng);
+    this.#seedRng = typeof seedRng === "function" ? seedRng : deriveMirrorSeedRng(rng);
+    this.#lobby = new MirrorParts.MirrorLobby(rng, null, { seedRng: this.#seedRng });
+    this.#setup = new MirrorParts.SetupCrew(rng, null, { seedRng: this.#seedRng });
     this.#dance = new MirrorParts.DanceCrew(rng);
   }
 
@@ -706,6 +716,7 @@ class MirrorTrial extends Trial {
   lobbyState() { return this.#lobby.state(); }
   lobbyTeamState(teamOrId) { return this.#lobby.teamState(teamOrId); }
   lobbyPlayerState(playerOrId) { return this.#lobby.playerState(playerOrId); }
+  lobbyCursorStart(playerOrId) { return this.#lobby.cursorStartOf(playerOrId); }
   botConnectTimes(teamOrId = null) { return this.#lobby.botConnectTimes(teamOrId); }
   botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
   allConnected() { return this.#lobby.allConnected(); }
@@ -755,6 +766,14 @@ class MirrorTrial extends Trial {
     return { ok: true, phase: this.#phase, setup: this.#setup.state(), dance: this.#dance.state() };
   }
 
+  nextCable(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextCable(teamOrId);
+  }
+  returnCable(teamOrId, port) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.returnCable(teamOrId, port);
+  }
   cableHit(playerId, port, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.cableHit(playerId, port, opts);
@@ -762,6 +781,14 @@ class MirrorTrial extends Trial {
   cableMiss(playerId, port, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.cableMiss(playerId, port, opts);
+  }
+  nextSoundSpike(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextSoundSpike(teamOrId);
+  }
+  nextSoundJitter(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextSoundJitter(teamOrId);
   }
   soundHeld(playerId, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
@@ -1084,6 +1111,7 @@ class MirrorTrial extends Trial {
   toJSON() {
     return {
       ...super.toJSON(),
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
       phase: this.#phase,
       teamIds: this.#teamIds.slice(),
       lobby: this.#lobby.toJSON(),
@@ -1104,12 +1132,24 @@ class MirrorTrial extends Trial {
   static fromJSON(data, { rng, teams = [] } = {}) {
     if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
     const teamById = new Map(teams.map(t => [t.id, t]));
-    const t = new MirrorTrial(rng);
+    const savedSeedState = typeof data.seedRngState === "number"
+      ? data.seedRngState
+      : (data.setup && typeof data.setup.seedRngState === "number"
+        ? data.setup.seedRngState
+        : (data.lobby && typeof data.lobby.seedRngState === "number" ? data.lobby.seedRngState : null));
+    let seedRng;
+    if (savedSeedState !== null) {
+      seedRng = Rng.seeded(0);
+      seedRng.setState(savedSeedState);
+    } else {
+      seedRng = deriveMirrorSeedRng(rng);
+    }
+    const t = new MirrorTrial(rng, { seedRng });
     t.#phase = data.phase || "idle";
     t.#teamIds = (data.teamIds || []).slice();
     t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
-    if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng });
-    if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng });
+    if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng, seedRng });
+    if (data.setup) t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng, seedRng });
     if (data.dance) t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng });
     t.#failedTeams = new Set(data.failedTeams || []);
     t.#failReasons = new Map(data.failReasons || []);

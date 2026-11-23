@@ -27,5 +27,9 @@ PASS  MirrorTrial.toJSON returns plain JSON-safe data  -> plain
 PASS  Trial.fromJSON rebuilds identical mid-lobby MirrorTrial state
 PASS  Original and loaded MirrorTrial stay identical after subsequent miss and closeDoors
 PASS  Post-closeDoors MirrorTrial.fromJSON restores crews, failed teams, phase, and blocks late joins
+-- 6. Seeded lobby cursor start, private #seedRng mix, and save/load compatibility
+PASS  MirrorLobby cursorStartOf yields integer pos 0..99, dir -1/1, repeats on seed, and returns null for inactive/unknown  -> distinctPos=58
+PASS  MirrorTrial seeds #seedRng from mixed Game.rng state with 0 extra draws, repeats cursorStart, and supports test RNG fallback
+PASS  MirrorTrial and MirrorLobby save/restore seedRngState and load older saves without cursor or seedRngState cleanly
 
-24 passed, 0 failed.
+27 passed, 0 failed.

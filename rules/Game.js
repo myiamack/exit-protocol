@@ -737,8 +737,12 @@ class Game {
     });
   }
   mirrorMiss(playerOrId) { return this._mirrorCall(t => t.miss(playerOrId)); }
+  mirrorNextCable(teamOrId) { return this._mirrorCall(t => t.nextCable(teamOrId)); }
+  mirrorReturnCable(teamOrId, port) { return this._mirrorCall(t => t.returnCable(teamOrId, port)); }
   mirrorCableHit(playerOrId, port, opts) { return this._mirrorCall(t => t.cableHit(playerOrId, port, this._mirrorElapsedOpts(opts))); }
   mirrorCableMiss(playerOrId, port, opts) { return this._mirrorCall(t => t.cableMiss(playerOrId, port, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorNextSoundSpike(teamOrId) { return this._mirrorCall(t => t.nextSoundSpike(teamOrId)); }
+  mirrorNextSoundJitter(teamOrId) { return this._mirrorCall(t => t.nextSoundJitter(teamOrId)); }
   mirrorSoundHeld(playerOrId, opts) { return this._mirrorCall(t => t.soundHeld(playerOrId, this._mirrorElapsedOpts(opts))); }
   mirrorSoundFeedback(playerOrId) { return this._mirrorCall(t => t.soundFeedback(playerOrId), { checkAttention: true }); }
   mirrorMicTap(playerOrId, micNumber, opts) { return this._mirrorCall(t => t.micTap(playerOrId, micNumber, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
@@ -760,6 +764,7 @@ class Game {
   }
   mirrorPhase() { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.phase : null; }
   mirrorLobbyTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.lobbyTeamState(teamOrId) : null; }
+  mirrorLobbyCursorStart(playerOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.lobbyCursorStart(playerOrId) : null; }
   mirrorCrew(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.crewFor(teamOrId) : null; }
   mirrorSetupSlots(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupSlots(teamOrId) : []; }
   mirrorRole(playerOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.roleOf(playerOrId) : null; }

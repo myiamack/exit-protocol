@@ -3938,6 +3938,205 @@ async function timerBannerAndSyncCases() {
   check("All-Hands auto-advances to Stats Update on Gift Window close and Stats Update banner matches Game.timerView()", res.giftAutoAdvanceAndStatsOk);
 }
 
+/* Step 3a: Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from MirrorTrial's seeded Rng (V-28, V-32, V-33). */
+async function mirrorStep3aSeedCases() {
+  const mvSrc = fs.readFileSync(path.join(repo, "mirror-view.js"), "utf8");
+  check("mirror-view.js has no Math.random()", !/\bMath\.random\b/.test(mvSrc));
+  check("mirror-view.js has no shuffleArr", !/\bshuffleArr\b/.test(mvSrc));
+
+  const res = w.eval(`(() => {
+    const startLv3 = (seed, getNow) => {
+      const sess = EP.Bots.soloGame({
+        me: { name: "Step3a", type: "coop", spend: EP.Bots.typicalSpend("coop") },
+        myTeam: { name: "Team Kestrel", mates: TEAM.map(p => p.n) },
+        others: OTHERS.map(o => ({ name: o.t, players: o.p })),
+        rng: EP.Rng.seeded(seed),
+        hooks: EP.Bots.hooks,
+      });
+      const g = sess.game;
+      g._timer.clock = getNow;
+      for (let round = 1; round <= 2; round++) {
+        g.startNextRound();
+        g.advance();
+        g.advance();
+        g.runTrial();
+        g.endTrial();
+        g.endGlitchReport();
+        g.advance();
+        g.advance();
+        g.lockIn();
+        g.advance();
+        g.computeEarnings();
+        g.placeAllRemaining();
+        g.finishRound();
+      }
+      g.startNextRound();
+      g.advance();
+      g.advance();
+      g.start();
+      return sess;
+    };
+
+    const runTrace = seed => {
+      let now = 30000000;
+      const sess = startLv3(seed, () => now);
+      const g = sess.game;
+      let me = sess.me, team = sess.team;
+      const rngBeforeLobby = g.rng.getState();
+
+      const state = {};
+      const box = document.createElement("div");
+      let view = null;
+      const remount = () => {
+        if (view && view.cleanup) view.cleanup();
+        view = MirrorView.screen({
+          game: g, me, team, state, attrName: "Focus",
+          sabotageAlert: "", costHint: () => "Cost", onRender: remount,
+        });
+        box.innerHTML = view.html;
+        if (view.bind) view.bind(box);
+      };
+      remount();
+
+      const cursorStart = g.mirrorLobbyCursorStart(me);
+      const btn0 = box.querySelector("#mirrorSignalBtn");
+      const pos0 = btn0 ? Number(btn0.dataset.pos) : null;
+      view.tick();
+      const pos1 = btn0 ? Number(btn0.dataset.pos) : null;
+      const rngAfterLobby = g.rng.getState();
+
+      // Reload lobby and verify cursorStart stays identical
+      const lobbySnap = JSON.parse(JSON.stringify(g.toJSON()));
+      const gLobRel = EP.Game.fromJSON(lobbySnap, { clock: () => now, hooks: EP.Bots.hooks });
+      const meLobRel = gLobRel.players.find(p => p.id === me.id);
+      const cursorReload = gLobRel.mirrorLobbyCursorStart(meLobRel);
+
+      // Connect all teammates -> reveal -> showtime, pick a Setup player for cables/sound
+      now += 16000;
+      g.tick();
+      g.mirrorConnect(me);
+      now = g.timer.deadline;
+      g.tick();
+      const slots = g.mirrorSetupSlots(team);
+      const setupOwner = team.members.find(p => p.id === slots[0].playerId);
+      me = setupOwner;
+      const showState = {};
+      let showView = null;
+      const mountShow = (gameObj, playerObj, teamObj) => {
+        if (showView && showView.cleanup) showView.cleanup();
+        showView = MirrorView.screen({
+          game: gameObj, me: playerObj, team: teamObj, state: showState, attrName: "Focus",
+          sabotageAlert: "", costHint: () => "Cost", onRender: () => mountShow(gameObj, playerObj, teamObj),
+        });
+        box.innerHTML = showView.html;
+        if (showView.bind) showView.bind(box);
+      };
+      mountShow(g, setupOwner, team);
+
+      const rngBeforeCables = g.rng.getState();
+      const spawnedPorts = [];
+      for (let t = 0; t < 30; t++) {
+        showView.tick();
+        const latest = showState.mirror && showState.mirror.cables.belt[showState.mirror.cables.belt.length - 1];
+        if (latest && !spawnedPorts.some(x => x.id === latest.id)) {
+          spawnedPorts.push({ id: latest.id, port: latest.port });
+        }
+      }
+      const rngAfterCables = g.rng.getState();
+      for (const port of EP.MirrorData.ports) g.mirrorCableHit(setupOwner, port);
+      mountShow(g, setupOwner, team);
+
+      const rngBeforeSound = g.rng.getState();
+      const soundLevels = [];
+      const spikeMsgs = [];
+      for (let t = 0; t < 25; t++) {
+        showView.tick();
+        soundLevels.push(Number((box.querySelector("#soundVal") || {}).textContent));
+        const msgTxt = (box.querySelector("#mirrorMsg") || {}).textContent || "";
+        if (msgTxt.includes("whoops")) spikeMsgs.push(t);
+      }
+      const rngAfterSound = g.rng.getState();
+      if (showView && showView.cleanup) showView.cleanup();
+      if (view && view.cleanup) view.cleanup();
+
+      return {
+        cursorStart,
+        pos0,
+        pos1,
+        cursorReload,
+        spawnedPorts: spawnedPorts.map(x => x.port),
+        soundLevels,
+        spikeMsgs,
+        rngIsolated: rngBeforeLobby === rngAfterLobby &&
+          rngBeforeCables === rngAfterCables &&
+          rngBeforeSound === rngAfterSound,
+      };
+    };
+
+    try {
+      const a = runTrace(3101);
+      const b = runTrace(3101);
+      const c = runTrace(3102);
+
+      // Verify mid-showtime Game save/reload continues exact nextCable and nextSoundSpike/Jitter via Game
+      let nowS = 31000000;
+      const sessS = startLv3(3105, () => nowS);
+      const gS = sessS.game;
+      nowS += 16000;
+      gS.tick();
+      gS.mirrorConnect(sessS.me);
+      nowS = gS.timer.deadline;
+      gS.tick();
+      const tS = sessS.team;
+      const ownerS = tS.members.find(p => p.id === gS.mirrorSetupSlots(tS)[0].playerId);
+      gS.mirrorNextCable(tS);
+      gS.mirrorReturnCable(tS, "VGA");
+      const snapMidCab = JSON.parse(JSON.stringify(gS.toJSON()));
+      const gCabLoad = EP.Game.fromJSON(snapMidCab, { clock: () => nowS, hooks: EP.Bots.hooks });
+      const tCabLoad = gCabLoad.teamOf(gCabLoad.players.find(p => p.id === ownerS.id));
+      const cabContA = [gS.mirrorNextCable(tS).port, gS.mirrorNextCable(tS).port, gS.mirrorNextCable(tS).port];
+      const cabContB = [gCabLoad.mirrorNextCable(tCabLoad).port, gCabLoad.mirrorNextCable(tCabLoad).port, gCabLoad.mirrorNextCable(tCabLoad).port];
+
+      for (const port of EP.MirrorData.ports) {
+        gS.mirrorCableHit(ownerS, port);
+        gCabLoad.mirrorCableHit(gCabLoad.players.find(p => p.id === ownerS.id), port);
+      }
+      gS.mirrorNextSoundSpike(tS);
+      gCabLoad.mirrorNextSoundSpike(tCabLoad);
+      const sndContA = [gS.mirrorNextSoundJitter(tS).jitter, gS.mirrorNextSoundSpike(tS), gS.mirrorNextSoundJitter(tS).jitter];
+      const sndContB = [gCabLoad.mirrorNextSoundJitter(tCabLoad).jitter, gCabLoad.mirrorNextSoundSpike(tCabLoad), gCabLoad.mirrorNextSoundJitter(tCabLoad).jitter];
+
+      return {
+        cursorMatchOk: !!a.cursorStart &&
+          a.pos0 === a.cursorStart.pos &&
+          JSON.stringify(a.cursorStart) === JSON.stringify(a.cursorReload) &&
+          JSON.stringify(a.cursorStart) === JSON.stringify(b.cursorStart) &&
+          a.pos1 === b.pos1 &&
+          (a.pos0 !== c.pos0 || a.cursorStart.dir !== c.cursorStart.dir),
+        cablesMatchOk: a.spawnedPorts.length >= 4 &&
+          JSON.stringify(a.spawnedPorts) === JSON.stringify(b.spawnedPorts),
+        soundMatchOk: a.soundLevels.length === 25 &&
+          JSON.stringify(a.soundLevels) === JSON.stringify(b.soundLevels) &&
+          JSON.stringify(a.spikeMsgs) === JSON.stringify(b.spikeMsgs) &&
+          a.spikeMsgs.length >= 1,
+        rngIsolatedOk: a.rngIsolated && b.rngIsolated,
+        saveContinueOk: JSON.stringify(cabContA) === JSON.stringify(cabContB) &&
+          JSON.stringify(sndContA) === JSON.stringify(sndContB),
+      };
+    } finally {
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  check("Same seed repeats Mirror lobby cursor start/motion via Game pass-through and preserves on reload", res.cursorMatchOk);
+  check("Same seed repeats Mirror Cables spawn sequence via Game pass-through", res.cablesMatchOk);
+  check("Same seed repeats Mirror Sound Check spikes and jitter via Game pass-through", res.soundMatchOk);
+  check("Mirror lobby cursor, Cables bag, and Sound Check draws never advance Game.rng", res.rngIsolatedOk);
+  check("Mid-trial save/reload continues identical Cables bag and Sound Check spike/jitter sequences", res.saveContinueOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -3983,6 +4182,8 @@ w.addEventListener("load", async () => {
     await attendanceClockAndTickCases();
     log("run 14: Step 2 timer banner alignment, gift window auto-advance, and arrival clock");
     await timerBannerAndSyncCases();
+    log("run 15: Step 3a Level 3 seeded lobby cursor, cables bag, and sound spikes/jitter");
+    await mirrorStep3aSeedCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");
