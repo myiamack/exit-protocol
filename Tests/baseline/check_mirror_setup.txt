@@ -39,5 +39,7 @@ PASS  MirrorTrial mid-showtime save/load restores setup state and continues iden
 PASS  SetupCrew nextCable/returnCable repeat on same seed, vary across seeds, return missed ports, and filter connected ports  -> distinct=15
 PASS  SetupCrew nextSoundSpike/nextSoundJitter stay in bounds without -0, repeat on seed, and vary  -> distinct=20
 PASS  MirrorTrial gates nextCable/sound helpers, saves/loads mid-Cables, mid-Sound, and older saves with 0 extra Game.rng draws
+-- 10. SetupCrew deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold/feedback)
+PASS  SetupCrew deadlines fire Sound hold/feedback, Mic flash hide, Deck reshuffle/spite, and Q&A timeout once at exact timestamps
 
-32 passed, 0 failed.
+33 passed, 0 failed.

@@ -28,5 +28,7 @@ PASS  Mid-showtime save/load finishes identically, catches up past deadline iden
 PASS  Fixed-seed Level 3 plays start-to-finish, charges 3 Focus, pays earnings, updates trialWins, advances to Level 4, and repeats identically
 -- 9. Hook firing order and exact deadline timestamps during catch-up
 PASS  Hooks fire in exact order with deadline timestamps across mirrorLobby -> mirrorReveal -> mirrorShowtime catch-up  -> onStart:mirrorLobby@10000 -> beforeClose:mirrorLobby@40000 -> onStart:mirrorReveal@40000 -> beforeClose:mirrorReveal@41000 -> onStart:mirrorShowtime@41000 -> beforeClose:mirrorShowtime@116000
+-- 10. Setup deadlines via Game.tick() (Sound, Mic, Deck, Q&A) + idle/bot gate + mirrorSetupView
+PASS  Game.tick() fires Sound, Mic, Deck, and Q&A deadlines once at exact clock times, skips idle/bots, and mirrorSetupView is read-only
 
-21 passed, 0 failed.
+22 passed, 0 failed.

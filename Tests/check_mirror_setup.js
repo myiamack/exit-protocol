@@ -697,5 +697,120 @@ console.log("-- 9. Seeded Cables bag, Sound spikes & jitter, and mid-trial save/
   );
 }
 
+console.log("-- 10. SetupCrew deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold/feedback)");
+{
+  const tm = makeTeam(0, 1, { humans: 1, prefix: "Dead_" });
+  const rngSc = Rng.seeded(1401);
+  const sc = new SetupCrew(rngSc, [tm]);
+  const pid = sc.slotsFor(tm)[0].playerId;
+  const activeSet = new Set([pid]);
+  const tickMs = MirrorData.timers.tickMs;
+  const t0 = 50000;
+  sc.beginShowtime(t0);
+
+  // Cables -> Sound arms nextTickAt & spikeAt
+  for (const port of MirrorData.ports) sc.cableHit(pid, port, { now: t0, elapsedSeconds: 0 });
+  const vSnd0 = sc.setupViewFor(tm, t0);
+  const nextSndAt = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: t0 });
+  const idleBlockedSnd = sc.nextDeadline(tm, { activeHumanIds: new Set(), now: t0 });
+
+  // Sound feedback via soundAdjust(10) loop
+  let fbRes = null;
+  for (let i = 0; i < 6; i++) {
+    fbRes = sc.soundAdjust(pid, 10, { now: t0 });
+    if (fbRes.feedback) break;
+  }
+  const vAfterFb = sc.setupViewFor(tm, t0);
+
+  // Hold sound in green zone (70..85) for 12 ticks (3.0s) via tickDeadlines
+  let curT = t0;
+  for (let step = 0; step < 80; step++) {
+    const curSt = sc.teamState(tm);
+    if (curSt.currentStep !== "sound") break;
+    if (curSt.sound.level < 74) sc.soundAdjust(pid, curSt.sound.level <= 68 ? 10 : 5, { now: curT });
+    else if (curSt.sound.level > 85) sc.soundAdjust(pid, -10, { now: curT });
+    curT += tickMs;
+    sc.tickDeadlines(tm, curT, { activeHumanIds: activeSet });
+  }
+  const stAfterHold = sc.teamState(tm);
+  const micArmed = stAfterHold.currentStep === "mic" && stAfterHold.mic.flashing === true &&
+    stAfterHold.mic.hideAt === curT + MirrorData.mic.flashRound1Ticks * tickMs;
+
+  // Mic tap rejected while flashing, accepted once hideAt reached
+  const earlyTap = sc.micTap(pid, stAfterHold.mic.sequence[0], { now: stAfterHold.mic.hideAt - 1 });
+  sc.tickDeadlines(tm, stAfterHold.mic.hideAt, { activeHumanIds: activeSet });
+  const vMicHidden = sc.setupViewFor(tm, stAfterHold.mic.hideAt);
+  let micNow = stAfterHold.mic.hideAt;
+  for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    const seq = sc.micSequenceFor(tm);
+    for (const n of seq) sc.micTap(pid, n, { now: micNow });
+    const nextSt = sc.teamState(tm);
+    if (nextSt.currentStep === "mic" && nextSt.mic.flashing) {
+      micNow = nextSt.mic.hideAt;
+      sc.tickDeadlines(tm, micNow, { activeHumanIds: activeSet });
+    }
+  }
+
+  // Deck reshuffle at 8 ticks (2.0s) and spite reshuffle at 2 ticks (0.5s) after wrong file
+  const stDeck0 = sc.teamState(tm);
+  const deckDue0 = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: micNow });
+  const rngBeforeAutoDeck = rngSc.getState();
+  sc.tickDeadlines(tm, deckDue0, { activeHumanIds: activeSet });
+  const rngAfterAutoDeck = rngSc.getState();
+  const stDeck1 = sc.teamState(tm);
+  const wrongIdx = MirrorData.files.findIndex(f => !f.correct);
+  sc.pickFile(pid, wrongIdx, { now: deckDue0 });
+  const spiteDue = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: deckDue0 });
+  sc.tickDeadlines(tm, spiteDue, { activeHumanIds: activeSet });
+  const stDeck2 = sc.teamState(tm);
+  sc.pickFile(pid, MirrorData.files.findIndex(f => f.correct), { now: spiteDue });
+
+  // Q&A timeout at 29 ticks (7.25s)
+  const stQa0 = sc.teamState(tm);
+  const qaDue0 = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: spiteDue });
+  sc.tickDeadlines(tm, qaDue0 - 1, { activeHumanIds: activeSet });
+  const noToBefore = sc.teamState(tm).qa.timeouts === 0;
+  const toEv = sc.tickDeadlines(tm, qaDue0, { activeHumanIds: activeSet });
+  const stQa1 = sc.teamState(tm);
+
+  // Older-save compatibility: strip Step 3b deadline & Sound Check fields, reload, and lazily arm deadline
+  const oldSetupJson = JSON.parse(JSON.stringify(sc.toJSON()));
+  delete oldSetupJson.showtimeStartAt;
+  for (const td of oldSetupJson.teams) {
+    if (td.sound) {
+      delete td.sound.level;
+      delete td.sound.holdTicks;
+      delete td.sound.nextTickAt;
+      delete td.sound.spikeAt;
+      delete td.sound.spikeBoost;
+    }
+    if (td.mic) {
+      delete td.mic.flashing;
+      delete td.mic.hideAt;
+    }
+    if (td.deck) delete td.deck.nextReshuffleAt;
+    if (td.qa) delete td.qa.itemDeadlineAt;
+  }
+  const scOldReload = SetupCrew.fromJSON(oldSetupJson, { rng: Rng.seeded(1401) });
+  const oldReloadQaDue = scOldReload.nextDeadline(tm, { activeHumanIds: activeSet, now: qaDue0 });
+
+  expect(
+    "SetupCrew deadlines fire Sound hold/feedback, Mic flash hide, Deck reshuffle/spite, and Q&A timeout once at exact timestamps",
+    vSnd0.sound.level === 45 && nextSndAt === t0 + tickMs && idleBlockedSnd === null &&
+      fbRes && fbRes.feedback && vAfterFb.sound.level === 45 && vAfterFb.sound.feedbacks === 1 &&
+      micArmed && !earlyTap.ok && !vMicHidden.mic.flashing &&
+      stDeck0.currentStep === "deck" && deckDue0 === micNow + MirrorData.deck.reshuffleTicks * tickMs &&
+      rngBeforeAutoDeck === rngAfterAutoDeck &&
+      stDeck1.deck.reshuffles === 1 &&
+      spiteDue === deckDue0 + MirrorData.deck.wrongReshuffleTicks * tickMs &&
+      stDeck2.deck.reshuffles === 2 &&
+      stQa0.currentStep === "qa" && qaDue0 === spiteDue + MirrorData.qa.countdownTicks * tickMs &&
+      noToBefore && toEv.events.some(e => e.kind === "qaTimeout") &&
+      stQa1.qa.timeouts === 1 && stQa1.qa.index === 1 &&
+      oldReloadQaDue === qaDue0 + MirrorData.qa.countdownTicks * tickMs &&
+      scOldReload.teamState(tm).qa.itemDeadlineAt === oldReloadQaDue
+  );
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed.");
 process.exit(fail ? 1 : 0);

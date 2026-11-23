@@ -368,5 +368,123 @@ console.log("-- 4. Fixed-seed full game (Levels 1 to 7) with Level 3 Mirror and 
   ok("save and load mid-Level 3 in a full game matches unbroken run", !!snapText && sameMidReload);
 }
 
+/* ----- 5. mid-Q&A, mid-Sound-hold, and mid-Mic-flash reload preserves exact deadline ----- */
+console.log("-- 5. Mid-Q&A, mid-Sound-hold, and mid-Mic-flash reload");
+{
+  const advanceToLv3Showtime = (seed, T, { team0Humans = false } = {}) => {
+    const g = newGame(seed, T);
+    for (let lv = 1; lv <= 2; lv++) {
+      g.startNextRound();
+      g.advance();
+      g.advance();
+      g.runTrial();
+      g.payTrialCosts();
+      g.advance();
+      g.closeGlitchReport();
+      g.closeGiftWindow();
+      g.placeAllRemaining();
+      g.finishRound();
+    }
+    if (team0Humans) {
+      for (const m of g.teams[0].members) m.isBot = false;
+    }
+    g.startNextRound();
+    g.advance();
+    g.advance();
+    for (const p of g.players) { if (!p.isBot) g.mirrorConnect(p.id); }
+    T.now += 16000;
+    g.tick(T.now);
+    T.now = g.timer.deadline;
+    g.tick(T.now);
+    return g;
+  };
+  const findSetupHumanGame = (seedStart, opts = {}) => {
+    for (let s = seedStart; s < seedStart + 50; s++) {
+      const T = { now: 1e9 };
+      const g = advanceToLv3Showtime(s, T, opts);
+      const t = g.teams[0];
+      const slots = g.mirrorSetupSlots(t);
+      if (slots.length >= 1 && !slots[0].isBot) return { g, T, team: t, pid: slots[0].playerId, seed: s };
+    }
+    throw new Error("Could not find setup human seed.");
+  };
+  const tickMs = EP.MirrorData.timers.tickMs;
+
+  // (a) Mid-Sound-hold save & reload
+  const { g: gSndA, T: TSndA, team: tSnd, pid: pSnd } = findSetupHumanGame(700);
+  for (const port of EP.MirrorData.ports) gSndA.mirrorCableHit(pSnd, port);
+  for (let i = 0; i < 6; i++) {
+    const lv = gSndA.mirrorSetupView(pSnd).sound.level;
+    if (lv < 74) gSndA.mirrorSoundAdjust(pSnd, lv <= 68 ? 10 : 5);
+    else if (lv > 85) gSndA.mirrorSoundAdjust(pSnd, -10);
+    TSndA.now += tickMs;
+    gSndA.tick(TSndA.now);
+  }
+  const sndSnap = save(gSndA);
+  const TSndB = { now: TSndA.now };
+  const gSndB = load(sndSnap, TSndB);
+  let lockedAtA = null, lockedAtB = null;
+  for (let i = 0; i < 60 && (lockedAtA === null || lockedAtB === null); i++) {
+    for (const [gx, Tx, setter] of [[gSndA, TSndA, v => { lockedAtA = v; }], [gSndB, TSndB, v => { lockedAtB = v; }]]) {
+      const sv = gx.mirrorSetupView(pSnd);
+      if (sv.currentStep === "sound") {
+        if (sv.sound.level < 74) gx.mirrorSoundAdjust(pSnd, sv.sound.level <= 68 ? 10 : 5);
+        else if (sv.sound.level > 85) gx.mirrorSoundAdjust(pSnd, -10);
+      }
+      Tx.now += tickMs;
+      gx.tick(Tx.now);
+      if (gx.mirrorSetupView(pSnd).sound.locked) setter(Tx.now);
+    }
+  }
+  ok("mid-Sound-hold save/reload locks sound at exact same timestamp", lockedAtA !== null && lockedAtA === lockedAtB && save(gSndA) === save(gSndB));
+
+  // (b) Mid-Mic-flash save & reload
+  const { g: gMicA, T: TMicA, pid: pMic } = findSetupHumanGame(720);
+  for (const port of EP.MirrorData.ports) gMicA.mirrorCableHit(pMic, port);
+  gMicA.mirrorSoundHeld(pMic);
+  const hideAt = gMicA.mirrorSetupView(pMic).mic.hideAt;
+  TMicA.now += tickMs * 2;
+  gMicA.tick(TMicA.now);
+  const micSnap = save(gMicA);
+  const TMicB = { now: TMicA.now };
+  const gMicB = load(micSnap, TMicB);
+  TMicA.now = hideAt - 1; gMicA.tick(TMicA.now);
+  TMicB.now = hideAt - 1; gMicB.tick(TMicB.now);
+  const stillFlashBoth = gMicA.mirrorSetupView(pMic).mic.flashing && gMicB.mirrorSetupView(pMic).mic.flashing;
+  TMicA.now = hideAt; gMicA.tick(TMicA.now);
+  TMicB.now = hideAt; gMicB.tick(TMicB.now);
+  ok("mid-Mic-flash save/reload hides sequence at exact same timestamp",
+    stillFlashBoth && !gMicA.mirrorSetupView(pMic).mic.flashing && !gMicB.mirrorSetupView(pMic).mic.flashing && save(gMicA) === save(gMicB));
+
+  // (c) Mid-Q&A save & reload
+  const { g: gQaA, T: TQaA, team: tQa } = findSetupHumanGame(740, { team0Humans: true });
+  const curPid = () => gQaA.round.trial.setupCurrentPlayerId(tQa);
+  for (const port of EP.MirrorData.ports) gQaA.mirrorCableHit(curPid(), port);
+  gQaA.mirrorSoundHeld(curPid());
+  for (let r = 0; r < EP.MirrorData.mic.roundLengths.length; r++) {
+    const mv = gQaA.mirrorSetupView(curPid());
+    if (mv.mic.flashing && mv.mic.hideAt !== null && TQaA.now < mv.mic.hideAt) {
+      TQaA.now = mv.mic.hideAt;
+      gQaA.tick(TQaA.now);
+    }
+    for (const n of gQaA.round.trial.micSequenceFor(tQa)) gQaA.mirrorMicTap(curPid(), n);
+  }
+  gQaA.mirrorPickFile(curPid(), EP.MirrorData.files.find(f => f.correct).name);
+  const qaOwnerId = curPid();
+  const qaDeadline = gQaA.mirrorSetupView(qaOwnerId).qa.itemDeadlineAt;
+  TQaA.now += 2000;
+  gQaA.tick(TQaA.now);
+  const qaSnap = save(gQaA);
+  const TQaB = { now: TQaA.now };
+  const gQaB = load(qaSnap, TQaB);
+  TQaA.now = qaDeadline - 1; gQaA.tick(TQaA.now);
+  TQaB.now = qaDeadline - 1; gQaB.tick(TQaB.now);
+  const preToBoth = gQaA.mirrorSetupView(qaOwnerId).qa.timeouts === 0 && gQaB.mirrorSetupView(qaOwnerId).qa.timeouts === 0;
+  TQaA.now = qaDeadline; gQaA.tick(TQaA.now);
+  TQaB.now = qaDeadline; gQaB.tick(TQaB.now);
+  ok("mid-Q&A save/reload times out at exact same timestamp",
+    preToBoth && gQaA.mirrorSetupView(qaOwnerId).qa.timeouts === 1 && gQaB.mirrorSetupView(qaOwnerId).qa.timeouts === 1 && save(gQaA) === save(gQaB));
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed  (" + ((Date.now() - t0) / 1000).toFixed(1) + " s)");
 process.exit(fail ? 1 : 0);

@@ -64,12 +64,17 @@ function connectTeam(g, team) {
   return last;
 }
 
-function playSetupCleanlyThroughGame(g, team) {
+function playSetupCleanlyThroughGame(g, team, T = null) {
   const tr = g.mirror();
   const pid = () => tr.setupCurrentPlayerId(team);
   for (const port of MirrorData.ports) g.mirrorCableHit(pid(), port);
   g.mirrorSoundHeld(pid());
   for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    const view = g.mirrorSetupView(team);
+    if (T && view && view.mic.flashing && view.mic.hideAt !== null && T.now < view.mic.hideAt) {
+      T.now = view.mic.hideAt;
+      g.tick(T.now);
+    }
     for (const n of tr.micSequenceFor(team)) g.mirrorMicTap(pid(), n);
   }
   const okFile = MirrorData.files.find(f => f.correct).name;
@@ -311,18 +316,27 @@ console.log("-- 5. Setup/Dance Game pass-throughs and partial/full human wrap-up
   T.now += 1000;
   g.tick(T.now); // startShowtime
 
-  // Advance 15s into showtime (60s left -> base 80)
-  T.now += 15000;
+  // Advance 5.25s into showtime so after 9.75s of mic flashes we reach 15s (60s left -> base 80)
+  T.now += 5250;
   g.tick(T.now);
 
   const pid0 = () => trial.setupCurrentPlayerId(teams[0]);
+  const advancePastMicFlash = () => {
+    const view = g.mirrorSetupView(teams[0]);
+    if (view && view.mic.flashing && view.mic.hideAt !== null && T.now < view.mic.hideAt) {
+      T.now = view.mic.hideAt;
+      g.tick(T.now);
+    }
+  };
   const rCableMiss = g.mirrorCableMiss(pid0(), "HDMI"); // +3
   for (const port of MirrorData.ports) g.mirrorCableHit(pid0(), port);
   const rSoundFb = g.mirrorSoundFeedback(pid0()); // +4
   g.mirrorSoundHeld(pid0());
+  advancePastMicFlash();
   const firstMicSeq = trial.micSequenceFor(teams[0]);
   const rMicWrong = g.mirrorMicTap(pid0(), (firstMicSeq[0] % MirrorData.mic.count) + 1); // +4
   for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    advancePastMicFlash();
     for (const n of trial.micSequenceFor(teams[0])) g.mirrorMicTap(pid0(), n);
   }
   const rReshuffle = g.mirrorReshuffleDeck(teams[0]);
@@ -345,11 +359,11 @@ console.log("-- 5. Setup/Dance Game pass-throughs and partial/full human wrap-up
   const preWrapScore = g.mirrorScore(teams[0], T.now);
   const wrap0 = g.mirrorWrapUp(pid0());
 
-  // Wait 20s more; team 0 attention must stay frozen at 59 while team 1 keeps draining
-  T.now += 20000;
+  // Wait 12.5s + 7.5s mic flashes = 20s more; team 0 stays frozen at 59 while team 1 finishes at 35s (40s left)
+  T.now += 12500;
   g.tick(T.now);
   const frozenAtt0 = g.mirrorAttention(teams[0], T.now);
-  const t1Wrap = playSetupCleanlyThroughGame(g, teams[1]);
+  const t1Wrap = playSetupCleanlyThroughGame(g, teams[1], T);
 
   expect(
     "All Setup & Dance pass-throughs work, first human wrap-up locks team 0, second closes trial",
@@ -501,13 +515,18 @@ console.log("-- 7. Mid-trial save and load catch-up + plain JSON");
   const TMidReload = { now: TMid.now };
   const gMidReload = Game.fromJSON(JSON.parse(midText), { clock: () => TMidReload.now });
   // Finish remaining cables, sound, mic, deck, qa, wrap-up on both
-  const finishBoth = (game, teamIdx) => {
+  const finishBoth = (game, teamIdx, clockObj) => {
     const t = game.teams[teamIdx];
     const tr = game.mirror();
     const p = () => tr.setupCurrentPlayerId(t);
     for (const port of MirrorData.ports.slice(2)) game.mirrorCableHit(p(), port);
     game.mirrorSoundHeld(p());
     for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+      const view = game.mirrorSetupView(t);
+      if (view && view.mic.flashing && view.mic.hideAt !== null && clockObj.now < view.mic.hideAt) {
+        clockObj.now = view.mic.hideAt;
+        game.tick(clockObj.now);
+      }
       for (const n of tr.micSequenceFor(t)) game.mirrorMicTap(p(), n);
     }
     game.mirrorPickFile(p(), MirrorData.files.find(f => f.correct).name);
@@ -516,10 +535,11 @@ console.log("-- 7. Mid-trial save and load catch-up + plain JSON");
   };
   TMid.now += 5000;
   TMidReload.now += 5000;
-  finishBoth(gMid, 0);
-  finishBoth(gMidReload, 0);
-  playSetupCleanlyThroughGame(gMid, gMid.teams[1]);
-  playSetupCleanlyThroughGame(gMidReload, gMidReload.teams[1]);
+  finishBoth(gMid, 0, TMid);
+  finishBoth(gMidReload, 0, TMidReload);
+  const t1Start = TMid.now;
+  playSetupCleanlyThroughGame(gMid, gMid.teams[1], TMid);
+  playSetupCleanlyThroughGame(gMidReload, gMidReload.teams[1], TMidReload);
 
   // Reload B: wake past showtime deadline (+90s after showtime start) vs continuous twin
   const gLateWake = Game.fromJSON(JSON.parse(midText), { clock: () => midStart + 90000 });
@@ -601,7 +621,7 @@ console.log("-- 8. Fixed-seed full Level 3 handoff to the rest of the game");
     g.tick(T.now); // showtime
     T.now += 10000;
     g.tick(T.now);
-    const wrapRes = playSetupCleanlyThroughGame(g, g.teams[0]);
+    const wrapRes = playSetupCleanlyThroughGame(g, g.teams[0], T);
 
     const mirrorResults = JSON.parse(JSON.stringify(g.round.mirrorResults));
     const rankingWinners = g.round.trial.ranking.filter(r => r.won).map(r => r.team.id);
@@ -705,6 +725,106 @@ console.log("-- 9. Hook firing order and exact deadline timestamps during catch-
     JSON.stringify(closed) === '["mirrorLobby","mirrorReveal","mirrorShowtime"]' &&
       JSON.stringify(hookLog) === JSON.stringify(expectedLog),
     hookLog.join(" -> ")
+  );
+}
+
+console.log("-- 10. Setup deadlines via Game.tick() (Sound, Mic, Deck, Q&A) + idle/bot gate + mirrorSetupView");
+{
+  const tickMs = MirrorData.timers.tickMs;
+  const { g, T, teams, trial } = setupMirrorGame(1001, { humanTeams: 1, totalTeams: 2 });
+  for (const t of teams) connectTeam(g, t);
+  T.now += 1000;
+  g.tick(T.now); // showtime starts
+
+  const team = teams[0];
+  const pid = () => trial.setupCurrentPlayerId(team);
+  for (const port of MirrorData.ports) g.mirrorCableHit(pid(), port);
+
+  // Sound: mirrorSetupView read-only, spikes & hold fire on Game.tick(), idle human pauses deadlines
+  const soundOwner = team.members.find(p => p.id === pid());
+  const v0 = g.mirrorSetupView(soundOwner);
+  v0.sound.level = 999;
+  const viewReadOnlyOk = g.mirrorSetupView(soundOwner).sound.level === MirrorData.sound.start;
+
+  // Idle human does NOT advance sound ticks
+  soundOwner.idle = true;
+  T.now += 2000;
+  g.tick(T.now);
+  const idlePausedSoundOk = g.mirrorSetupView(soundOwner).sound.level === MirrorData.sound.start &&
+    trial.setupStep(team) === "sound";
+  soundOwner.idle = false;
+
+  // Non-idle human: steer into green zone and hold 3.0s (12 ticks) via Game.tick()
+  for (let i = 0; i < 80 && trial.setupStep(team) === "sound"; i++) {
+    const lv = g.mirrorSetupView(soundOwner).sound.level;
+    if (lv < 74) g.mirrorSoundAdjust(soundOwner, lv <= 68 ? 10 : 5);
+    else if (lv > 85) g.mirrorSoundAdjust(soundOwner, -10);
+    T.now += tickMs;
+    g.tick(T.now);
+  }
+  const soundHeldToMicOk = trial.setupStep(team) === "mic";
+
+  // Mic: flash hides at exact hideAt on Game.tick(), blocked 1ms before
+  const micOwner = team.members.find(p => p.id === pid());
+  const vMic0 = g.mirrorSetupView(micOwner);
+  const hideAt = vMic0.mic.hideAt;
+  T.now = hideAt - 1;
+  g.tick(T.now);
+  const stillFlashingBefore = g.mirrorSetupView(micOwner).mic.flashing === true;
+  T.now = hideAt;
+  g.tick(T.now);
+  const hiddenAtExact = g.mirrorSetupView(micOwner).mic.flashing === false;
+  for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    const mv = g.mirrorSetupView(micOwner);
+    if (mv.mic.flashing && mv.mic.hideAt !== null && T.now < mv.mic.hideAt) {
+      T.now = mv.mic.hideAt;
+      g.tick(T.now);
+    }
+    for (const n of trial.micSequenceFor(team)) g.mirrorMicTap(micOwner, n);
+  }
+
+  // Deck: 8 ticks auto-reshuffle, 2 ticks spite reshuffle on wrong file
+  const deckOwner = team.members.find(p => p.id === pid());
+  const deckDue1 = T.now + MirrorData.deck.reshuffleTicks * tickMs;
+  T.now = deckDue1 - 1;
+  g.tick(T.now);
+  const noDeckBefore = g.mirrorSetupView(deckOwner).deck.reshuffles === 0;
+  T.now = deckDue1;
+  g.tick(T.now);
+  const deckAtExact = g.mirrorSetupView(deckOwner).deck.reshuffles === 1;
+  g.mirrorPickFile(deckOwner, MirrorData.files.find(f => !f.correct).name);
+  T.now += MirrorData.deck.wrongReshuffleTicks * tickMs;
+  g.tick(T.now);
+  const spiteAtExact = g.mirrorSetupView(deckOwner).deck.reshuffles === 2;
+  g.mirrorPickFile(deckOwner, MirrorData.files.find(f => f.correct).name);
+
+  // Q&A: 29 ticks (7.25s) timeout fires once at exact deadline
+  const qaOwner = team.members.find(p => p.id === pid());
+  const qaDue0 = T.now + MirrorData.qa.countdownTicks * tickMs;
+  T.now = qaDue0 - 1;
+  g.tick(T.now);
+  const qaOpenBefore = g.mirrorSetupView(qaOwner).qa.timeouts === 0;
+  T.now = qaDue0;
+  g.tick(T.now);
+  const qaToAtExact = g.mirrorSetupView(qaOwner).qa.timeouts === 1 && g.mirrorSetupView(qaOwner).qa.index === 1;
+  T.now += 1000;
+  g.tick(T.now);
+  const qaFiredOnce = g.mirrorSetupView(qaOwner).qa.timeouts === 1;
+
+  // Bot-only setup does NOT fire human Setup deadlines
+  const { g: gBot, T: TBot, teams: teamsBot, trial: trialBot } = setupMirrorGame(1002, { humanTeams: 0, totalTeams: 2 });
+  for (const t of teamsBot) connectTeam(gBot, t);
+  TBot.now += 1000;
+  gBot.tick(TBot.now);
+  const botOnlyNoSetupDeadlines = trialBot.nextSetupDeadline(teamsBot[0], { now: TBot.now }) === null;
+
+  expect(
+    "Game.tick() fires Sound, Mic, Deck, and Q&A deadlines once at exact clock times, skips idle/bots, and mirrorSetupView is read-only",
+    viewReadOnlyOk && idlePausedSoundOk && soundHeldToMicOk &&
+      stillFlashingBefore && hiddenAtExact &&
+      noDeckBefore && deckAtExact && spiteAtExact &&
+      qaOpenBefore && qaToAtExact && qaFiredOnce &&
+      botOnlyNoSetupDeadlines
   );
 }
 

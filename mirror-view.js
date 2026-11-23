@@ -96,7 +96,6 @@
   }
 
   function resetShowtimeState(m) {
-    const S = EP.MirrorData.sound;
     m.showtimeInit = false;
     m.lastStep = null;
     m.lastOwnerId = null;
@@ -104,15 +103,16 @@
     m.lastBotHiccups = 0;
     m.lastWrappedUp = false;
     m.lastProgressSig = "";
+    m.lastSoundSpikes = 0;
+    m.lastSoundFeedbacks = 0;
+    m.lastDeckReshuffles = 0;
+    m.lastQaTimeouts = 0;
+    m.lastMicFlashing = null;
     m.lastDanceTotalBoost = 0;
     m.danceCamMsg = "";
     m.danceCamCount = 0;
     m.dance = null;
     m.cables = { tick: 0, belt: [], nextSpawn: 0, nextId: 1 };
-    m.sound = { tick: 0, level: S.start, holdTicks: 0, spikeAt: 0, spikeBoost: 0 };
-    m.mic = { tick: 0, hideAt: 0, flashKey: null };
-    m.deck = { tick: 0, shuffleAt: 0, active: false };
-    m.qa = { tick: 0, deadline: 0, qKey: null };
   }
 
   /* opts:
@@ -478,6 +478,7 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
     }
 
     const setup = G.mirrorSetupTeam(MYTEAM);
+    const setupView = G.mirrorSetupView(ME);
     const dance = G.mirrorDanceTeam(MYTEAM);
     if (!ms.showtimeInit) {
       resetShowtimeState(ms);
@@ -491,60 +492,17 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
         ms.lastWrappedUp = setup.wrappedUp;
         ms.lastProgressSig = setupProgressSig(setup);
       }
+      if (setupView) {
+        ms.lastSoundSpikes = setupView.sound.spikesTriggered;
+        ms.lastSoundFeedbacks = setupView.sound.feedbacks;
+        ms.lastDeckReshuffles = setupView.deck.reshuffles;
+        ms.lastQaTimeouts = setupView.qa.timeouts;
+        ms.lastMicFlashing = setupView.mic.flashing;
+      }
       if (dance) {
         ms.lastDanceTotalBoost = dance.dancers.reduce((sum, d) => sum + d.boost, 0);
       }
     }
-    if (setup) {
-      if (setup.currentStep !== "mic") ms.mic.flashKey = null;
-      if (setup.currentStep !== "deck") ms.deck.active = false;
-      if (setup.currentStep !== "qa") ms.qa.qKey = null;
-    }
-
-    const ensureMicFlash = st => {
-      if (!st || st.currentStep !== "mic" || !st.mic.sequence) {
-        ms.mic.flashKey = null;
-        return;
-      }
-      const key = `${st.mic.round}:${st.mic.wrongs}:${st.mic.sequence.join(",")}`;
-      if (ms.mic.flashKey !== key) {
-        ms.mic.flashKey = key;
-        if (st.mic.index === 0) {
-          const M = EP.MirrorData.mic;
-          const dur = (st.mic.round === 0 && st.mic.wrongs === 0)
-            ? M.flashRound1Ticks
-            : M.flashBaseTicks + st.mic.sequence.length;
-          ms.mic.hideAt = ms.mic.tick + dur;
-        } else {
-          ms.mic.hideAt = ms.mic.tick;
-        }
-      }
-    };
-
-    const ensureDeckTimer = st => {
-      if (!st || st.currentStep !== "deck") {
-        ms.deck.active = false;
-        return;
-      }
-      if (!ms.deck.active) {
-        ms.deck.active = true;
-        ms.deck.tick = 0;
-        ms.deck.shuffleAt = EP.MirrorData.deck.reshuffleTicks;
-      }
-    };
-
-    const ensureQaTimer = st => {
-      if (!st || st.currentStep !== "qa" || !st.qa.order || st.qa.index >= st.qa.order.length) {
-        ms.qa.qKey = null;
-        return;
-      }
-      const itemIndex = st.qa.order[st.qa.index];
-      const key = `${st.qa.index}:${itemIndex}`;
-      if (ms.qa.qKey !== key) {
-        ms.qa.qKey = key;
-        ms.qa.deadline = ms.qa.tick + EP.MirrorData.qa.countdownTicks;
-      }
-    };
 
     const renderAttentionBarHTML = () => {
       const att = teamAttentionPct();
@@ -660,44 +618,44 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
 </div>`;
     };
 
-    const renderSoundStepHTML = () => {
+    const renderSoundStepHTML = view => {
       const S = EP.MirrorData.sound;
-      const snd = ms.sound;
-      const inZone = snd.level >= S.greenMin && snd.level <= S.greenMax;
+      const snd = view ? view.sound : { level: S.start, holdSeconds: 0, inZone: false };
       const btns = S.controls.map(g => `<button type="button" class="btn soft sm" data-sound-gain="${g}">${g > 0 ? "+" + g : g}</button>`).join("");
       return `<div class="panel" id="mirrorSoundStep">
   <span class="label">Step 2 · Sound check · hold it steady</span>
   <p class="hint">The level drifts back toward 45 and crowd whoops spike it upward. Keep it in the green zone (70 to 85) for 3.0 seconds. Hitting 100 causes feedback and resets to 45 (−4 attention).</p>
-  <div class="mixer"><span class="atrk mix"><i id="soundFill" style="width:${Math.min(100, snd.level)}%" class="${inZone ? "zone" : ""}"></i><b class="zn"></b></span><span class="apct" id="soundVal">${snd.level}</span></div>
-  <div class="row">${btns}<span class="hint" id="holdN">holding ${(snd.holdTicks / 4).toFixed(1)}s of ${S.holdSeconds.toFixed(1)}s</span></div>
+  <div class="mixer"><span class="atrk mix"><i id="soundFill" style="width:${Math.min(100, snd.level)}%" class="${snd.inZone ? "zone" : ""}"></i><b class="zn"></b></span><span class="apct" id="soundVal">${snd.level}</span></div>
+  <div class="row">${btns}<span class="hint" id="holdN">holding ${snd.holdSeconds.toFixed(1)}s of ${S.holdSeconds.toFixed(1)}s</span></div>
 </div>`;
     };
 
-    const renderMicStepHTML = st => {
-      ensureMicFlash(st);
+    const renderMicStepHTML = (st, view) => {
       const M = EP.MirrorData.mic;
-      const seq = st.mic.sequence || [];
-      const flashing = ms.mic.tick < ms.mic.hideAt;
+      const mic = view ? view.mic : { round: st.mic.round, index: st.mic.index, length: (st.mic.sequence && st.mic.sequence.length) || 0, flashing: false, sequence: null, tappedMics: [] };
+      const flashing = !!mic.flashing;
+      const seq = mic.sequence || [];
+      const len = mic.length || seq.length;
+      const tapped = mic.tappedMics || [];
       const totalRounds = M.roundLengths.length;
-      const seqText = flashing ? seq.join(" · ") : "? ".repeat(seq.length).trim() + " (from memory)";
+      const seqText = flashing ? seq.join(" · ") : "? ".repeat(len).trim() + " (from memory)";
       const btns = Array.from({ length: M.count }, (_, idx) => {
         const n = idx + 1;
-        const doneHit = !flashing && seq.slice(0, st.mic.index).includes(n);
+        const doneHit = !flashing && tapped.includes(n);
         return `<button type="button" class="cable mic ${doneHit ? "done" : ""}" data-mic="${n}" ${flashing ? "disabled" : ""}>MIC ${n}</button>`;
       }).join("");
-      return `<div class="panel" id="mirrorMicStep" data-mic-round="${st.mic.round}" data-mic-len="${seq.length}">
+      return `<div class="panel" id="mirrorMicStep" data-mic-round="${mic.round}" data-mic-len="${len}">
   <span class="label">Step 3 · Mic check · three rounds from memory</span>
-  <p class="hint">Round ${st.mic.round + 1} of ${totalRounds}. Watch the flash, then tap it back from memory: <b id="micSeqDisp" data-flashing="${flashing ? "1" : "0"}">${esc(seqText)}</b> Each round runs longer than the last. A wrong tap costs ${M.wrongPenalty} attention and flashes a new order.</p>
-  <div class="mics">${btns}<span class="hint" id="micProgress">round ${st.mic.round + 1} of ${totalRounds} · ${st.mic.index} of ${seq.length}</span></div>
+  <p class="hint">Round ${mic.round + 1} of ${totalRounds}. Watch the flash, then tap it back from memory: <b id="micSeqDisp" data-flashing="${flashing ? "1" : "0"}">${esc(seqText)}</b> Each round runs longer than the last. A wrong tap costs ${M.wrongPenalty} attention and flashes a new order.</p>
+  <div class="mics">${btns}<span class="hint" id="micProgress">round ${mic.round + 1} of ${totalRounds} · ${mic.index} of ${len}</span></div>
 </div>`;
     };
 
-    const renderDeckStepHTML = st => {
-      ensureDeckTimer(st);
+    const renderDeckStepHTML = (st, view) => {
       const D = EP.MirrorData.deck;
       const files = EP.MirrorData.files;
       const signed = files.find(f => f.correct);
-      const order = st.deck.fileOrder || files.map((_, i) => i);
+      const order = (view && view.deck.fileOrder) || st.deck.fileOrder || files.map((_, i) => i);
       const buttons = order.map((fileIdx, pos) => {
         const f = files[fileIdx];
         const tried = st.deck.filesTried.includes(fileIdx);
@@ -710,14 +668,14 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
 </div>`;
     };
 
-    const renderQaStepHTML = st => {
-      ensureQaTimer(st);
+    const renderQaStepHTML = (st, view) => {
       const Q = EP.MirrorData.qa;
       const order = st.qa.order || [];
-      const itemIndex = order[st.qa.index];
+      const itemIndex = view && view.qa.itemIndex !== null ? view.qa.itemIndex : order[st.qa.index];
       const item = EP.MirrorData.qaItems[itemIndex];
-      const leftT = Math.max(0, ms.qa.deadline - ms.qa.tick);
-      const pct = Math.round((leftT / Q.countdownTicks) * 100);
+      const leftT = view ? view.qa.ticksLeft : Q.countdownTicks;
+      const pct = view ? view.qa.pct : 100;
+      const lowWarn = view ? view.qa.lowWarning : false;
       const optionsHTML = item.options.map((opt, i) => `<button type="button" class="mopt" data-qa="${i}"><span class="num">${i + 1}.</span><span>${esc(opt)}</span></button>`).join("");
       return `<div class="panel" id="mirrorQaStep" data-qa-index="${st.qa.index}" data-qa-item="${itemIndex}">
   <div class="row" style="justify-content:space-between">
@@ -725,7 +683,7 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
     <span class="counter" id="qaCount">Question ${st.qa.index + 1} of ${order.length}</span>
   </div>
   <div class="mq" id="qaQuestion">${esc(item.question)}</div>
-  <span class="atrk qacd" id="qaCd" data-ticks-left="${leftT}"><i style="width:${pct}%" class="${leftT <= Q.lowWarningTicks ? "low" : ""}"></i></span>
+  <span class="atrk qacd" id="qaCd" data-ticks-left="${leftT}"><i style="width:${pct}%" class="${lowWarn ? "low" : ""}"></i></span>
   <div class="mqa">${optionsHTML}</div>
   <span class="hint">Answer before the bar empties. Hesitating costs ${Q.wrongPenalty} attention, a wrong answer costs ${Q.wrongPenalty}, landing it restores up to ${Q.rightRecover} lost attention.</span>
 </div>`;
@@ -743,39 +701,67 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
 
     const msgHTML = `<div class="mmsg" id="mirrorMsg" ${ms.msg ? "" : "hidden"}>${ms.msg ? "&gt; " + esc(ms.msg) : ""}</div>`;
 
-    const syncSetupSnapshots = st => {
+    const syncSetupSnapshots = (st, view = null) => {
       if (!st) return;
+      const sv = view || G.mirrorSetupView(ME);
       ms.lastStep = st.currentStep;
       ms.lastOwnerId = st.currentPlayerId;
       ms.lastCompletedCount = st.completedSteps.length;
       ms.lastBotHiccups = st.botHiccups;
       ms.lastWrappedUp = st.wrappedUp;
       ms.lastProgressSig = setupProgressSig(st);
+      if (sv) {
+        ms.lastSoundSpikes = sv.sound.spikesTriggered;
+        ms.lastSoundFeedbacks = sv.sound.feedbacks;
+        ms.lastDeckReshuffles = sv.deck.reshuffles;
+        ms.lastQaTimeouts = sv.qa.timeouts;
+        ms.lastMicFlashing = sv.mic.flashing;
+      }
     };
 
-    const checkSetupChange = st => {
+    const checkSetupChange = (st, view = null) => {
       if (!st) return false;
+      const sv = view || G.mirrorSetupView(ME);
       const newHiccups = st.botHiccups - ms.lastBotHiccups;
       const newCompleted = st.completedSteps.length > ms.lastCompletedCount;
+      const prevOwner = ms.lastOwnerId;
+      const prevStep = ms.lastStep;
       if (newCompleted || newHiccups > 0) {
         const doneStep = st.completedSteps[st.completedSteps.length - 1];
         const label = milestoneLabel(doneStep);
         if (newHiccups > 0) {
           ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.botSetupHiccup, { label });
-        } else if (ms.lastOwnerId !== ME.id) {
+        } else if (prevOwner !== ME.id) {
           ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.botSetupStep, { label });
+        } else if (doneStep === "sound" && sv && sv.sound.locked) {
+          const lvl = sv.sound.lockedLevel != null ? sv.sound.lockedLevel : sv.sound.level;
+          ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.soundLocked, { level: lvl });
+          if (st.currentPlayerId && st.currentPlayerId !== ME.id) {
+            const nextSlot = ownerSlotFor(st.slots, st.currentStep);
+            if (nextSlot) ms.msg += ` Handing off to ${nextSlot.name}.`;
+          }
+        }
+      }
+      if (sv && sv.sound.feedbacks > ms.lastSoundFeedbacks && prevOwner === ME.id) {
+        ms.msg = EP.MirrorData.flavor.statusMessages.soundFeedback;
+      }
+      if (sv && sv.qa.timeouts > ms.lastQaTimeouts && prevOwner === ME.id) {
+        ms.msg = EP.MirrorData.flavor.statusMessages.qaTimeout;
+        if (st.currentStep === "wrapUp" && st.currentPlayerId && st.currentPlayerId !== ME.id) {
+          const nextSlot = ownerSlotFor(st.slots, st.currentStep);
+          if (nextSlot) ms.msg += ` Handing off to ${nextSlot.name}.`;
         }
       }
       const sig = setupProgressSig(st);
       if (
-        st.currentStep !== ms.lastStep ||
-        st.currentPlayerId !== ms.lastOwnerId ||
+        st.currentStep !== prevStep ||
+        st.currentPlayerId !== prevOwner ||
         st.completedSteps.length !== ms.lastCompletedCount ||
         st.botHiccups !== ms.lastBotHiccups ||
         st.wrappedUp !== ms.lastWrappedUp ||
         sig !== ms.lastProgressSig
       ) {
-        syncSetupSnapshots(st);
+        syncSetupSnapshots(st, sv);
         return true;
       }
       return false;
@@ -810,10 +796,10 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
       let stepPanelHTML;
       if (setup.currentPlayerId === ME.id) {
         if (setup.currentStep === "cables") stepPanelHTML = renderCablesStepHTML(setup);
-        else if (setup.currentStep === "sound") stepPanelHTML = renderSoundStepHTML();
-        else if (setup.currentStep === "mic") stepPanelHTML = renderMicStepHTML(setup);
-        else if (setup.currentStep === "deck") stepPanelHTML = renderDeckStepHTML(setup);
-        else if (setup.currentStep === "qa") stepPanelHTML = renderQaStepHTML(setup);
+        else if (setup.currentStep === "sound") stepPanelHTML = renderSoundStepHTML(setupView);
+        else if (setup.currentStep === "mic") stepPanelHTML = renderMicStepHTML(setup, setupView);
+        else if (setup.currentStep === "deck") stepPanelHTML = renderDeckStepHTML(setup, setupView);
+        else if (setup.currentStep === "qa") stepPanelHTML = renderQaStepHTML(setup, setupView);
         else stepPanelHTML = renderWrapUpStepHTML(setup);
       } else {
         stepPanelHTML = renderWaitingViewHTML(setup);
@@ -836,35 +822,50 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
       }
     };
 
-    const updateSoundUI = () => {
-      if (!mountedRoot) return;
+    const updateSoundUI = view => {
+      if (!mountedRoot || !view) return;
       const S = EP.MirrorData.sound;
-      const snd = ms.sound;
+      const snd = view.sound;
       const fill = mountedRoot.querySelector("#soundFill");
       if (fill) {
         fill.style.width = Math.min(100, snd.level) + "%";
-        fill.classList.toggle("zone", snd.level >= S.greenMin && snd.level <= S.greenMax);
+        fill.classList.toggle("zone", snd.inZone);
       }
       const val = mountedRoot.querySelector("#soundVal");
       if (val) val.textContent = String(snd.level);
       const hold = mountedRoot.querySelector("#holdN");
-      if (hold) hold.textContent = `holding ${(snd.holdTicks / 4).toFixed(1)}s of ${S.holdSeconds.toFixed(1)}s`;
+      if (hold) hold.textContent = `holding ${snd.holdSeconds.toFixed(1)}s of ${S.holdSeconds.toFixed(1)}s`;
     };
 
-    const updateMicUI = st => {
-      if (!mountedRoot || !st || !st.mic.sequence) return;
-      const seq = st.mic.sequence;
-      const flashing = ms.mic.tick < ms.mic.hideAt;
+    const updateMicUI = view => {
+      if (!mountedRoot || !view) return;
+      const mic = view.mic;
+      const flashing = !!mic.flashing;
+      const seq = mic.sequence || [];
+      const len = mic.length || seq.length;
+      const tapped = mic.tappedMics || [];
       const disp = mountedRoot.querySelector("#micSeqDisp");
       if (disp) {
         disp.dataset.flashing = flashing ? "1" : "0";
-        disp.textContent = flashing ? seq.join(" · ") : "? ".repeat(seq.length).trim() + " (from memory)";
+        disp.textContent = flashing ? seq.join(" · ") : "? ".repeat(len).trim() + " (from memory)";
       }
       mountedRoot.querySelectorAll("[data-mic]").forEach(btn => {
         const n = Number(btn.dataset.mic);
         btn.disabled = flashing;
-        btn.classList.toggle("done", !flashing && seq.slice(0, st.mic.index).includes(n));
+        btn.classList.toggle("done", !flashing && tapped.includes(n));
       });
+    };
+
+    const updateQaUI = view => {
+      if (!mountedRoot || !view) return;
+      const bar = mountedRoot.querySelector("#qaCd");
+      if (!bar) return;
+      bar.dataset.ticksLeft = String(view.qa.ticksLeft);
+      const fill = bar.querySelector("i");
+      if (fill) {
+        fill.style.width = view.qa.pct + "%";
+        fill.classList.toggle("low", view.qa.lowWarning);
+      }
     };
 
     const updateDeckOrderUI = fileOrder => {
@@ -943,20 +944,22 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
             opts.onRender();
             return;
           }
-          const S = EP.MirrorData.sound;
-          const snd = ms.sound;
           const gain = Number(btn.dataset.soundGain);
-          snd.level = Math.max(S.min, Math.min(S.max, snd.level + gain));
-          if (snd.level >= S.feedbackAt) {
-            const r = G.mirrorSoundFeedback(ME);
-            snd.level = S.start;
-            snd.holdTicks = 0;
-            syncSetupSnapshots(G.mirrorSetupTeam(MYTEAM));
-            ms.msg = r.ok ? EP.MirrorData.flavor.statusMessages.soundFeedback : (r.reason || "");
+          const r = G.mirrorSoundAdjust(ME, gain);
+          const nextSt = G.mirrorSetupTeam(MYTEAM);
+          const nextView = G.mirrorSetupView(ME);
+          syncSetupSnapshots(nextSt, nextView);
+          if (r.ok && r.feedback) {
+            ms.msg = EP.MirrorData.flavor.statusMessages.soundFeedback;
             opts.onRender();
             return;
           }
-          updateSoundUI();
+          if (!r.ok) {
+            ms.msg = r.reason || "";
+            opts.onRender();
+            return;
+          }
+          updateSoundUI(nextView);
         };
       });
 
@@ -965,7 +968,7 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
           G.activity(ME);
           if (G.mirrorPhase() !== "showtime" || G.didRun("runTrial")) { opts.onRender(); return; }
           const st = G.mirrorSetupTeam(MYTEAM);
-          if (!st || st.currentStep !== "mic" || st.currentPlayerId !== ME.id || !st.mic.sequence || ms.mic.tick < ms.mic.hideAt) {
+          if (!st || st.currentStep !== "mic" || st.currentPlayerId !== ME.id || !st.mic.sequence) {
             opts.onRender();
             return;
           }
@@ -1009,14 +1012,12 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
             const nextSt = G.mirrorSetupTeam(MYTEAM);
             syncSetupSnapshots(nextSt);
             if (r.hit) {
-              ms.deck.active = false;
               ms.msg = EP.MirrorData.flavor.statusMessages.deckGrabbed;
               if (r.nextPlayerId && r.nextPlayerId !== ME.id && nextSt) {
                 const nextSlot = ownerSlotFor(nextSt.slots, r.nextStep);
                 if (nextSlot) ms.msg += ` Handing off to ${nextSlot.name}.`;
               }
             } else {
-              ms.deck.shuffleAt = ms.deck.tick + EP.MirrorData.deck.wrongReshuffleTicks;
               ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.deckWrong, { file: r.fileName });
             }
           } else {
@@ -1087,9 +1088,10 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
       }
 
       const st = G.mirrorSetupTeam(MYTEAM);
+      const sv = G.mirrorSetupView(ME);
       const dc = G.mirrorDanceTeam(MYTEAM);
 
-      if (checkSetupChange(st)) {
+      if (checkSetupChange(st, sv)) {
         opts.onRender();
         return;
       }
@@ -1146,101 +1148,25 @@ ${ms.msg ? `<div class="mmsg" id="mirrorMsg">&gt; ${esc(ms.msg)}</div>` : ""}`;
             if (lane) lane.innerHTML = rackLaneHTML();
             updateMsgEl();
           }
-        } else if (st.currentStep === "sound") {
-          const S = EP.MirrorData.sound;
-          const snd = ms.sound;
-          snd.tick += 1;
-          if (!snd.spikeAt) {
-            const sp = G.mirrorNextSoundSpike(MYTEAM);
-            if (sp && sp.ok) {
-              snd.spikeAt = snd.tick + sp.delayTicks;
-              snd.spikeBoost = sp.boost;
-            }
-          }
-          if (snd.spikeAt && snd.tick >= snd.spikeAt) {
-            snd.level = Math.min(S.max, snd.level + snd.spikeBoost);
-            const sp = G.mirrorNextSoundSpike(MYTEAM);
-            if (sp && sp.ok) {
-              snd.spikeAt = snd.tick + sp.delayTicks;
-              snd.spikeBoost = sp.boost;
-            } else {
-              snd.spikeAt = 0;
-              snd.spikeBoost = 0;
-            }
+        } else if (st.currentStep === "sound" && sv) {
+          if (sv.sound.spikesTriggered > ms.lastSoundSpikes) {
+            ms.lastSoundSpikes = sv.sound.spikesTriggered;
             ms.msg = EP.MirrorData.flavor.statusMessages.soundSpike;
           }
-          const drift = snd.level > S.start ? -S.driftStep : snd.level < S.start ? S.driftStep : 0;
-          const jr = G.mirrorNextSoundJitter(MYTEAM);
-          const jitter = jr && jr.ok ? jr.jitter : 0;
-          snd.level = Math.max(S.min, Math.min(S.max, snd.level + drift + jitter));
-          if (snd.level >= S.feedbackAt) {
-            const r = G.mirrorSoundFeedback(ME);
-            snd.level = S.start;
-            snd.holdTicks = 0;
-            syncSetupSnapshots(G.mirrorSetupTeam(MYTEAM));
-            ms.msg = r.ok ? EP.MirrorData.flavor.statusMessages.soundFeedback : (r.reason || "");
-            opts.onRender();
-            return;
-          }
-          if (snd.level >= S.greenMin && snd.level <= S.greenMax) {
-            snd.holdTicks += 1;
-            if (snd.holdTicks >= S.holdTicks) {
-              const r = G.mirrorSoundHeld(ME);
-              if (r.ok) {
-                const nextSt = G.mirrorSetupTeam(MYTEAM);
-                syncSetupSnapshots(nextSt);
-                ms.msg = formatMsg(EP.MirrorData.flavor.statusMessages.soundLocked, { level: snd.level });
-                if (r.nextPlayerId && r.nextPlayerId !== ME.id && nextSt) {
-                  const nextSlot = ownerSlotFor(nextSt.slots, r.nextStep);
-                  if (nextSlot) ms.msg += ` Handing off to ${nextSlot.name}.`;
-                }
-              }
-              opts.onRender();
-              return;
-            }
-          } else {
-            snd.holdTicks = 0;
-          }
-          updateSoundUI();
+          updateSoundUI(sv);
           updateMsgEl();
-        } else if (st.currentStep === "mic") {
-          ensureMicFlash(st);
-          const wasFlashing = ms.mic.tick < ms.mic.hideAt;
-          ms.mic.tick += 1;
-          if (wasFlashing !== (ms.mic.tick < ms.mic.hideAt)) updateMicUI(st);
-        } else if (st.currentStep === "deck") {
-          ensureDeckTimer(st);
-          ms.deck.tick += 1;
-          if (ms.deck.tick >= ms.deck.shuffleAt) {
-            const r = G.mirrorReshuffleDeck(MYTEAM);
-            ms.deck.shuffleAt = ms.deck.tick + EP.MirrorData.deck.reshuffleTicks;
-            if (r.ok) updateDeckOrderUI(r.fileOrder);
+        } else if (st.currentStep === "mic" && sv) {
+          if (ms.lastMicFlashing !== sv.mic.flashing) {
+            ms.lastMicFlashing = sv.mic.flashing;
+            updateMicUI(sv);
           }
-        } else if (st.currentStep === "qa") {
-          ensureQaTimer(st);
-          ms.qa.tick += 1;
-          const Q = EP.MirrorData.qa;
-          const leftT = Math.max(0, ms.qa.deadline - ms.qa.tick);
-          const bar = mountedRoot.querySelector("#qaCd");
-          if (bar) {
-            bar.dataset.ticksLeft = String(leftT);
-            const fill = bar.querySelector("i");
-            if (fill) {
-              fill.style.width = Math.round((leftT / Q.countdownTicks) * 100) + "%";
-              fill.classList.toggle("low", leftT <= Q.lowWarningTicks);
-            }
+        } else if (st.currentStep === "deck" && sv) {
+          if (sv.deck.reshuffles !== ms.lastDeckReshuffles) {
+            ms.lastDeckReshuffles = sv.deck.reshuffles;
+            updateDeckOrderUI(sv.deck.fileOrder);
           }
-          if (leftT <= 0) {
-            const r = G.mirrorTimeoutQa(ME);
-            if (r.ok) {
-              syncSetupSnapshots(G.mirrorSetupTeam(MYTEAM));
-              ms.msg = EP.MirrorData.flavor.statusMessages.qaTimeout;
-            } else {
-              ms.msg = r.reason || "";
-            }
-            opts.onRender();
-            return;
-          }
+        } else if (st.currentStep === "qa" && sv) {
+          updateQaUI(sv);
         }
       }
     };

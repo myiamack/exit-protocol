@@ -1,4 +1,4 @@
--- 1. Save and load after every action (20 games, 6099 saves)
+-- 1. Save and load after every action (20 games, 6097 saves)
 PASS  both copies hold the same state after every action  -> all equal
 PASS  final endings match the game that never reloaded
 PASS  saved and loaded at every round step  -> intermission, briefing, openFloor, trial, glitchReport, giftWindow, lockIn, statsUpdate, graduation
@@ -17,5 +17,9 @@ PASS  random numbers continue the same sequence after loading
 -- 4. Fixed-seed full game (Levels 1 to 7) with Level 3 Mirror and mid-Level 3 reload
 PASS  fixed-seed full game plays Level 3 as Mirror (Focus, cost 3) and finishes
 PASS  save and load mid-Level 3 in a full game matches unbroken run
+-- 5. Mid-Q&A, mid-Sound-hold, and mid-Mic-flash reload
+PASS  mid-Sound-hold save/reload locks sound at exact same timestamp
+PASS  mid-Mic-flash save/reload hides sequence at exact same timestamp
+PASS  mid-Q&A save/reload times out at exact same timestamp
 
-15 passed, 0 failed  (4.1 s)
+18 passed, 0 failed  (4.2 s)

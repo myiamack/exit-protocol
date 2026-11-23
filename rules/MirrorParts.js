@@ -303,6 +303,7 @@ class SetupCrew {
   #rng;
   #seedRng;
   #started = false;
+  #showtimeStartAt = null;
   #teams = new Map();       // teamId -> team setup state
   #playerIndex = new Map(); // playerId -> { teamId, slotIndex, name, isBot }
 
@@ -316,6 +317,26 @@ class SetupCrew {
   }
 
   get started() { return this.#started; }
+  get showtimeStartAt() { return this.#showtimeStartAt; }
+
+  beginShowtime(now = null) {
+    this.#showtimeStartAt = typeof now === "number" && Number.isFinite(now) ? now : null;
+  }
+
+  #msFromElapsed(elapsedSeconds, now = null) {
+    if (typeof now === "number" && Number.isFinite(now)) return now;
+    if (this.#showtimeStartAt !== null && typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      return this.#showtimeStartAt + Math.round(elapsedSeconds * 1000);
+    }
+    return null;
+  }
+
+  #elapsedFromMs(at) {
+    if (this.#showtimeStartAt !== null && typeof at === "number" && Number.isFinite(at)) {
+      return Math.max(0, (at - this.#showtimeStartAt) / 1000);
+    }
+    return null;
+  }
 
   static crewSize(activeCount) {
     if (activeCount <= 0) return 0;
@@ -383,25 +404,113 @@ class SetupCrew {
     return this.#shuffle(MirrorData.qaItems.map((_, i) => i));
   }
 
-  #enterStep(ts, step) {
-    if (step === "mic") {
+  #rollSoundSpike(ts) {
+    const S = MirrorData.sound;
+    const initial = ts.sound.spikesRolled === 0;
+    const delayTicks = initial
+      ? S.spikeInitialMinTicks + Math.floor(this.#seedRng() * S.spikeInitialRangeTicks)
+      : S.spikeIntervalMinTicks + Math.floor(this.#seedRng() * S.spikeIntervalRangeTicks);
+    const boost = S.spikeBoostMin + Math.floor(this.#seedRng() * S.spikeBoostRange);
+    ts.sound.spikesRolled += 1;
+    return { initial, delayTicks, boost, spikesRolled: ts.sound.spikesRolled };
+  }
+
+  #rollSoundJitter() {
+    const half = MirrorData.sound.jitterHalf;
+    const raw = Math.round(this.#seedRng() * (half * 2) - half);
+    return raw === 0 ? 0 : raw;
+  }
+
+  #clearStepDeadlines(ts) {
+    ts.sound.nextTickAt = null;
+    ts.sound.spikeAt = null;
+    ts.mic.hideAt = null;
+    ts.mic.flashing = false;
+    ts.deck.nextReshuffleAt = null;
+    ts.qa.itemDeadlineAt = null;
+  }
+
+  #armSound(ts, now) {
+    const S = MirrorData.sound;
+    const tickMs = MirrorData.timers.tickMs;
+    ts.sound.level = S.start;
+    ts.sound.holdTicks = 0;
+    ts.sound.lockedLevel = null;
+    ts.sound.spikesTriggered = 0;
+    const slot = this.#ownerSlot(ts, "sound");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot) {
+      ts.sound.nextTickAt = now + tickMs;
+      const sp = this.#rollSoundSpike(ts);
+      ts.sound.spikeAt = now + sp.delayTicks * tickMs;
+      ts.sound.spikeBoost = sp.boost;
+    } else {
+      ts.sound.nextTickAt = null;
+      ts.sound.spikeAt = null;
+      ts.sound.spikeBoost = 0;
+    }
+  }
+
+  #armMicFlash(ts, now, { isFirstRound = false } = {}) {
+    const M = MirrorData.mic;
+    const tickMs = MirrorData.timers.tickMs;
+    const slot = this.#ownerSlot(ts, "mic");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot && ts.mic.sequence) {
+      const durTicks = isFirstRound ? M.flashRound1Ticks : (M.flashBaseTicks + ts.mic.sequence.length);
+      ts.mic.hideAt = now + durTicks * tickMs;
+      ts.mic.flashing = true;
+    } else {
+      ts.mic.hideAt = null;
+      ts.mic.flashing = false;
+    }
+  }
+
+  #armDeck(ts, now) {
+    const D = MirrorData.deck;
+    const tickMs = MirrorData.timers.tickMs;
+    const slot = this.#ownerSlot(ts, "deck");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot) {
+      ts.deck.nextReshuffleAt = now + D.reshuffleTicks * tickMs;
+    } else {
+      ts.deck.nextReshuffleAt = null;
+    }
+  }
+
+  #armQaItem(ts, now) {
+    const Q = MirrorData.qa;
+    const tickMs = MirrorData.timers.tickMs;
+    const slot = this.#ownerSlot(ts, "qa");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot) {
+      ts.qa.itemDeadlineAt = now + Q.countdownTicks * tickMs;
+    } else {
+      ts.qa.itemDeadlineAt = null;
+    }
+  }
+
+  #enterStep(ts, step, now = null) {
+    this.#clearStepDeadlines(ts);
+    if (step === "sound") {
+      this.#armSound(ts, now);
+    } else if (step === "mic") {
       ts.mic.round = 0;
       ts.mic.index = 0;
       ts.mic.done = false;
       ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[0]);
+      this.#armMicFlash(ts, now, { isFirstRound: true });
     } else if (step === "deck") {
       ts.deck.fileOrder = this.#makeFileOrder();
       ts.deck.filesTried = [];
       ts.deck.grabbed = false;
       ts.deck.reshuffles = 0;
+      this.#armDeck(ts, now);
     } else if (step === "qa") {
       ts.qa.order = this.#makeQaOrder();
       ts.qa.index = 0;
       ts.qa.done = false;
+      this.#armQaItem(ts, now);
     }
   }
 
-  #advanceStep(ts, elapsedSeconds = null) {
+  #advanceStep(ts, elapsedSeconds = null, now = null) {
     if (ts.stepIndex < MirrorData.setupSteps.length) {
       ts.completedSteps.push(MirrorData.setupSteps[ts.stepIndex]);
     }
@@ -410,7 +519,8 @@ class SetupCrew {
       ts.stepStartedAt = elapsedSeconds;
     }
     const next = this.#currentStep(ts);
-    if (next) this.#enterStep(ts, next);
+    const stepNow = this.#msFromElapsed(elapsedSeconds, now);
+    if (next) this.#enterStep(ts, next, stepNow);
   }
 
   #checkTurn(playerOrId, expectedStep) {
@@ -478,10 +588,21 @@ class SetupCrew {
         botHiccups: 0,
         completedSteps: [],
         cables: { connected: [], sparks: 0, bag: [] },
-        sound: { locked: false, feedbacks: 0, spikesRolled: 0 },
-        mic: { round: 0, index: 0, sequence: null, done: false, wrongs: 0 },
-        deck: { fileOrder: null, filesTried: [], grabbed: false, reshuffles: 0 },
-        qa: { order: null, index: 0, right: 0, wrong: 0, timeouts: 0, done: false },
+        sound: {
+          locked: false,
+          feedbacks: 0,
+          spikesRolled: 0,
+          level: MirrorData.sound.start,
+          holdTicks: 0,
+          nextTickAt: null,
+          spikeAt: null,
+          spikeBoost: 0,
+          spikesTriggered: 0,
+          lockedLevel: null,
+        },
+        mic: { round: 0, index: 0, sequence: null, done: false, wrongs: 0, hideAt: null, flashing: false },
+        deck: { fileOrder: null, filesTried: [], grabbed: false, reshuffles: 0, nextReshuffleAt: null },
+        qa: { order: null, index: 0, right: 0, wrong: 0, timeouts: 0, done: false, itemDeadlineAt: null },
       };
 
       this.#teams.set(teamId, ts);
@@ -499,7 +620,7 @@ class SetupCrew {
   }
 
   /* Step 1 (cables): record a matched cable connection reported by the screen. */
-  cableHit(playerOrId, port, { elapsedSeconds = null } = {}) {
+  cableHit(playerOrId, port, { elapsedSeconds = null, now = null } = {}) {
     const chk = this.#checkTurn(playerOrId, "cables");
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
@@ -508,7 +629,7 @@ class SetupCrew {
     ts.cables.connected.push(port);
     const remaining = MirrorData.ports.length - ts.cables.connected.length;
     const stepDone = remaining === 0;
-    if (stepDone) this.#advanceStep(ts, elapsedSeconds);
+    if (stepDone) this.#advanceStep(ts, elapsedSeconds, now);
     return {
       ok: true,
       teamId: ts.teamId,
@@ -555,13 +676,74 @@ class SetupCrew {
     };
   }
 
+  /* Step 2 (sound): apply a mixer gain button (-10, +5, +10); feedback at 100 resets to 45 (-4 attention). */
+  soundAdjust(playerOrId, delta, { elapsedSeconds = null, now = null } = {}) {
+    const chk = this.#checkTurn(playerOrId, "sound");
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    const S = MirrorData.sound;
+    if (!S.controls.includes(delta)) return { ok: false, reason: "Invalid sound control." };
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    if (at !== null && !entry.isBot) {
+      const tickMs = MirrorData.timers.tickMs;
+      if (ts.sound.nextTickAt === null) ts.sound.nextTickAt = at + tickMs;
+      if (ts.sound.spikeAt === null) {
+        const sp = this.#rollSoundSpike(ts);
+        ts.sound.spikeAt = at + sp.delayTicks * tickMs;
+        ts.sound.spikeBoost = sp.boost;
+      }
+    }
+    ts.sound.level = Math.max(S.min, Math.min(S.max, ts.sound.level + delta));
+    if (ts.sound.level >= S.feedbackAt) {
+      ts.sound.feedbacks += 1;
+      const penaltyAdded = S.feedbackPenalty;
+      ts.penalties += penaltyAdded;
+      ts.penaltiesAdded += penaltyAdded;
+      ts.sound.level = S.start;
+      ts.sound.holdTicks = 0;
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step: "sound",
+        delta,
+        level: ts.sound.level,
+        holdTicks: 0,
+        feedback: true,
+        penaltyAdded,
+        penalties: ts.penalties,
+        stepDone: false,
+        nextStep: "sound",
+        nextPlayerId: this.#currentPlayerId(ts),
+      };
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "sound",
+      delta,
+      level: ts.sound.level,
+      holdTicks: ts.sound.holdTicks,
+      feedback: false,
+      penaltyAdded: 0,
+      penalties: ts.penalties,
+      stepDone: false,
+      nextStep: "sound",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
   /* Step 2 (sound): record that sound held steady in the green zone for 3 seconds. */
-  soundHeld(playerOrId, { elapsedSeconds = null } = {}) {
+  soundHeld(playerOrId, { elapsedSeconds = null, now = null } = {}) {
     const chk = this.#checkTurn(playerOrId, "sound");
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     ts.sound.locked = true;
-    this.#advanceStep(ts, elapsedSeconds);
+    ts.sound.lockedLevel = ts.sound.level;
+    ts.sound.nextTickAt = null;
+    ts.sound.spikeAt = null;
+    this.#advanceStep(ts, elapsedSeconds, now);
     return {
       ok: true,
       teamId: ts.teamId,
@@ -569,6 +751,7 @@ class SetupCrew {
       step: "sound",
       hit: true,
       locked: true,
+      level: ts.sound.lockedLevel,
       stepDone: true,
       nextStep: this.#currentStep(ts),
       nextPlayerId: this.#currentPlayerId(ts),
@@ -583,6 +766,8 @@ class SetupCrew {
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     ts.sound.feedbacks += 1;
+    ts.sound.level = MirrorData.sound.start;
+    ts.sound.holdTicks = 0;
     const penaltyAdded = MirrorData.sound.feedbackPenalty;
     ts.penalties += penaltyAdded;
     ts.penaltiesAdded += penaltyAdded;
@@ -647,21 +832,7 @@ class SetupCrew {
     if (!this.#started) return { ok: false, reason: "Setup has not started." };
     const ts = this.#teams.get(idOf(teamOrId));
     if (!ts || this.#currentStep(ts) !== "sound") return { ok: false, reason: "Sound step is not active." };
-    const S = MirrorData.sound;
-    const initial = ts.sound.spikesRolled === 0;
-    const delayTicks = initial
-      ? S.spikeInitialMinTicks + Math.floor(this.#seedRng() * S.spikeInitialRangeTicks)
-      : S.spikeIntervalMinTicks + Math.floor(this.#seedRng() * S.spikeIntervalRangeTicks);
-    const boost = S.spikeBoostMin + Math.floor(this.#seedRng() * S.spikeBoostRange);
-    ts.sound.spikesRolled += 1;
-    return {
-      ok: true,
-      teamId: ts.teamId,
-      initial,
-      delayTicks,
-      boost,
-      spikesRolled: ts.sound.spikesRolled,
-    };
+    return { ok: true, teamId: ts.teamId, ...this.#rollSoundSpike(ts) };
   }
 
   /* Step 2 (sound): roll one per-tick sound meter jitter from seeded Rng. */
@@ -669,23 +840,25 @@ class SetupCrew {
     if (!this.#started) return { ok: false, reason: "Setup has not started." };
     const ts = this.#teams.get(idOf(teamOrId));
     if (!ts || this.#currentStep(ts) !== "sound") return { ok: false, reason: "Sound step is not active." };
-    const half = MirrorData.sound.jitterHalf;
-    const raw = Math.round(this.#seedRng() * (half * 2) - half);
-    const jitter = raw === 0 ? 0 : raw;
-    return {
-      ok: true,
-      teamId: ts.teamId,
-      jitter,
-    };
+    return { ok: true, teamId: ts.teamId, jitter: this.#rollSoundJitter() };
   }
 
   /* Step 3 (mic): record a mic tap against the seeded sequence across rounds of lengths 3, 4, 5. */
-  micTap(playerOrId, micNumber, { elapsedSeconds = null } = {}) {
+  micTap(playerOrId, micNumber, { elapsedSeconds = null, now = null } = {}) {
     const chk = this.#checkTurn(playerOrId, "mic");
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     if (!Number.isInteger(micNumber) || micNumber < 1 || micNumber > MirrorData.mic.count) {
       return { ok: false, reason: "Invalid mic number." };
+    }
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    if (ts.mic.flashing) {
+      if (at !== null && ts.mic.hideAt !== null && at >= ts.mic.hideAt) {
+        ts.mic.flashing = false;
+        ts.mic.hideAt = null;
+      } else {
+        return { ok: false, reason: "Watch the sequence before tapping." };
+      }
     }
     const expected = ts.mic.sequence[ts.mic.index];
     if (micNumber === expected) {
@@ -693,7 +866,9 @@ class SetupCrew {
       if (ts.mic.index === ts.mic.sequence.length) {
         if (ts.mic.round >= MirrorData.mic.roundLengths.length - 1) {
           ts.mic.done = true;
-          this.#advanceStep(ts, elapsedSeconds);
+          ts.mic.flashing = false;
+          ts.mic.hideAt = null;
+          this.#advanceStep(ts, elapsedSeconds, now);
           return {
             ok: true,
             teamId: ts.teamId,
@@ -713,6 +888,7 @@ class SetupCrew {
         ts.mic.round += 1;
         ts.mic.index = 0;
         ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[ts.mic.round]);
+        this.#armMicFlash(ts, at, { isFirstRound: false });
         return {
           ok: true,
           teamId: ts.teamId,
@@ -754,6 +930,7 @@ class SetupCrew {
     ts.penalties += penaltyAdded;
     ts.penaltiesAdded += penaltyAdded;
     ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[ts.mic.round]);
+    this.#armMicFlash(ts, at, { isFirstRound: false });
     return {
       ok: true,
       teamId: ts.teamId,
@@ -774,7 +951,7 @@ class SetupCrew {
   }
 
   /* Step 4 (deck): record a file click by index or name. Wrong file costs 6 attention. */
-  pickFile(playerOrId, fileIndexOrName, { elapsedSeconds = null } = {}) {
+  pickFile(playerOrId, fileIndexOrName, { elapsedSeconds = null, now = null } = {}) {
     const chk = this.#checkTurn(playerOrId, "deck");
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
@@ -790,7 +967,8 @@ class SetupCrew {
     const file = MirrorData.files[idx];
     if (file.correct) {
       ts.deck.grabbed = true;
-      this.#advanceStep(ts, elapsedSeconds);
+      ts.deck.nextReshuffleAt = null;
+      this.#advanceStep(ts, elapsedSeconds, now);
       return {
         ok: true,
         teamId: ts.teamId,
@@ -811,6 +989,10 @@ class SetupCrew {
     const penaltyAdded = MirrorData.deck.wrongPenalty;
     ts.penalties += penaltyAdded;
     ts.penaltiesAdded += penaltyAdded;
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    if (at !== null && !entry.isBot) {
+      ts.deck.nextReshuffleAt = at + MirrorData.deck.wrongReshuffleTicks * MirrorData.timers.tickMs;
+    }
     return {
       ok: true,
       teamId: ts.teamId,
@@ -829,12 +1011,17 @@ class SetupCrew {
   }
 
   /* Step 4 (deck): generate a seeded reshuffle of the 6 deck files. */
-  reshuffleDeck(teamOrId) {
+  reshuffleDeck(teamOrId, { elapsedSeconds = null, now = null } = {}) {
     if (!this.#started) return { ok: false, reason: "Setup has not started." };
     const ts = this.#teams.get(idOf(teamOrId));
     if (!ts || this.#currentStep(ts) !== "deck") return { ok: false, reason: "Deck step is not active." };
     ts.deck.fileOrder = this.#makeFileOrder();
     ts.deck.reshuffles += 1;
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    const slot = this.#ownerSlot(ts, "deck");
+    if (at !== null && slot && !slot.isBot) {
+      ts.deck.nextReshuffleAt = at + MirrorData.deck.reshuffleTicks * MirrorData.timers.tickMs;
+    }
     return {
       ok: true,
       teamId: ts.teamId,
@@ -844,7 +1031,7 @@ class SetupCrew {
   }
 
   /* Step 5 (qa): record a multiple-choice answer. Right restores up to 5 penalty points; wrong costs 5. */
-  answerQa(playerOrId, answerIndex, { elapsedSeconds = null } = {}) {
+  answerQa(playerOrId, answerIndex, { elapsedSeconds = null, now = null } = {}) {
     const chk = this.#checkTurn(playerOrId, "qa");
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
@@ -871,7 +1058,10 @@ class SetupCrew {
     const stepDone = ts.qa.index >= ts.qa.order.length;
     if (stepDone) {
       ts.qa.done = true;
-      this.#advanceStep(ts, elapsedSeconds);
+      ts.qa.itemDeadlineAt = null;
+      this.#advanceStep(ts, elapsedSeconds, now);
+    } else {
+      this.#armQaItem(ts, this.#msFromElapsed(elapsedSeconds, now));
     }
     return {
       ok: true,
@@ -895,7 +1085,7 @@ class SetupCrew {
   }
 
   /* Step 5 (qa): record a question timeout costing 5 attention. */
-  timeoutQa(playerOrId, { elapsedSeconds = null } = {}) {
+  timeoutQa(playerOrId, { elapsedSeconds = null, now = null } = {}) {
     const chk = this.#checkTurn(playerOrId, "qa");
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
@@ -908,7 +1098,10 @@ class SetupCrew {
     const stepDone = ts.qa.index >= ts.qa.order.length;
     if (stepDone) {
       ts.qa.done = true;
-      this.#advanceStep(ts, elapsedSeconds);
+      ts.qa.itemDeadlineAt = null;
+      this.#advanceStep(ts, elapsedSeconds, now);
+    } else {
+      this.#armQaItem(ts, this.#msFromElapsed(elapsedSeconds, now));
     }
     return {
       ok: true,
@@ -993,6 +1186,7 @@ class SetupCrew {
       ts.penaltiesAdded += penaltyAdded;
     }
 
+    this.#clearStepDeadlines(ts);
     if (step === "cables") ts.cables.connected = MirrorData.ports.slice();
     else if (step === "sound") ts.sound.locked = true;
     else if (step === "mic") ts.mic.done = true;
@@ -1002,7 +1196,8 @@ class SetupCrew {
       ts.qa.done = true;
     }
 
-    this.#advanceStep(ts, finishedAt);
+    const stepNow = this.#msFromElapsed(finishedAt, null);
+    this.#advanceStep(ts, finishedAt, stepNow);
     return {
       ok: true,
       teamId: ts.teamId,
@@ -1146,6 +1341,243 @@ class SetupCrew {
     return ts.stepStartedAt + SetupCrew.botStepDuration(step);
   }
 
+  #isActiveHumanTurn(ts, activeHumanIds) {
+    if (!ts || ts.wrappedUp) return false;
+    const step = this.#currentStep(ts);
+    const slot = this.#ownerSlot(ts, step);
+    if (!slot || slot.isBot || slot.playerId === null || slot.playerId === undefined) return false;
+    if (activeHumanIds === null || activeHumanIds === undefined) return true;
+    return activeHumanIds instanceof Set
+      ? activeHumanIds.has(slot.playerId)
+      : Array.isArray(activeHumanIds) && activeHumanIds.includes(slot.playerId);
+  }
+
+  /* Next rules deadline (ms) for a non-idle human on Sound, Mic, Deck, or Q&A, or null. */
+  nextDeadline(teamOrId, { activeHumanIds = null, now = null } = {}) {
+    if (!this.#started) return null;
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!this.#isActiveHumanTurn(ts, activeHumanIds)) return null;
+    const step = this.#currentStep(ts);
+    const tickMs = MirrorData.timers.tickMs;
+    const hasNow = typeof now === "number" && Number.isFinite(now);
+    if (step === "sound") {
+      if (ts.sound.nextTickAt === null && hasNow) {
+        ts.sound.nextTickAt = now + tickMs;
+        if (ts.sound.spikeAt === null) {
+          const sp = this.#rollSoundSpike(ts);
+          ts.sound.spikeAt = now + sp.delayTicks * tickMs;
+          ts.sound.spikeBoost = sp.boost;
+        }
+      }
+      return ts.sound.nextTickAt;
+    }
+    if (step === "mic") {
+      return ts.mic.flashing ? ts.mic.hideAt : null;
+    }
+    if (step === "deck") {
+      if (ts.deck.nextReshuffleAt === null && hasNow) {
+        ts.deck.nextReshuffleAt = now + MirrorData.deck.reshuffleTicks * tickMs;
+      }
+      return ts.deck.nextReshuffleAt;
+    }
+    if (step === "qa") {
+      if (ts.qa.itemDeadlineAt === null && hasNow) {
+        ts.qa.itemDeadlineAt = now + MirrorData.qa.countdownTicks * tickMs;
+      }
+      return ts.qa.itemDeadlineAt;
+    }
+    return null;
+  }
+
+  /* Advance all passed SetupCrew deadlines up to now for a non-idle human turn. */
+  tickDeadlines(teamOrId, now, { activeHumanIds = null, elapsedSeconds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Setup Crew." };
+    if (typeof now !== "number" || !Number.isFinite(now)) {
+      return { ok: false, reason: "Invalid timestamp." };
+    }
+    if (!this.#isActiveHumanTurn(ts, activeHumanIds)) {
+      return { ok: true, teamId: ts.teamId, events: [] };
+    }
+
+    const events = [];
+    const tickMs = MirrorData.timers.tickMs;
+    const S = MirrorData.sound;
+    const D = MirrorData.deck;
+    let guard = 0;
+
+    while (!ts.wrappedUp && this.#isActiveHumanTurn(ts, activeHumanIds)) {
+      if (++guard > 2000) throw new Error("Setup deadline loop.");
+      const dueAt = this.nextDeadline(ts.teamId, { activeHumanIds, now });
+      if (dueAt === null || dueAt > now) break;
+      const step = this.#currentStep(ts);
+      const pid = this.#currentPlayerId(ts);
+      const elAt = this.#elapsedFromMs(dueAt);
+      const el = elAt !== null ? elAt : elapsedSeconds;
+
+      if (step === "sound") {
+        ts.sound.nextTickAt = dueAt + tickMs;
+        if (ts.sound.spikeAt !== null && dueAt >= ts.sound.spikeAt) {
+          ts.sound.level = Math.min(S.max, ts.sound.level + ts.sound.spikeBoost);
+          ts.sound.spikesTriggered += 1;
+          const sp = this.#rollSoundSpike(ts);
+          ts.sound.spikeAt = dueAt + sp.delayTicks * tickMs;
+          ts.sound.spikeBoost = sp.boost;
+          events.push({ kind: "soundSpike", at: dueAt, teamId: ts.teamId, playerId: pid, level: ts.sound.level });
+        }
+        const drift = ts.sound.level > S.start ? -S.driftStep : ts.sound.level < S.start ? S.driftStep : 0;
+        const jitter = this.#rollSoundJitter();
+        ts.sound.level = Math.max(S.min, Math.min(S.max, ts.sound.level + drift + jitter));
+        if (ts.sound.level >= S.feedbackAt) {
+          ts.sound.feedbacks += 1;
+          const penaltyAdded = S.feedbackPenalty;
+          ts.penalties += penaltyAdded;
+          ts.penaltiesAdded += penaltyAdded;
+          ts.sound.level = S.start;
+          ts.sound.holdTicks = 0;
+          events.push({
+            kind: "soundFeedback",
+            at: dueAt,
+            teamId: ts.teamId,
+            playerId: pid,
+            penaltyAdded,
+            penalties: ts.penalties,
+          });
+        } else if (ts.sound.level >= S.greenMin && ts.sound.level <= S.greenMax) {
+          ts.sound.holdTicks += 1;
+          if (ts.sound.holdTicks >= S.holdTicks) {
+            ts.sound.locked = true;
+            ts.sound.lockedLevel = ts.sound.level;
+            ts.sound.nextTickAt = null;
+            ts.sound.spikeAt = null;
+            this.#advanceStep(ts, el, dueAt);
+            events.push({
+              kind: "soundHeld",
+              at: dueAt,
+              teamId: ts.teamId,
+              playerId: pid,
+              level: ts.sound.lockedLevel,
+              nextStep: this.#currentStep(ts),
+              nextPlayerId: this.#currentPlayerId(ts),
+            });
+          }
+        } else {
+          ts.sound.holdTicks = 0;
+        }
+      } else if (step === "mic") {
+        ts.mic.flashing = false;
+        ts.mic.hideAt = null;
+        events.push({ kind: "micHide", at: dueAt, teamId: ts.teamId, playerId: pid });
+      } else if (step === "deck") {
+        ts.deck.fileOrder = this.#shuffle(MirrorData.files.map((_, i) => i), this.#seedRng);
+        ts.deck.reshuffles += 1;
+        ts.deck.nextReshuffleAt = dueAt + D.reshuffleTicks * tickMs;
+        events.push({
+          kind: "deckReshuffle",
+          at: dueAt,
+          teamId: ts.teamId,
+          playerId: pid,
+          fileOrder: ts.deck.fileOrder.slice(),
+          reshuffles: ts.deck.reshuffles,
+        });
+      } else if (step === "qa") {
+        const res = this.timeoutQa(pid, { elapsedSeconds: el, now: dueAt });
+        events.push({
+          kind: "qaTimeout",
+          at: dueAt,
+          teamId: ts.teamId,
+          playerId: pid,
+          penaltyAdded: res.penaltyAdded,
+          penalties: res.penalties,
+          stepDone: res.stepDone,
+          nextStep: res.nextStep,
+          nextPlayerId: res.nextPlayerId,
+        });
+      } else {
+        break;
+      }
+    }
+
+    return { ok: true, teamId: ts.teamId, events };
+  }
+
+  /* Read-only snapshot of Setup step state for screen rendering. */
+  setupViewFor(teamOrId, now = null) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return null;
+    const tickMs = MirrorData.timers.tickMs;
+    const S = MirrorData.sound;
+    const Q = MirrorData.qa;
+    const hasNow = typeof now === "number" && Number.isFinite(now);
+
+    const isFlashing = Boolean(
+      ts.mic.flashing && (ts.mic.hideAt === null || !hasNow || now < ts.mic.hideAt)
+    );
+    const micSeqLen = ts.mic.sequence ? ts.mic.sequence.length : 0;
+    const micSecsLeft = isFlashing && ts.mic.hideAt !== null && hasNow
+      ? Math.max(0, (ts.mic.hideAt - now) / 1000)
+      : 0;
+
+    const totalQaMs = Q.countdownTicks * tickMs;
+    const qaMsLeft = ts.qa.itemDeadlineAt !== null && hasNow
+      ? Math.max(0, Math.min(totalQaMs, ts.qa.itemDeadlineAt - now))
+      : totalQaMs;
+    const qaTicksLeft = Math.max(0, Math.min(Q.countdownTicks, Math.ceil(qaMsLeft / tickMs)));
+
+    return {
+      teamId: ts.teamId,
+      currentStep: this.#currentStep(ts),
+      currentPlayerId: this.#currentPlayerId(ts),
+      wrappedUp: ts.wrappedUp,
+      sound: {
+        level: ts.sound.level,
+        holdTicks: ts.sound.holdTicks,
+        holdSeconds: (ts.sound.holdTicks * tickMs) / 1000,
+        holdTargetSeconds: S.holdSeconds,
+        holdProgress: Math.min(1, ts.sound.holdTicks / S.holdTicks),
+        inZone: ts.sound.level >= S.greenMin && ts.sound.level <= S.greenMax,
+        locked: ts.sound.locked,
+        lockedLevel: ts.sound.lockedLevel,
+        feedbacks: ts.sound.feedbacks,
+        spikesTriggered: ts.sound.spikesTriggered,
+      },
+      mic: {
+        round: ts.mic.round,
+        index: ts.mic.index,
+        length: micSeqLen,
+        flashing: isFlashing,
+        sequence: isFlashing && ts.mic.sequence ? ts.mic.sequence.slice() : null,
+        tappedMics: ts.mic.sequence ? ts.mic.sequence.slice(0, ts.mic.index) : [],
+        done: ts.mic.done,
+        wrongs: ts.mic.wrongs,
+        hideAt: ts.mic.hideAt,
+        secondsLeft: micSecsLeft,
+      },
+      deck: {
+        fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+        filesTried: ts.deck.filesTried.slice(),
+        grabbed: ts.deck.grabbed,
+        reshuffles: ts.deck.reshuffles,
+        nextReshuffleAt: ts.deck.nextReshuffleAt,
+      },
+      qa: {
+        index: ts.qa.index,
+        total: ts.qa.order ? ts.qa.order.length : 0,
+        itemIndex: (ts.qa.order && ts.qa.index < ts.qa.order.length) ? ts.qa.order[ts.qa.index] : null,
+        right: ts.qa.right,
+        wrong: ts.qa.wrong,
+        timeouts: ts.qa.timeouts,
+        done: ts.qa.done,
+        itemDeadlineAt: ts.qa.itemDeadlineAt,
+        secondsLeft: qaMsLeft / 1000,
+        ticksLeft: qaTicksLeft,
+        lowWarning: qaMsLeft <= Q.lowWarningTicks * tickMs,
+        pct: Math.round((qaMsLeft / totalQaMs) * 100),
+      },
+    };
+  }
+
   teamState(teamOrId) {
     const ts = this.#teams.get(idOf(teamOrId));
     if (!ts) return null;
@@ -1164,19 +1596,33 @@ class SetupCrew {
       botHiccups: ts.botHiccups,
       completedSteps: ts.completedSteps.slice(),
       cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks, bag: ts.cables.bag.slice() },
-      sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks, spikesRolled: ts.sound.spikesRolled },
+      sound: {
+        locked: ts.sound.locked,
+        feedbacks: ts.sound.feedbacks,
+        spikesRolled: ts.sound.spikesRolled,
+        level: ts.sound.level,
+        holdTicks: ts.sound.holdTicks,
+        nextTickAt: ts.sound.nextTickAt,
+        spikeAt: ts.sound.spikeAt,
+        spikeBoost: ts.sound.spikeBoost,
+        spikesTriggered: ts.sound.spikesTriggered,
+        lockedLevel: ts.sound.lockedLevel,
+      },
       mic: {
         round: ts.mic.round,
         index: ts.mic.index,
         sequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
         done: ts.mic.done,
         wrongs: ts.mic.wrongs,
+        hideAt: ts.mic.hideAt,
+        flashing: ts.mic.flashing,
       },
       deck: {
         fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
         filesTried: ts.deck.filesTried.slice(),
         grabbed: ts.deck.grabbed,
         reshuffles: ts.deck.reshuffles,
+        nextReshuffleAt: ts.deck.nextReshuffleAt,
       },
       qa: {
         order: ts.qa.order ? ts.qa.order.slice() : null,
@@ -1185,6 +1631,7 @@ class SetupCrew {
         wrong: ts.qa.wrong,
         timeouts: ts.qa.timeouts,
         done: ts.qa.done,
+        itemDeadlineAt: ts.qa.itemDeadlineAt,
       },
     };
   }
@@ -1199,6 +1646,7 @@ class SetupCrew {
   toJSON() {
     return {
       started: this.#started,
+      showtimeStartAt: this.#showtimeStartAt,
       seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
       teams: [...this.#teams.values()].map(ts => ({
         teamId: ts.teamId,
@@ -1213,19 +1661,33 @@ class SetupCrew {
         botHiccups: ts.botHiccups,
         completedSteps: ts.completedSteps.slice(),
         cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks, bag: ts.cables.bag.slice() },
-        sound: { locked: ts.sound.locked, feedbacks: ts.sound.feedbacks, spikesRolled: ts.sound.spikesRolled },
+        sound: {
+          locked: ts.sound.locked,
+          feedbacks: ts.sound.feedbacks,
+          spikesRolled: ts.sound.spikesRolled,
+          level: ts.sound.level,
+          holdTicks: ts.sound.holdTicks,
+          nextTickAt: ts.sound.nextTickAt,
+          spikeAt: ts.sound.spikeAt,
+          spikeBoost: ts.sound.spikeBoost,
+          spikesTriggered: ts.sound.spikesTriggered,
+          lockedLevel: ts.sound.lockedLevel,
+        },
         mic: {
           round: ts.mic.round,
           index: ts.mic.index,
           sequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
           done: ts.mic.done,
           wrongs: ts.mic.wrongs,
+          hideAt: ts.mic.hideAt,
+          flashing: ts.mic.flashing,
         },
         deck: {
           fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
           filesTried: ts.deck.filesTried.slice(),
           grabbed: ts.deck.grabbed,
           reshuffles: ts.deck.reshuffles,
+          nextReshuffleAt: ts.deck.nextReshuffleAt,
         },
         qa: {
           order: ts.qa.order ? ts.qa.order.slice() : null,
@@ -1234,6 +1696,7 @@ class SetupCrew {
           wrong: ts.qa.wrong,
           timeouts: ts.qa.timeouts,
           done: ts.qa.done,
+          itemDeadlineAt: ts.qa.itemDeadlineAt,
         },
       })),
     };
@@ -1248,6 +1711,7 @@ class SetupCrew {
     }
     const sc = new SetupCrew(rng, null, { seedRng: useSeedRng });
     sc.#started = !!data.started;
+    sc.#showtimeStartAt = typeof data.showtimeStartAt === "number" ? data.showtimeStartAt : null;
     for (const td of (data.teams || [])) {
       const ts = {
         teamId: td.teamId,
@@ -1276,6 +1740,13 @@ class SetupCrew {
           locked: !!(td.sound && td.sound.locked),
           feedbacks: (td.sound && td.sound.feedbacks) || 0,
           spikesRolled: (td.sound && td.sound.spikesRolled) || 0,
+          level: (td.sound && typeof td.sound.level === "number") ? td.sound.level : MirrorData.sound.start,
+          holdTicks: (td.sound && td.sound.holdTicks) || 0,
+          nextTickAt: (td.sound && typeof td.sound.nextTickAt === "number") ? td.sound.nextTickAt : null,
+          spikeAt: (td.sound && typeof td.sound.spikeAt === "number") ? td.sound.spikeAt : null,
+          spikeBoost: (td.sound && td.sound.spikeBoost) || 0,
+          spikesTriggered: (td.sound && td.sound.spikesTriggered) || 0,
+          lockedLevel: (td.sound && typeof td.sound.lockedLevel === "number") ? td.sound.lockedLevel : null,
         },
         mic: {
           round: (td.mic && td.mic.round) || 0,
@@ -1283,12 +1754,15 @@ class SetupCrew {
           sequence: td.mic && Array.isArray(td.mic.sequence) ? td.mic.sequence.slice() : null,
           done: !!(td.mic && td.mic.done),
           wrongs: (td.mic && td.mic.wrongs) || 0,
+          hideAt: (td.mic && typeof td.mic.hideAt === "number") ? td.mic.hideAt : null,
+          flashing: !!(td.mic && td.mic.flashing),
         },
         deck: {
           fileOrder: td.deck && Array.isArray(td.deck.fileOrder) ? td.deck.fileOrder.slice() : null,
           filesTried: ((td.deck && td.deck.filesTried) || []).slice(),
           grabbed: !!(td.deck && td.deck.grabbed),
           reshuffles: (td.deck && td.deck.reshuffles) || 0,
+          nextReshuffleAt: (td.deck && typeof td.deck.nextReshuffleAt === "number") ? td.deck.nextReshuffleAt : null,
         },
         qa: {
           order: td.qa && Array.isArray(td.qa.order) ? td.qa.order.slice() : null,
@@ -1297,6 +1771,7 @@ class SetupCrew {
           wrong: (td.qa && td.qa.wrong) || 0,
           timeouts: (td.qa && td.qa.timeouts) || 0,
           done: !!(td.qa && td.qa.done),
+          itemDeadlineAt: (td.qa && typeof td.qa.itemDeadlineAt === "number") ? td.qa.itemDeadlineAt : null,
         },
       };
       sc.#teams.set(ts.teamId, ts);

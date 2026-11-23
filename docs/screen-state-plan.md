@@ -12,7 +12,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 1:** Attendance injected clock and server-ready tick (`V-18, V-19`)
 - [x] **Step 2:** Game clock sync, Gift Window auto-advance, and timer banner alignment (`V-01, V-02, V-11`)
 - [x] **Step 3a:** Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` (`V-28, V-32, V-33`)
-- [ ] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
+- [x] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
 - [ ] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
 - [ ] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
 - [ ] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
@@ -62,11 +62,14 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - **Done notes:** Implemented Option A: `MirrorTrial`, `MirrorLobby`, and `SetupCrew` keep existing Level 3 draws on `Game.rng` and use a private `#seedRng` seeded from `(Game.rng.getState() ^ 0x9E3779B9) >>> 0` with 0 extra draws on `Game.rng` (plus a test-only 1-draw fallback for non-saveable RNGs). `seedRngState` saves and restores in `toJSON`/`fromJSON` while older saves missing `seedRngState` or cursor fields still load cleanly, and `mirror-view.js` has zero `Math.random()` calls.
 - **Checks:** `npm run build`, `npm test` (note: explain any diff in `check_mirror_*` / `check_save` baselines if new seeded draws or JSON fields are added; verify Level 1 and Level 2 snapshots are unchanged; no baseline save without explaining diffs), `npm run test:screens`.
 
-#### Step 3b: Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick`
+#### Step 3b: Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` — DONE
 - **Violations covered:** `V-27, V-29, V-30, V-31`
-- **Files touched:** `rules/MirrorParts.js`, `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `mirror-view.js`, `Tests/check_mirror_setup.js`, `Tests/check_mirror_timing.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
+- **Files touched:** `rules/MirrorParts.js`, `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `mirror-view.js`, `Tests/check_mirror_setup.js`, `Tests/check_mirror_timing.js`, `Tests/check_mirror_bots.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** Existing `SetupCrew` (`rules/MirrorParts.js`), coordinated through `MirrorTrial` (`rules/Trial.js`) and `Game` pass-throughs (`rules/Game.js`). Move Q&A timeout, deck reshuffle, mic flash hide, and sound hold deadlines into `SetupCrew` (using `Game.now()` / showtime elapsed seconds and evaluated in `Game.tick()`), persisted in `SetupCrew.toJSON`/`fromJSON`. Keep smooth visual rendering in `mirror-view.js` (screens draw motion from rules data and report player input), while rules own all deadlines, timeouts, reshuffles, and penalties (answers Q5).
 - **QA bugs fixed:** None from Level 2 QA (fixes Q&A/deck/mic/sound reload and Back exploits).
+- **Done notes:** Added `Game.mirrorSoundAdjust(p, delta)` and read-only `Game.mirrorSetupView(p)` so `mirror-view.js` owns zero Sound/Mic/Deck/Q&A tick state or deadline calls; `SetupCrew` arms deadlines on `Game`'s injected clock only for active non-idle human turns. Updated `Tests/check_mirror_bots.js` (lines 450-460) with Ben's approval to advance its fake clock past mic flash windows without altering bot behavior or its baseline.
+  - Auto deck reshuffle draws from SetupCrew `#seedRng` instead of `Game.rng`, so later `Game.rng` draws (bot dancer rolls) are unchanged.
+  - During Mirror showtime, `Game.tick()` runs Setup deadlines in time order up to `min(now, timer deadline)` before closing the step timer, so wake-ups after sleep match tick-by-tick runs. Outside showtime, tick order is unchanged.
 - **Checks:** `npm run build`, `npm test` (note: explain any diff in `check_mirror_*` / `check_save` baselines if new deadlines or JSON fields are added; verify Level 1 and Level 2 snapshots are unchanged; no baseline save without explaining diffs), `npm run test:screens`.
 
 #### Step 4: Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial`

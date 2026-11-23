@@ -38,8 +38,8 @@ classDiagram
     +sabotage(), gift(), answerGift(), switchTeam()
     +setSopBoard(), closeSop(), splitBrief(), closeSplitBrief()
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
-    +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorDanceHit()..mirrorDanceStray()
-    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorDanceTeam()
+    +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDanceHit()..mirrorDanceStray()
+    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorSetupView(), mirrorDanceTeam()
     +startWriting(), submit(), closeWriting(), startVote(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
     +payTrialCosts(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
@@ -328,10 +328,12 @@ classDiagram
     -SetupCrew #setup
     -DanceCrew #dance
     +phase  idle, lobby, reveal, showtime, failed
+    +showtimeStartAt
     +int MAX_SCORE = 7$, LOBBY_SECONDS = 30$, REVEAL_SECONDS = 1$, SHOWTIME_SECONDS = 75$
     +score(attention)$, setupCrewSize(n)$
-    +startLobby(teams), connect(id), miss(id), lobbyCursorStart(id), closeDoors(), startShowtime()
-    +nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundHeld(), soundFeedback(), micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +startLobby(teams), connect(id), miss(id), lobbyCursorStart(id), closeDoors(), startShowtime(opts)
+    +nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundAdjust(), soundHeld(), soundFeedback(), micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +nextSetupDeadline(), tickSetup(), nextShowtimeEventAt(), setupViewFor()
     +danceHit(), danceMiss(), danceStray(), advanceBotSetup(), advanceBotDance()
     +attentionFor(), scoreFor(), checkAttention(), finishTeam(), closeMirror(round, teams)
     +crewFor(), roleOf(), lobbyTeamState(), setupTeamState(), danceTeamState(), failReasonOf()
@@ -347,10 +349,11 @@ classDiagram
   }
   class SetupCrew {
     <<MirrorParts.js>>
-    -rng, -seedRng, bool #started, #teams, #playerIndex
+    -rng, -seedRng, bool #started, #showtimeStartAt, #teams, #playerIndex
     +crewSize(n)$, splitSteps(slots)$, botStepDuration(step)$
-    +start(entries), nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundHeld(), soundFeedback()
+    +beginShowtime(now), start(entries), nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundAdjust(), soundHeld(), soundFeedback()
     +micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +nextDeadline(), tickDeadlines(), setupViewFor()
     +completeBotStep(), advanceBotSetup(), botStepDueAt()
     +currentStep(), currentPlayerId(), penaltiesFor(), teamState()
     +toJSON(), fromJSON(data, opts)$
@@ -433,5 +436,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 3a, from commit `3d675f8`).
+Made from the rules code on branch `screen-state-cleanup` (Step 3b, from commit `1936ad3`).
 Update this diagram whenever a class in `rules/` changes.

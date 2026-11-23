@@ -446,14 +446,19 @@ console.log("-- 6. Mixed team combining humans and bots (both turn orders)");
     orderA.trial.setupCurrentPlayerId(teamA) === humSlot0 &&
     orderA.trial.danceBoostFor(teamA) > 0;
 
-  // Human finishes slot 0 cleanly -> hands off to botSlot1 on deck (due at 10+6=16, qa at 22, wrapUp at 28)
+  // Human finishes slot 0 cleanly -> hands off to botSlot1 on deck (due 6s later, qa +6s, wrapUp +6s)
   for (const port of MirrorData.ports) orderA.g.mirrorCableHit(humSlot0, port);
   orderA.g.mirrorSoundHeld(humSlot0);
   for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    const view = orderA.g.mirrorSetupView(humSlot0);
+    if (view && view.mic.flashing && view.mic.hideAt !== null && orderA.T.now < view.mic.hideAt) {
+      orderA.T.now = view.mic.hideAt;
+      orderA.g.tick(orderA.T.now);
+    }
     for (const n of orderA.trial.micSequenceFor(teamA)) orderA.g.mirrorMicTap(humSlot0, n);
   }
   const handedToBot = orderA.trial.setupStep(teamA) === "deck" && orderA.trial.setupCurrentPlayerId(teamA) === botSlot1;
-  for (let s = 11; s <= 30 && !orderA.g.didRun("runTrial"); s++) {
+  for (let s = 18; s <= 40 && !orderA.g.didRun("runTrial"); s++) {
     orderA.T.now = orderA.showStart + s * 1000;
     orderA.g.tick(orderA.T.now);
   }

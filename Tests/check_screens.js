@@ -438,14 +438,18 @@ async function fullSevenLevelGame() {
                   const b = document.querySelector('[data-sound-gain="-10"]');
                   if (b) b.click();
                 }
-                drawTimer();
+                window._mirSimNow += 250;
+                const cl = G.tick();
+                if (cl.length) afterClose(cl); else drawTimer();
               })()`);
             } else if (cur.step === "mic") {
               w.eval(`(() => {
                 for (let k = 0; k < 25; k++) {
                   const disp = document.querySelector("#micSeqDisp");
                   if (disp && disp.dataset.flashing === "0") break;
-                  drawTimer();
+                  window._mirSimNow += 250;
+                  const cl = G.tick();
+                  if (cl.length) afterClose(cl); else drawTimer();
                 }
                 const st = G.mirrorSetupTeam(MYTEAM);
                 if (st && st.currentStep === "mic" && st.mic.sequence) {
@@ -1200,6 +1204,7 @@ async function mirrorStep6c1Cases() {
       } else if (lvl > 85) {
         v0.q('[data-sound-gain="-10"]').click();
       }
+      split3.ctx.advanceMs(250);
       v0.tick();
     }
     const stAfterSound = g3.mirrorSetupTeam(team3);
@@ -1242,6 +1247,7 @@ async function mirrorStep6c1Cases() {
       for (let f = 0; f < 25; f++) {
         const disp = v1.q("#micSeqDisp");
         if (disp && disp.dataset.flashing === "0") break;
+        split3.ctx.advanceMs(250);
         v1.tick();
       }
       const curSt = g3.mirrorSetupTeam(team3);
@@ -1456,10 +1462,13 @@ async function mirrorStep6c2Cases() {
       game.mirrorSoundHeld(owner0);
     };
 
-    const passMicAndDeckViaRules = (game, team) => {
+    const passMicAndDeckViaRules = (game, team, ctx = null) => {
       for (let guard = 0; guard < 20; guard++) {
         const st = game.mirrorSetupTeam(team);
         if (!st || st.currentStep !== "mic") break;
+        if (st.mic.flashing && ctx && st.mic.hideAt !== null) {
+          ctx.advanceMs(Math.max(0, st.mic.hideAt - ctx.getNow()));
+        }
         const owner = team.members.find(p => p.id === st.currentPlayerId);
         game.mirrorMicTap(owner, st.mic.sequence[st.mic.index]);
       }
@@ -1486,21 +1495,22 @@ async function mirrorStep6c2Cases() {
       vMicA.q("#micSeqDisp").textContent === stMicA.mic.sequence.join(" · ") &&
       JSON.stringify(stMicA.mic.sequence) === JSON.stringify(stMicB.mic.sequence);
 
-    const driveMicClean = (game, team, view) => {
+    const driveMicClean = (game, team, view, advanceMs) => {
       for (let guard = 0; guard < 120; guard++) {
         const st = game.mirrorSetupTeam(team);
         if (!st || st.currentStep !== "mic") break;
         for (let t = 0; t < 25; t++) {
           const disp = view.q("#micSeqDisp");
           if (disp && disp.dataset.flashing === "0") break;
+          advanceMs(250);
           view.tick();
         }
         const cur = game.mirrorSetupTeam(team);
         view.q('[data-mic="' + cur.mic.sequence[cur.mic.index] + '"]').click();
       }
     };
-    driveMicClean(ctxA.game, ctxA.team, vMicA);
-    driveMicClean(ctxB.game, ctxB.team, vMicB);
+    driveMicClean(ctxA.game, ctxA.team, vMicA, ctxA.advanceMs);
+    driveMicClean(ctxB.game, ctxB.team, vMicB, ctxB.advanceMs);
 
     const slot1A = ctxA.team.members.find(p => p.id === ctxA.game.mirrorSetupTeam(ctxA.team).currentPlayerId);
     const slot1B = ctxB.team.members.find(p => p.id === ctxB.game.mirrorSetupTeam(ctxB.team).currentPlayerId);
@@ -1516,7 +1526,9 @@ async function mirrorStep6c2Cases() {
       vDeckA.qa("[data-file]").every((b, idx) => b.textContent === EP.MirrorData.files[domOrderA0[idx]].name);
 
     for (let t = 0; t < EP.MirrorData.deck.reshuffleTicks; t++) {
+      ctxA.advanceMs(250);
       vDeckA.tick();
+      ctxB.advanceMs(250);
       vDeckB.tick();
     }
     const domOrderA1 = vDeckA.qa("[data-file]").map(b => Number(b.dataset.file));
@@ -1567,8 +1579,9 @@ async function mirrorStep6c2Cases() {
     const micFlashInitialOk = v1.q("#micSeqDisp").dataset.flashing === "1" &&
       v1.q("#micSeqDisp").textContent === seqR0.join(" · ") &&
       v1.qa("[data-mic]").every(b => b.disabled);
-    for (let t = 0; t < EP.MirrorData.mic.flashRound1Ticks - 1; t++) v1.tick();
+    for (let t = 0; t < EP.MirrorData.mic.flashRound1Ticks - 1; t++) { ctx3.advanceMs(250); v1.tick(); }
     const stillFlashingAt8 = v1.q("#micSeqDisp").dataset.flashing === "1" && v1.qa("[data-mic]").every(b => b.disabled);
+    ctx3.advanceMs(250);
     v1.tick();
     const micHiddenAt9Ok = v1.q("#micSeqDisp").dataset.flashing === "0" &&
       v1.q("#micSeqDisp").textContent.includes("?") &&
@@ -1590,8 +1603,9 @@ async function mirrorStep6c2Cases() {
       v1.q("#mirrorMsg").textContent.includes("4");
 
     // Retry flash duration is 6 + len (9 ticks)
-    for (let t = 0; t < EP.MirrorData.mic.flashBaseTicks + 3 - 1; t++) v1.tick();
+    for (let t = 0; t < EP.MirrorData.mic.flashBaseTicks + 3 - 1; t++) { ctx3.advanceMs(250); v1.tick(); }
     const retryStillFlashing = v1.q("#micSeqDisp").dataset.flashing === "1";
+    ctx3.advanceMs(250);
     v1.tick();
     const retryHiddenOk = v1.q("#micSeqDisp").dataset.flashing === "0";
 
@@ -1605,7 +1619,7 @@ async function mirrorStep6c2Cases() {
       v0.q("#mirrorWaitProgress").textContent.includes("1 of 3");
 
     // Complete remaining mic rounds (lengths 3, 4, 5)
-    driveMicClean(g3, team3, v1);
+    driveMicClean(g3, team3, v1, ctx3.advanceMs);
     const stAfterMicDone = g3.mirrorSetupTeam(team3);
     v0.render();
     v2.render();
@@ -1619,8 +1633,9 @@ async function mirrorStep6c2Cases() {
       !v2.q("#mirrorDeckStep") && !!v2.q("#mirrorWaitingView");
 
     // Deck auto-reshuffle after 8 ticks, wrong file (-6 + 2-tick spite reshuffle), right file -> Q&A handoff to s2
-    for (let t = 0; t < EP.MirrorData.deck.reshuffleTicks - 1; t++) v1.tick();
+    for (let t = 0; t < EP.MirrorData.deck.reshuffleTicks - 1; t++) { ctx3.advanceMs(250); v1.tick(); }
     const noReshuffleAt7 = g3.mirrorSetupTeam(team3).deck.reshuffles === 0;
+    ctx3.advanceMs(250);
     v1.tick();
     const stAfterAutoShuffle = g3.mirrorSetupTeam(team3);
     const deckAutoShuffleOk = noReshuffleAt7 && stAfterAutoShuffle.deck.reshuffles === 1 &&
@@ -1633,8 +1648,10 @@ async function mirrorStep6c2Cases() {
     const attAfterDeckMiss = g3.mirrorAttention(team3);
     v0.render();
     const wrongBtn = v1.q('[data-file="' + wrongFileIdx + '"]');
+    ctx3.advanceMs(250);
     v1.tick();
     const noSpiteShuffleAt1 = g3.mirrorSetupTeam(team3).deck.reshuffles === 1;
+    ctx3.advanceMs(250);
     v1.tick();
     const stAfterSpite = g3.mirrorSetupTeam(team3);
     const deckWrongOk = stAfterDeckMiss.deck.filesTried.includes(wrongFileIdx) &&
@@ -1678,16 +1695,19 @@ async function mirrorStep6c2Cases() {
     const barInitOk = v2.q("#qaCd").dataset.ticksLeft === String(EP.MirrorData.qa.countdownTicks) &&
       !v2.q("#qaCd i").classList.contains("low");
     const ticksToLow = EP.MirrorData.qa.countdownTicks - EP.MirrorData.qa.lowWarningTicks;
-    for (let t = 0; t < ticksToLow; t++) v2.tick();
+    for (let t = 0; t < ticksToLow; t++) { ctx3.advanceMs(250); v2.tick(); }
     const barLowOk = v2.q("#qaCd").dataset.ticksLeft === String(EP.MirrorData.qa.lowWarningTicks) &&
       v2.q("#qaCd i").classList.contains("low");
+    const penBeforeQaTimeout = g3.mirrorSetupTeam(team3).penalties;
     const attBeforeQaTimeout = g3.mirrorAttention(team3);
-    for (let t = 0; t < EP.MirrorData.qa.lowWarningTicks; t++) v2.tick();
+    for (let t = 0; t < EP.MirrorData.qa.lowWarningTicks; t++) { ctx3.advanceMs(250); v2.tick(); }
     const stAfterQaTimeout = g3.mirrorSetupTeam(team3);
     const attAfterQaTimeout = g3.mirrorAttention(team3);
+    const expectedQaDrain = (EP.MirrorData.qa.lowWarningTicks * EP.MirrorData.timers.tickMs / 1000) * (100 / EP.MirrorData.timers.showtimeSeconds);
     const qaTimeoutOk = barInitOk && barLowOk &&
       stAfterQaTimeout.qa.timeouts === 1 &&
-      attAfterQaTimeout === attBeforeQaTimeout - EP.MirrorData.qa.wrongPenalty &&
+      stAfterQaTimeout.penalties === penBeforeQaTimeout + EP.MirrorData.qa.wrongPenalty &&
+      Math.abs((attBeforeQaTimeout - attAfterQaTimeout) - (EP.MirrorData.qa.wrongPenalty + expectedQaDrain)) < 0.01 &&
       v2.q("#attnPct").textContent === Math.round(attAfterQaTimeout) + "%" &&
       v2.q("#mirrorMsg").textContent.includes("You hesitate") &&
       v2.q("#mirrorMsg").textContent.includes("5") &&
@@ -1792,10 +1812,11 @@ async function mirrorStep6c2Cases() {
             const lvl = Number((ov.q("#soundVal") || {}).textContent || 45);
             if (lvl < 74) ov.q('[data-sound-gain="' + (lvl <= 68 ? "10" : "5") + '"]').click();
             else if (lvl > 85) ov.q('[data-sound-gain="-10"]').click();
+            ctx.advanceMs(250);
             ov.tick();
           }
         } else if (curStep === "mic") {
-          driveMicClean(g, team, ov);
+          driveMicClean(g, team, ov, ctx.advanceMs);
         } else if (curStep === "deck") {
           ov.q('[data-file="' + signedIdx + '"]').click();
         } else if (curStep === "qa") {
@@ -1845,7 +1866,7 @@ async function mirrorStep6c2Cases() {
           if (slots[0].isBot) ctx.advanceMs(10000);
           else passCablesAndSoundViaRules(g, team);
           if (slots[1].isBot) ctx.advanceMs(12000);
-          else passMicAndDeckViaRules(g, team);
+          else passMicAndDeckViaRules(g, team, ctx);
         }
         const stBefore = g.mirrorSetupTeam(team);
         if (!stBefore || stBefore.currentStep !== targetStep || stBefore.currentPlayerId === human.id) continue;
@@ -2297,6 +2318,10 @@ async function mirrorStep6dCases() {
       gZ.mirrorSoundHeld(pZ);
       while (gZ.mirrorSetupTeam(tZ).currentStep === "mic") {
         const st = gZ.mirrorSetupTeam(tZ);
+        if (st.mic.flashing && st.mic.hideAt !== null) {
+          ctxZero.setNow(st.mic.hideAt);
+          gZ.tick();
+        }
         gZ.mirrorMicTap(pZ, st.mic.sequence[st.mic.index]);
       }
       gZ.mirrorPickFile(pZ, EP.MirrorData.files.findIndex(f => f.correct));
@@ -2322,6 +2347,10 @@ async function mirrorStep6dCases() {
       gWE.mirrorSoundHeld(own0);
       while (gWE.mirrorSetupTeam(tWE).currentStep === "mic") {
         const st = gWE.mirrorSetupTeam(tWE);
+        if (st.mic.flashing && st.mic.hideAt !== null) {
+          ctxWrapEnd.setNow(st.mic.hideAt);
+          gWE.tick();
+        }
         gWE.mirrorMicTap(own0, st.mic.sequence[st.mic.index]);
       }
       gWE.mirrorPickFile(own1, EP.MirrorData.files.findIndex(f => f.correct));
@@ -2595,7 +2624,7 @@ async function mirrorStep6eCases() {
       game.advance();
     };
 
-    const driveSetupAndWrap = (game, team, { extraMiss = false, secLeft = 50 } = {}) => {
+    const driveSetupAndWrap = (game, team, { extraMiss = false, secLeft = 50, advanceTo = null } = {}) => {
       const guardMax = 40;
       for (let i = 0; i < guardMax; i++) {
         const st = game.mirrorSetupTeam(team);
@@ -2609,6 +2638,10 @@ async function mirrorStep6eCases() {
         } else if (step === "sound") {
           game.mirrorSoundHeld(pid);
         } else if (step === "mic") {
+          if (st.mic.flashing && advanceTo && st.mic.hideAt !== null) {
+            advanceTo(st.mic.hideAt);
+            game.tick();
+          }
           const seq = st.mic.sequence;
           game.mirrorMicTap(pid, seq[st.mic.index]);
         } else if (step === "deck") {
@@ -2651,7 +2684,7 @@ async function mirrorStep6eCases() {
       gA.mirrorDanceMiss(dIdsA1[0]);
       gA.mirrorDanceStray(dIdsA1[dIdsA1.length - 1]);
     }
-    driveSetupAndWrap(gA, tA1, { extraMiss: true, secLeft: 55 });
+    driveSetupAndWrap(gA, tA1, { extraMiss: true, secLeft: 55, advanceTo: v => { simNow = v; } });
 
     const rankA = gA.trialRanking();
     const resA1View = MirrorView.screen({
@@ -2730,9 +2763,9 @@ async function mirrorStep6eCases() {
     bNow = gB.timer.deadline;
     gB.tick(); // reveal -> showtime
     // tB1 wraps up cleanly with 0 dancers
-    driveSetupAndWrap(gB, tB1, { secLeft: 65 });
+    driveSetupAndWrap(gB, tB1, { secLeft: 65, advanceTo: v => { bNow = v; } });
     // tB2 drains attention to 0
-    bNow += 70000;
+    bNow = gB.timer.deadline - 5000;
     gB.tick();
     const sB2 = gB.mirrorSetupTeam(tB2).currentPlayerId;
     for (let i = 0; i < 6 && gB.mirrorFailReason(tB2) !== "attention"; i++) gB.mirrorCableMiss(sB2, "HDMI");
@@ -2802,7 +2835,7 @@ async function mirrorStep6eCases() {
       gC.tick(); // cTeams[1] fails lobby
       cNow += 1000;
       gC.tick(); // showtime
-      driveSetupAndWrap(gC, cTeams[0], { secLeft: 65 });
+      driveSetupAndWrap(gC, cTeams[0], { secLeft: 65, advanceTo: v => { cNow = v; } });
       if (!gC.didRun("runTrial")) {
         cNow += 75000;
         gC.tick();
@@ -4047,14 +4080,19 @@ async function mirrorStep3aSeedCases() {
       mountShow(g, setupOwner, team);
 
       const rngBeforeSound = g.rng.getState();
+      const prevHooks = g.hooks;
+      g.hooks = {};
       const soundLevels = [];
       const spikeMsgs = [];
       for (let t = 0; t < 25; t++) {
+        now += 250;
+        g.tick();
         showView.tick();
         soundLevels.push(Number((box.querySelector("#soundVal") || {}).textContent));
         const msgTxt = (box.querySelector("#mirrorMsg") || {}).textContent || "";
         if (msgTxt.includes("whoops")) spikeMsgs.push(t);
       }
+      g.hooks = prevHooks;
       const rngAfterSound = g.rng.getState();
       if (showView && showView.cleanup) showView.cleanup();
       if (view && view.cleanup) view.cleanup();
@@ -4074,9 +4112,9 @@ async function mirrorStep3aSeedCases() {
     };
 
     try {
-      const a = runTrace(3101);
-      const b = runTrace(3101);
-      const c = runTrace(3102);
+      const a = runTrace(3102);
+      const b = runTrace(3102);
+      const c = runTrace(3109);
 
       // Verify mid-showtime Game save/reload continues exact nextCable and nextSoundSpike/Jitter via Game
       let nowS = 31000000;
@@ -4137,6 +4175,115 @@ async function mirrorStep3aSeedCases() {
   check("Mid-trial save/reload continues identical Cables bag and Sound Check spike/jitter sequences", res.saveContinueOk);
 }
 
+/* Step 3b: Level 3 Setup deadlines owned by SetupCrew and checked in Game.tick() (V-27, V-29, V-30, V-31). */
+async function mirrorStep3bDeadlineCases() {
+  const mvSrc = fs.readFileSync(path.join(repo, "mirror-view.js"), "utf8");
+  const mutCalls = /\bmirrorTimeoutQa\b|\bmirrorReshuffleDeck\b|\bmirrorSoundHeld\b|\bmirrorSoundFeedback\b/;
+  const screenTickFields = /\bms\.qa\b|\bms\.deck\b|\bms\.mic\b|\bms\.sound\b/;
+  check("mirror-view.js has no calls to mirrorTimeoutQa, mirrorReshuffleDeck, mirrorSoundHeld, or mirrorSoundFeedback", !mutCalls.test(mvSrc));
+  check("mirror-view.js has no ms.qa, ms.deck, ms.mic, or ms.sound tick state", !screenTickFields.test(mvSrc));
+
+  const res = w.eval(`(() => {
+    try {
+      let simNow = 35000000;
+      const sess = EP.Bots.soloGame({
+        me: { name: "Step3b", type: "coop", spend: EP.Bots.typicalSpend("coop") },
+        myTeam: { name: "Team Kestrel", mates: TEAM.map(p => p.n) },
+        others: OTHERS.map(o => ({ name: o.t, players: o.p })),
+        rng: EP.Rng.seeded(3201),
+        hooks: EP.Bots.hooks,
+      });
+      const g = sess.game;
+      g._timer.clock = () => simNow;
+      for (let round = 1; round <= 2; round++) {
+        g.startNextRound();
+        g.advance();
+        g.advance();
+        g.runTrial();
+        g.endTrial();
+        g.endGlitchReport();
+        g.advance();
+        g.advance();
+        g.lockIn();
+        g.advance();
+        g.computeEarnings();
+        g.placeAllRemaining();
+        g.finishRound();
+      }
+      g.startNextRound();
+      g.advance();
+      g.advance();
+      g.start();
+      simNow += 16000;
+      g.tick();
+      g.mirrorConnect(sess.me);
+      simNow = g.timer.deadline;
+      g.tick();
+
+      const team = sess.team;
+      const slots = g.mirrorSetupSlots(team);
+      const owner = team.members.find(p => p.id === slots[0].playerId);
+      const box = document.createElement("div");
+      const state = {};
+      let view = null;
+      const remount = () => {
+        if (view && view.cleanup) view.cleanup();
+        view = MirrorView.screen({
+          game: g, me: owner, team, state, attrName: "Focus",
+          sabotageAlert: "", costHint: () => "Cost", onRender: remount,
+        });
+        box.innerHTML = view.html;
+        if (view.bind) view.bind(box);
+      };
+      remount();
+
+      for (const port of EP.MirrorData.ports) g.mirrorCableHit(owner, port);
+      remount();
+
+      // Screen view.tick() alone without G.tick() does not advance Sound level or fire deadlines
+      const lvl0 = Number((box.querySelector("#soundVal") || {}).textContent);
+      for (let i = 0; i < 15; i++) view.tick();
+      const viewTickOnlyNoChangeOk = Number((box.querySelector("#soundVal") || {}).textContent) === lvl0 &&
+        g.mirrorSetupTeam(team).currentStep === "sound";
+
+      // G.tick() drives Sound hold -> Mic -> Deck -> Q&A cleanly
+      for (let i = 0; i < 80 && g.mirrorSetupTeam(team).currentStep === "sound"; i++) {
+        const curLvl = Number((box.querySelector("#soundVal") || {}).textContent);
+        if (curLvl < 74) box.querySelector('[data-sound-gain="' + (curLvl <= 68 ? "10" : "5") + '"]').click();
+        else if (curLvl > 85) box.querySelector('[data-sound-gain="-10"]').click();
+        simNow += 250;
+        g.tick();
+        view.tick();
+      }
+      const soundHeldByGameTickOk = g.mirrorSetupTeam(team).currentStep === "mic";
+
+      // View.tick() alone does not hide Mic flash; G.tick() hides it
+      for (let i = 0; i < 15; i++) view.tick();
+      const micStillFlashingNoGameTick = box.querySelector("#micSeqDisp").dataset.flashing === "1";
+      const micHideAt = g.mirrorSetupView(owner).mic.hideAt;
+      simNow = micHideAt;
+      g.tick();
+      view.tick();
+      const micHiddenByGameTickOk = box.querySelector("#micSeqDisp").dataset.flashing === "0";
+
+      if (view && view.cleanup) view.cleanup();
+      return {
+        viewTickOnlyNoChangeOk,
+        soundHeldByGameTickOk,
+        micStillFlashingNoGameTick,
+        micHiddenByGameTickOk,
+      };
+    } finally {
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  check("MirrorView tick() alone never mutates Sound level or hides Mic flash without Game.tick()", res.viewTickOnlyNoChangeOk && res.micStillFlashingNoGameTick);
+  check("Game.tick() drives Sound hold and Mic flash hide into MirrorView via Game.mirrorSetupView()", res.soundHeldByGameTickOk && res.micHiddenByGameTickOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -4184,6 +4331,8 @@ w.addEventListener("load", async () => {
     await timerBannerAndSyncCases();
     log("run 15: Step 3a Level 3 seeded lobby cursor, cables bag, and sound spikes/jitter");
     await mirrorStep3aSeedCases();
+    log("run 16: Step 3b Level 3 Setup deadlines owned by SetupCrew and checked in Game.tick");
+    await mirrorStep3bDeadlineCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");
