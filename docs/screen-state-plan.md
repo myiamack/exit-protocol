@@ -4,6 +4,7 @@ After each step: run `npm run build`, then `npm test` (fixed-seed baseline compa
 
 Reference audit: `docs/screen-state-audit.md` (42 violations: V-01 through V-42).
 No rules, balance numbers, timer lengths, copy, or features are redesigned in this plan.
+Balance checks are not part of npm test. Run npm run test:balance only at the checkpoints listed in CLAUDE.md.
 
 ## Checklist
 
@@ -184,7 +185,7 @@ No rules, balance numbers, timer lengths, copy, or features are redesigned in th
   4. Writes directly to `G.*`, `ME.*`, `MYTEAM.*`, `trial.*`, `round.*`, or calls mutating methods on `G.round.trial.*`, `v.cast`, `ME.placePoints`, or `EP.Bots.*` (outside session bootstrap).
   5. Calls `localStorage` or `sessionStorage` outside the prototype-only display-name helper (until Base44 login replaces it).
 - **QA bugs fixed:** None (automated regression guard).
-- **Checks:** `npm run build`, `npm test` (now 20/20 checks passing), `node Tests/check_screen_rules.js`.
+- **Checks:** `npm run build`, `npm test` (now 17/17 checks passing), `node Tests/check_screen_rules.js`.
 
 ---
 

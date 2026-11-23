@@ -101,12 +101,11 @@ Hannah's file boundaries:
 ## Test commands
 
 - `npm run build`: rebuild `rules/rules.bundle.js`; run after any change in `rules/`.
-- `npm test`: run all 19 baseline checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_teams`, `check_balance`, `check_cheese`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`, `check_mirror_data`, `check_mirror_lobby`, `check_mirror_setup`, `check_mirror_dance`, `check_mirror_score`, `check_mirror_timing`, `check_mirror_bots`); run after every step.
+- `npm test`: run all 16 baseline checks (`check_bundle`, `check_rules`, `check_gifts`, `check_steps`, `check_save`, `check_scenarios`, `check_split_brief`, `check_split_timing`, `check_split_bots`, `check_mirror_data`, `check_mirror_lobby`, `check_mirror_setup`, `check_mirror_dance`, `check_mirror_score`, `check_mirror_timing`, `check_mirror_bots`); run after every step.
+- `npm run test:balance`: run the 3 balance checks (`check_balance`, `check_cheese`, `check_teams`). Not part of `npm test`. Run only at balance checkpoints: before a PR into `main`, after `levels-4-6` merges into `screen-state-cleanup`, and when the team asks. Results are information only; a FAIL never blocks a step.
 - `npm run test:screens`: run `Tests/check_screens.js` in jsdom (requires `npm install` once); run when a step touches screen code.
 - `npm run baseline`: save fixed-seed baseline snapshot; never run unless the step says so, and explain any diff first.
-- `Tests/check_balance.js`: standing balance check (target: type gap 1 to 3 points, PASS/FAIL); in `npm test`, run after any rule change.
-- `Tests/check_cheese.js`: standing cheese-strategy check; in `npm test`, run after any rule change.
-- `Tests/check_teams.js`: standing team-size win check; in `npm test`, run after any rule change.
+- `Tests/check_balance.js` (type gap target 1 to 3 points), `Tests/check_cheese.js` (cheese strategies), `Tests/check_teams.js` (team-size wins): balance checks, run only through `npm run test:balance`.
 
 ## Final rules
 
