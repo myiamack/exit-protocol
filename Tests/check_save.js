@@ -486,5 +486,73 @@ console.log("-- 5. Mid-Q&A, mid-Sound-hold, and mid-Mic-flash reload");
     preToBoth && gQaA.mirrorSetupView(qaOwnerId).qa.timeouts === 1 && gQaB.mirrorSetupView(qaOwnerId).qa.timeouts === 1 && save(gQaA) === save(gQaB));
 }
 
+/* ----- 6. Mid-dance save and load restores chart, counter, and tempo ----- */
+console.log("-- 6. Mid-dance save and load restores chart, counter, and tempo");
+{
+  const findDanceHumanGame = seedStart => {
+    for (let s = seedStart; s < seedStart + 50; s++) {
+      const T = { now: 1e9 };
+      const g = newGame(s, T);
+      for (let lv = 1; lv <= 2; lv++) {
+        g.startNextRound();
+        g.advance();
+        g.advance();
+        g.runTrial();
+        g.payTrialCosts();
+        g.advance();
+        g.closeGlitchReport();
+        g.closeGiftWindow();
+        g.placeAllRemaining();
+        g.finishRound();
+      }
+      for (const m of g.teams[0].members) m.isBot = false;
+      g.startNextRound();
+      g.advance();
+      g.advance();
+      for (const p of g.players) { if (!p.isBot) g.mirrorConnect(p.id); }
+      T.now += 16000;
+      g.tick(T.now);
+      T.now = g.timer.deadline;
+      g.tick(T.now);
+      const t = g.teams[0];
+      const dIds = g.round.trial.dancerIdsFor(t);
+      if (dIds.length >= 1) return { g, T, team: t, dancerId: dIds[0], seed: s };
+    }
+    throw new Error("Could not find dance human seed.");
+  };
+
+  const { g: gDA, T: TDA, dancerId } = findDanceHumanGame(800);
+  const tickMs = EP.MirrorData.timers.tickMs;
+  for (let i = 1; i <= 140 && !gDA.didRun("runTrial"); i++) {
+    TDA.now += tickMs;
+    gDA.tick(TDA.now);
+    const dv = gDA.mirrorDanceView(dancerId);
+    const perf = dv && dv.notes.find(n => n.zone === "perfect");
+    if (perf) gDA.mirrorDancePress(dancerId, perf.dir);
+  }
+  const preView = gDA.mirrorDanceView(dancerId);
+  const danceSnap = save(gDA);
+  const TDB = { now: TDA.now };
+  const gDB = load(danceSnap, TDB);
+  const relView = gDB.mirrorDanceView(dancerId);
+
+  for (let i = 1; i <= 20; i++) {
+    TDA.now += tickMs; gDA.tick(TDA.now);
+    TDB.now += tickMs; gDB.tick(TDB.now);
+  }
+  const afterViewA = gDA.mirrorDanceView(dancerId);
+  const afterViewB = gDB.mirrorDanceView(dancerId);
+  ok(
+    "mid-dance save/reload restores chart, spawnedCount, tempo gapTicks, and fires identical misses/spawns",
+    preView.spawnedCount > EP.MirrorData.dance.tempoRampMidNotes &&
+      preView.gapTicks === EP.MirrorData.dance.gapMidTicks &&
+      relView.spawnedCount === preView.spawnedCount &&
+      relView.gapTicks === preView.gapTicks &&
+      JSON.stringify(relView.notes) === JSON.stringify(preView.notes) &&
+      JSON.stringify(afterViewA) === JSON.stringify(afterViewB) &&
+      save(gDA) === save(gDB)
+  );
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed  (" + ((Date.now() - t0) / 1000).toFixed(1) + " s)");
 process.exit(fail ? 1 : 0);

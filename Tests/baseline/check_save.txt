@@ -21,5 +21,7 @@ PASS  save and load mid-Level 3 in a full game matches unbroken run
 PASS  mid-Sound-hold save/reload locks sound at exact same timestamp
 PASS  mid-Mic-flash save/reload hides sequence at exact same timestamp
 PASS  mid-Q&A save/reload times out at exact same timestamp
+-- 6. Mid-dance save and load restores chart, counter, and tempo
+PASS  mid-dance save/reload restores chart, spawnedCount, tempo gapTicks, and fires identical misses/spawns
 
-18 passed, 0 failed  (4.2 s)
+19 passed, 0 failed  (4.2 s)

@@ -749,5 +749,27 @@ console.log("-- 9. Fixed-seed repeatability across full Mirror trial");
   );
 }
 
+console.log("-- 10. Idle human dancer gets zero -2 misses during Game.tick() and presses are rejected");
+{
+  const ctx = findMirrorSeed(1001, { humanTeams: 1, totalTeams: 2, teamSize: 4, humansPerMixed: 2 }, c => {
+    const [h0, h1] = c.teams[0].members;
+    return c.trial.roleOf(h0.id) === "setup" && c.trial.roleOf(h1.id) === "dance";
+  });
+  const idleDancer = ctx.teams[0].members[1];
+  idleDancer.idle = true;
+  ctx.T.now = ctx.showStart + 12000;
+  ctx.g.tick(ctx.T.now);
+  const ds = ctx.trial.dancerState(idleDancer.id);
+  const rejPress = ctx.g.mirrorDancePress(idleDancer.id, "left");
+  const rejHit = ctx.g.mirrorDanceHit(idleDancer.id, "perfect");
+  const rejMiss = ctx.g.mirrorDanceMiss(idleDancer.id);
+  const rejStray = ctx.g.mirrorDanceStray(idleDancer.id);
+  expect(
+    "Idle human dancer gets 0 misses on Game.tick(), gains auto-pilot boosts, and press/hit/miss/stray are rejected",
+    ds.misses === 0 && ds.penalties === 0 && ds.botBoosts > 0 &&
+      !rejPress.ok && !rejHit.ok && !rejMiss.ok && !rejStray.ok
+  );
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed.");
 process.exit(fail ? 1 : 0);

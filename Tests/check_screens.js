@@ -1554,6 +1554,10 @@ async function mirrorStep6c2Cases() {
     // 2. Detailed Mic, Deck, Q&A, Wrap Up behavior on a 3-Setup team (owner gating, penalties, recoveries, timers)
     const ctx3 = enterShowtime(5, { allHumans: true, seed: 825 });
     const g3 = ctx3.game, team3 = ctx3.team;
+    g3.hooks = {};
+    for (const p of team3.members) {
+      if (g3.mirrorRole(p) === "dance") p.idle = true;
+    }
     const slots3 = g3.mirrorSetupSlots(team3);
     const s0 = team3.members.find(p => p.id === slots3[0].playerId);
     const s1 = team3.members.find(p => p.id === slots3[1].playerId);
@@ -2088,7 +2092,7 @@ async function mirrorStep6dCases() {
       };
     };
 
-    const drivePerfectHits = (view, count) => {
+    const drivePerfectHits = (view, count, advanceMs = null) => {
       let hits = 0;
       for (let t = 0; t < 400 && hits < count; t++) {
         const pNote = view.q('[data-note-zone="perfect"]');
@@ -2096,7 +2100,8 @@ async function mirrorStep6dCases() {
           view.view().handleInput(pNote.dataset.noteDir);
           hits += 1;
         } else {
-          view.view().stepMotion(1);
+          if (advanceMs) advanceMs(250);
+          view.tick();
         }
       }
       return hits;
@@ -2124,8 +2129,11 @@ async function mirrorStep6dCases() {
         rafQueue.size === 1 && vDance1.view().isLoopRunning();
 
       // 2. Hits (keyboard PERFECT +3, button good +2), stray (-1), and miss (-2) report to rules and update UI
-      flushRaf(1000); // initialize rAF timestamp at ds.tick = 0
-      for (let i = 1; i <= 10; i++) flushRaf(1000 + i * 250); // ds.tick = 10 -> note 1 in perfect zone
+      const d1Idle = t1.members.find(p => g1.mirrorRole(p) === "dance" && p.id !== d0.id);
+      if (d1Idle) d1Idle.idle = true;
+      g1.hooks = {};
+      flushRaf(1000); // initialize rAF draw loop at elapsed = 0
+      for (let i = 1; i <= 10; i++) { ctx1.advanceMs(250); flushRaf(1000 + i * 250); } // tick = 10 -> note 1 in perfect zone
       const n1 = vDance1.q('[data-note-zone="perfect"]');
       const dir1 = n1 ? n1.dataset.noteDir : null;
       if (dir1) {
@@ -2141,7 +2149,7 @@ async function mirrorStep6dCases() {
         vDance1.q("#teamDanceBoost").textContent === "1.5" &&
         vDance1.q("#attnPct").textContent === attAfterPerf + "%";
 
-      for (let i = 11; i <= 14; i++) flushRaf(1000 + i * 250); // ds.tick = 14 -> note 2 (t0=6) in good zone
+      for (let i = 11; i <= 14; i++) { ctx1.advanceMs(250); flushRaf(1000 + i * 250); } // tick = 14 -> note 2 (t0=6) in good zone
       const n2 = vDance1.q('[data-note-zone="good"]');
       const dir2 = n2 ? n2.dataset.noteDir : null;
       if (dir2) vDance1.q('[data-dance="' + dir2 + '"]').click();
@@ -2152,7 +2160,7 @@ async function mirrorStep6dCases() {
         vDance1.q("#comboN").textContent === "combo ×2" &&
         vDance1.q("#teamDanceBoost").textContent === "2.5";
 
-      // Stray press when no unjudged note is in the hit frame (note 3 at t0=12 has diff=8 at ds.tick=14)
+      // Stray press when no unjudged note is in the hit frame (note 3 at t0=12 has diff=8 at tick=14)
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
       const dAfterStray = g1.mirrorDanceTeam(t1).dancers.find(d => d.playerId === d0.id);
       const attAfterStray = Math.round(g1.mirrorAttention(t1));
@@ -2162,8 +2170,8 @@ async function mirrorStep6dCases() {
         vDance1.q("#teamDancePen").textContent === "0.5" &&
         vDance1.q("#attnPct").textContent === attAfterStray + "%";
 
-      // Miss note 3 (t0=12 -> misses once ds.tick > 24)
-      for (let i = 15; i <= 25; i++) flushRaf(1000 + i * 250);
+      // Miss note 3 (t0=12 -> misses once tick >= 25)
+      for (let i = 15; i <= 25; i++) { ctx1.advanceMs(250); flushRaf(1000 + i * 250); }
       const dAfterMiss = g1.mirrorDanceTeam(t1).dancers.find(d => d.playerId === d0.id);
       const attAfterMiss = Math.round(g1.mirrorAttention(t1));
       const missOk = dAfterMiss.misses === 1 && dAfterMiss.penalties === 3 && dAfterMiss.combo === 0 &&
@@ -2176,14 +2184,21 @@ async function mirrorStep6dCases() {
 
       // 3. Tempo ramp (6 -> 5 after 20 notes -> 4 after 40 notes) and max 2 identical arrows in a row
       const ctxTempo = enterShowtime(4, { allHumans: true, seed: 641 });
-      const vTempo = mountView(ctxTempo.game, ctxTempo.team.members.find(p => ctxTempo.game.mirrorRole(p) === "dance"), ctxTempo.team);
+      ctxTempo.game.hooks = {};
+      const dTempo = ctxTempo.team.members.find(p => ctxTempo.game.mirrorRole(p) === "dance");
+      const vTempo = mountView(ctxTempo.game, dTempo, ctxTempo.team);
       const seenNotes = new Map();
-      for (const n of vTempo.state.mirror.dance.notes) seenNotes.set(n.id, { t0: n.t0, dir: n.dir });
-      for (let t = 0; t < 260; t++) {
-        vTempo.view().stepMotion(1);
-        for (const n of vTempo.state.mirror.dance.notes) {
-          if (!seenNotes.has(n.id)) seenNotes.set(n.id, { t0: n.t0, dir: n.dir });
-        }
+      const recordTempoNotes = () => {
+        const dv = ctxTempo.game.mirrorDanceView(dTempo);
+        if (dv) for (const n of dv.notes) seenNotes.set(n.id, { t0: n.t0, dir: n.dir });
+      };
+      recordTempoNotes();
+      for (let t = 0; t < 260 && !ctxTempo.game.didRun("runTrial"); t++) {
+        const pNote = vTempo.q('[data-note-zone="perfect"]');
+        if (pNote) vTempo.view().handleInput(pNote.dataset.noteDir);
+        ctxTempo.advanceMs(250);
+        vTempo.tick();
+        recordTempoNotes();
       }
       const spawned = [...seenNotes.values()];
       const gaps = [];
@@ -2202,9 +2217,10 @@ async function mirrorStep6dCases() {
       // 4. Boost cap at 45 and 1-dancer average match
       const ctxCap = enterShowtime(3, { allHumans: true, seed: 642 });
       const gCap = ctxCap.game, tCap = ctxCap.team;
+      gCap.hooks = {};
       const dCap = tCap.members.find(p => gCap.mirrorRole(p) === "dance");
       const vCap = mountView(gCap, dCap, tCap);
-      const hitsDriven = drivePerfectHits(vCap, 17); // 17 * 3 = 51 raw -> caps at 45
+      const hitsDriven = drivePerfectHits(vCap, 17, ctxCap.advanceMs); // 17 * 3 = 51 raw -> caps at 45
       const dcCap = gCap.mirrorDanceTeam(tCap);
       const boostCapOk = hitsDriven === 17 &&
         dcCap.dancers.length === 1 &&
@@ -2218,9 +2234,10 @@ async function mirrorStep6dCases() {
       // Team averaging for 1, 2, and 3 dancers
       const ctxAvg1 = enterShowtime(3, { allHumans: true, seed: 643 });
       const gA1 = ctxAvg1.game, tA1 = ctxAvg1.team;
+      gA1.hooks = {};
       const dA1 = tA1.members.find(p => gA1.mirrorRole(p) === "dance");
       const vA1 = mountView(gA1, dA1, tA1);
-      drivePerfectHits(vA1, 2); // +6
+      drivePerfectHits(vA1, 2, ctxAvg1.advanceMs); // +6
       gA1.mirrorDanceMiss(dA1); // +2 pen
       vA1.tick();
       const dcA1 = gA1.mirrorDanceTeam(tA1);
@@ -2232,11 +2249,15 @@ async function mirrorStep6dCases() {
 
       const ctxAvg2 = enterShowtime(4, { allHumans: true, seed: 644 });
       const gA2 = ctxAvg2.game, tA2 = ctxAvg2.team;
+      gA2.hooks = {};
       const dList2 = tA2.members.filter(p => gA2.mirrorRole(p) === "dance");
       const vA2_0 = mountView(gA2, dList2[0], tA2);
       const vA2_1 = mountView(gA2, dList2[1], tA2);
-      drivePerfectHits(vA2_0, 2); // +6
-      drivePerfectHits(vA2_1, 1); // +3
+      for (let t = 1; t <= 10; t++) { ctxAvg2.advanceMs(250); vA2_0.tick(); vA2_1.tick(); }
+      const p2a1 = vA2_0.q('[data-note-zone="perfect"]'); if (p2a1) vA2_0.view().handleInput(p2a1.dataset.noteDir); // +3
+      const p2b1 = vA2_1.q('[data-note-zone="perfect"]'); if (p2b1) vA2_1.view().handleInput(p2b1.dataset.noteDir); // +3
+      for (let t = 11; t <= 16; t++) { ctxAvg2.advanceMs(250); vA2_0.tick(); vA2_1.tick(); }
+      const p2a2 = vA2_0.q('[data-note-zone="perfect"]'); if (p2a2) vA2_0.view().handleInput(p2a2.dataset.noteDir); // +6
       gA2.mirrorDanceMiss(dList2[1]); // +2 pen
       vA2_0.tick();
       vA2_1.tick();
@@ -2254,11 +2275,12 @@ async function mirrorStep6dCases() {
 
       const ctxAvg3 = enterShowtime(6, { allHumans: true, seed: 645 });
       const gA3 = ctxAvg3.game, tA3 = ctxAvg3.team;
+      gA3.hooks = {};
       const dList3 = tA3.members.filter(p => gA3.mirrorRole(p) === "dance");
       const vA3_0 = mountView(gA3, dList3[0], tA3);
       const vA3_1 = mountView(gA3, dList3[1], tA3);
       const vA3_2 = mountView(gA3, dList3[2], tA3);
-      drivePerfectHits(vA3_0, 1); // +3
+      drivePerfectHits(vA3_0, 1, ctxAvg3.advanceMs); // +3 at 2.5s before any miss at 3.25s
       gA3.mirrorDanceHit(dList3[1], "good"); // +2
       gA3.mirrorDanceMiss(dList3[2]); // +2 pen
       vA3_0.tick(); vA3_1.tick(); vA3_2.tick();
@@ -2479,7 +2501,10 @@ async function mirrorStep6dCases() {
           // Return to Trial screen, land a hit, let bot Setup Crew finish showtime -> end of Level 3
           go(7);
           flushRaf(5000);
-          for (let i = 1; i <= 10; i++) flushRaf(5000 + i * 250);
+          for (let i = 1; i <= 10; i++) {
+            gameCtx.advanceMs(250);
+            flushRaf(5000 + i * 250);
+          }
           const stageNote = document.querySelector('[data-note-zone="perfect"]');
           if (stageNote) {
             window.dispatchEvent(new KeyboardEvent("keydown", { key: KEY_BY_DIR[stageNote.dataset.noteDir], bubbles: true, cancelable: true }));
@@ -3497,7 +3522,11 @@ async function mirrorStep8Cases() {
       }
       mountStage(danceSess.game, danceSess.me, danceSess.team, 7);
       flushRaf(1000);
-      for (let i = 1; i <= 10; i++) flushRaf(1000 + i * 250);
+      for (let i = 1; i <= 10; i++) {
+        dNow += 250;
+        G.tick();
+        flushRaf(1000 + i * 250);
+      }
       const perfNote = document.querySelector('[data-note-zone="perfect"]');
       if (perfNote) {
         window.dispatchEvent(new KeyboardEvent("keydown", { key: KEY_BY_DIR[perfNote.dataset.noteDir], bubbles: true, cancelable: true }));
@@ -3536,7 +3565,11 @@ async function mirrorStep8Cases() {
         stageClean();
 
       flushRaf(6000);
-      for (let i = 1; i <= 10; i++) flushRaf(6000 + i * 250);
+      for (let i = 1; i <= 10 && !document.querySelector('[data-note-zone="perfect"]'); i++) {
+        rNow += 250;
+        G.tick();
+        flushRaf(6000 + i * 250);
+      }
       const perfNote2 = document.querySelector('[data-note-zone="perfect"]');
       if (perfNote2) {
         window.dispatchEvent(new KeyboardEvent("keydown", { key: KEY_BY_DIR[perfNote2.dataset.noteDir], bubbles: true, cancelable: true }));
@@ -4284,6 +4317,130 @@ async function mirrorStep3bDeadlineCases() {
   check("Game.tick() drives Sound hold and Mic flash hide into MirrorView via Game.mirrorSetupView()", res.soundHeldByGameTickOk && res.micHiddenByGameTickOk);
 }
 
+/* Step 4: Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into DanceCrew / MirrorTrial (V-35, V-36, V-37). */
+async function mirrorStep4DanceCases() {
+  const mdSrc = fs.readFileSync(path.join(repo, "mirror-dance-view.js"), "utf8");
+  const forbidden = /\bMath\.random\b|\bDate\.now\b|\bnew Date\b/;
+  const screenJudges = /\bmirrorDanceHit\b|\bmirrorDanceMiss\b|\bmirrorDanceStray\b|\bstepMotion\b|\binitDanceState\b/;
+  check("mirror-dance-view.js has no Math.random, Date.now, or new Date", !forbidden.test(mdSrc));
+  check("mirror-dance-view.js has no mirrorDanceHit/Miss/Stray or screen note-chart helpers", !screenJudges.test(mdSrc));
+
+  const res = w.eval(`(() => {
+    try {
+      const startShow = (seed, getNow) => {
+        const sess = EP.Bots.soloGame({
+          me: { name: "Step4D", type: "coop", spend: EP.Bots.typicalSpend("coop") },
+          myTeam: { name: "Team Kestrel", mates: TEAM.map(p => p.n) },
+          others: OTHERS.map(o => ({ name: o.t, players: o.p })),
+          rng: EP.Rng.seeded(seed),
+          hooks: EP.Bots.hooks,
+        });
+        const g = sess.game;
+        g._timer.clock = getNow;
+        for (let round = 1; round <= 2; round++) {
+          g.startNextRound();
+          g.advance();
+          g.advance();
+          g.runTrial();
+          g.endTrial();
+          g.endGlitchReport();
+          g.advance();
+          g.advance();
+          g.lockIn();
+          g.advance();
+          g.computeEarnings();
+          g.placeAllRemaining();
+          g.finishRound();
+        }
+        g.startNextRound();
+        g.advance();
+        g.advance();
+        g.start();
+        return sess;
+      };
+
+      const findDanceSeed = start => {
+        for (let s = start; s < start + 50; s++) {
+          let n = 40000000;
+          const sess = startShow(s, () => n);
+          n += 16000; sess.game.tick();
+          sess.game.mirrorConnect(sess.me);
+          n = sess.game.timer.deadline; sess.game.tick();
+          if (sess.game.mirrorRole(sess.me) === "dance") return s;
+        }
+        throw new Error("No dance seed");
+      };
+
+      const s1 = findDanceSeed(3300);
+      const runSample = seed => {
+        let now = 41000000;
+        const sess = startShow(seed, () => now);
+        const g = sess.game;
+        now += 16000; g.tick();
+        g.mirrorConnect(sess.me);
+        now = g.timer.deadline; g.tick();
+        const seq = [];
+        for (let t = 0; t <= 40; t++) {
+          const dv = g.mirrorDanceView(sess.me);
+          if (dv) for (const note of dv.notes) if (!seq.some(x => x.id === note.id)) seq.push({ id: note.id, dir: note.dir, t0: note.t0 });
+          now += 250; g.tick();
+          const cur = g.mirrorDanceView(sess.me);
+          const p = cur && cur.notes.find(x => x.zone === "perfect");
+          if (p) g.mirrorDancePress(sess.me, p.dir);
+        }
+        return { seq, view: g.mirrorDanceView(sess.me) };
+      };
+      const rA = runSample(s1);
+      const rB = runSample(s1);
+      const sameSeedChartOk = rA.seq.length >= 6 && JSON.stringify(rA.seq) === JSON.stringify(rB.seq);
+
+      // Mid-dance save/reload restores chart, spawnedCount, and tempo gapTicks identically
+      let nowS = 42000000;
+      const sessS = startShow(s1, () => nowS);
+      const gS = sessS.game;
+      nowS += 16000; gS.tick();
+      gS.mirrorConnect(sessS.me);
+      nowS = gS.timer.deadline; gS.tick();
+      for (let t = 0; t < 30; t++) {
+        nowS += 250; gS.tick();
+        const p = gS.mirrorDanceView(sessS.me).notes.find(x => x.zone === "perfect");
+        if (p) gS.mirrorDancePress(sessS.me, p.dir);
+      }
+      const viewPre = gS.mirrorDanceView(sessS.me);
+      const snap = JSON.parse(JSON.stringify(gS.toJSON()));
+      const gR = EP.Game.fromJSON(snap, { clock: () => nowS, hooks: EP.Bots.hooks });
+      const viewPost = gR.mirrorDanceView(sessS.me.id);
+      const saveRestoreOk = viewPre.spawnedCount === viewPost.spawnedCount &&
+        viewPre.gapTicks === viewPost.gapTicks &&
+        JSON.stringify(viewPre.notes) === JSON.stringify(viewPost.notes);
+
+      // Idle dancer gets 0 misses and presses are rejected
+      let nowI = 43000000;
+      const sessI = startShow(s1, () => nowI);
+      const gI = sessI.game;
+      nowI += 16000; gI.tick();
+      gI.mirrorConnect(sessI.me);
+      nowI = gI.timer.deadline; gI.tick();
+      sessI.me.idle = true;
+      nowI += 10000;
+      gI.tick();
+      const idleView = gI.mirrorDanceView(sessI.me);
+      const idleRej = gI.mirrorDancePress(sessI.me, "left");
+      const idleGateOk = idleView.misses === 0 && idleView.penalties === 0 && !idleRej.ok;
+
+      return { sameSeedChartOk, saveRestoreOk, idleGateOk };
+    } finally {
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  check("Same seed produces identical Mirror Dance chart via Game.mirrorDanceView()", res.sameSeedChartOk);
+  check("Mid-dance save/reload restores chart, spawnedCount, and tempo via Game.mirrorDanceView()", res.saveRestoreOk);
+  check("Idle human dancer gets 0 misses on Game.tick() and mirrorDancePress rejects idle players", res.idleGateOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -4333,6 +4490,8 @@ w.addEventListener("load", async () => {
     await mirrorStep3aSeedCases();
     log("run 16: Step 3b Level 3 Setup deadlines owned by SetupCrew and checked in Game.tick");
     await mirrorStep3bDeadlineCases();
+    log("run 17: Step 4 Level 3 Dance Crew note chart, judging, miss deadlines, and idle gating");
+    await mirrorStep4DanceCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

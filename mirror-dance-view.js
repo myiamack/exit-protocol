@@ -1,6 +1,6 @@
 /* Level 3 Mirror (Presentation Day) Dance Crew rhythm lane screen.
    Screen code only, loaded by index.html right after mirror-view.js.
-   Note motion and input timing live here; boost caps, penalties, averaging, attention, and timers live in rules. */
+   Note chart, judging, miss deadlines, boosts, penalties, and timers live in rules. */
 (function (root) {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmt = x => Math.floor(Math.max(0, x) / 60) + ":" + String(Math.max(0, x) % 60).padStart(2, "0");
@@ -48,70 +48,24 @@
     return root.avatarSVG(av, { label: dancer.name });
   }
 
-  function nextArrowDir(lastN, arrows, maxSame) {
-    for (let attempt = 0; attempt < 24; attempt++) {
-      const dir = arrows[Math.floor(Math.random() * arrows.length)];
-      const n = lastN.length;
-      if (n >= maxSame && lastN.slice(n - maxSame).every(prev => prev === dir)) continue;
-      return dir;
-    }
-    const last = lastN[lastN.length - 1];
-    return arrows.find(dir => dir !== last) || arrows[0];
-  }
-
-  function initDanceState(state, dancers) {
-    const D = EP.MirrorData.dance;
+  function initDanceUI(state, view, dancers) {
     const lastMateBoosts = {};
     for (const d of dancers) lastMateBoosts[d.playerId] = d.boost;
-    const ds = {
-      tick: 0,
-      notes: [],
-      nextNote: 0,
-      spawnedCount: 0,
-      lastN: [],
-      avatarMove: "",
-      stumbleUntil: 0,
+    const ui = {
       camMsg: "",
       camCount: 0,
-      nextId: 1,
       mateMoves: {},
       lastMateBoosts,
+      lastMisses: view ? view.misses : 0,
     };
-    spawnNoteOn(ds, 0, D);
-    ds.nextNote = noteGapTicks(ds, D);
-    state.dance = ds;
-    return ds;
+    state.danceUI = ui;
+    return ui;
   }
 
-  function noteGapTicks(ds, D) {
-    if (ds.spawnedCount > D.tempoRampFastNotes) return D.gapFastTicks;
-    if (ds.spawnedCount > D.tempoRampMidNotes) return D.gapMidTicks;
-    return D.gapInitialTicks;
-  }
-
-  function spawnNoteOn(ds, spawnTick, D) {
-    const dir = nextArrowDir(ds.lastN, D.arrows, D.maxConsecutiveSame);
-    ds.lastN.push(dir);
-    if (ds.lastN.length > D.maxConsecutiveSame) ds.lastN.shift();
-    ds.notes.push({ id: ds.nextId++, dir, t0: spawnTick, judged: null, judgedAt: 0 });
-    ds.spawnedCount += 1;
-  }
-
-  function noteZone(note, tick, D) {
-    if (note.judged) return "judged";
-    const diff = Math.abs(tick - (note.t0 + D.travelTicks));
-    if (diff <= D.perfectWindowTicks) return "perfect";
-    if (diff <= D.goodWindowTicks) return "good";
-    return "incoming";
-  }
-
-  function laneHTML(ds, D) {
-    const bits = ds.notes.map(n => {
-      if (n.judged && ds.tick - n.judgedAt > 2) return "";
-      const prog = (ds.tick - n.t0) / D.travelTicks;
-      const leftPct = Math.max(-6, (1 - prog) * 100);
-      const zone = noteZone(n, ds.tick, D);
-      return `<span class="note ${n.judged ? "j" + n.judged : ""}" data-note-id="${n.id}" data-note-dir="${n.dir}" data-note-zone="${zone}" style="left:${leftPct}%">${D.arrowGlyphs[n.dir]}</span>`;
+  function laneHTML(view, D) {
+    const notes = view && Array.isArray(view.notes) ? view.notes : [];
+    const bits = notes.map(n => {
+      return `<span class="note ${n.judged ? "j" + n.judged : ""}" data-note-id="${n.id}" data-note-dir="${n.dir}" data-note-zone="${n.zone}" style="left:${n.leftPct}%">${D.arrowGlyphs[n.dir]}</span>`;
     }).join("");
     return `<span class="hitframe"><b class="perfect"></b></span>${bits}`;
   }
@@ -126,6 +80,7 @@
     const D = EP.MirrorData.dance;
     const setup = G.mirrorSetupTeam(MYTEAM);
     const dance = G.mirrorDanceTeam(MYTEAM);
+    const myView = G.mirrorDanceView(ME);
     const myRec = dance ? dance.dancers.find(d => d.playerId === ME.id) || null : null;
 
     const isShowtimeEnded = () => {
@@ -149,7 +104,7 @@
     };
 
     // 0-dancer or unrostered fallback: never renders a rhythm lane or starts an animation loop.
-    if (!dance || !dance.dancers.length || !myRec) {
+    if (!dance || !dance.dancers.length || !myRec || !myView) {
       const count = dance ? dance.dancers.length : 0;
       const setupWrap = setup && opts.renderSetupFrame ? `<div id="mirrorSetupWrap">${opts.renderSetupFrame(setup)}</div>` : "";
       const html = `${opts.headerHTML || ""}${opts.attentionBarHTML || ""}
@@ -168,14 +123,13 @@ ${setupWrap}`;
       };
     }
 
-    const ds = state.dance || initDanceState(state, dance.dancers);
+    const ui = state.danceUI || initDanceUI(state, myView, dance.dancers);
 
-    const renderDancerCardsHTML = dc => dc.dancers.map(d => {
-      const pl = playerById(MYTEAM, d.playerId);
+    const renderDancerCardsHTML = (dc, view) => dc.dancers.map(d => {
       const isMe = d.playerId === ME.id;
       const move = isMe
-        ? (ds.tick < ds.stumbleUntil ? "stumble" : ds.avatarMove ? "mv-" + ds.avatarMove : "")
-        : (ds.mateMoves[d.playerId] ? "mv-" + ds.mateMoves[d.playerId] : "");
+        ? (view && view.stumbling ? "stumble" : (view && view.lastMove ? "mv-" + view.lastMove : ""))
+        : (ui.mateMoves[d.playerId] ? "mv-" + ui.mateMoves[d.playerId] : "");
       return `<div class="dancer ${move}" data-dancer="${d.playerId}">
   ${dancerAvatarHTML(d, MYTEAM, opts.avatarFor)}
   <span class="dancer-name">${esc(d.name)}</span>
@@ -207,7 +161,7 @@ ${setupWrap}`;
     <span class="label">Dance Crew · keep the room alive</span>
     <span class="counter" id="myDanceBoost">+${formatBoost(myRec.boost)} / ${D.boostCap} boost</span>
   </div>
-  <div class="lane" id="lane">${laneHTML(ds, D)}</div>
+  <div class="lane" id="lane">${laneHTML(myView, D)}</div>
   <div class="dpad" id="dancePad">
     ${padHTML}
     <span class="combo" id="comboN">combo ×${myRec.combo}</span>
@@ -217,8 +171,8 @@ ${setupWrap}`;
       <span class="dance-stat">Off-beat <b id="danceStrays">${myRec.strays}</b></span>
     </span>
   </div>
-  <div class="dancers" id="danceAvatars">${renderDancerCardsHTML(dance)}</div>
-  <div class="dcam" id="danceCam">&gt; ${esc(ds.camMsg || "notes incoming. watch the frame.")}</div>
+  <div class="dancers" id="danceAvatars">${renderDancerCardsHTML(dance, myView)}</div>
+  <div class="dcam" id="danceCam">&gt; ${esc(ui.camMsg || "notes incoming. watch the frame.")}</div>
   <span class="hint">Notes slide left. Press an arrow key (or tap a pad arrow) as a note crosses the frame: inner band is PERFECT (+${D.perfectBoost}), outer band is good (+${D.goodBoost}). Missed note −${D.missPenalty} attention, off-beat −${D.strayPenalty}. Boost caps at +${D.boostCap} per dancer.</span>
 </div>
 <div class="panel" id="mirrorDanceRoster">
@@ -235,7 +189,6 @@ ${msgHTML}`;
     let laneEl = null;
     let wasConnected = false;
     let rafId = null;
-    let lastFrameMs = null;
     let bound = false;
     let stopped = false;
     let keyAttached = false;
@@ -261,17 +214,17 @@ ${msgHTML}`;
       }
     };
 
-    const syncAvatarsDOM = dc => {
+    const syncAvatarsDOM = (dc, view) => {
       if (!mountedRoot || !dc) return;
       for (const d of dc.dancers) {
         const el = mountedRoot.querySelector(`[data-dancer="${d.playerId}"]`);
         if (!el) continue;
         let cls = "dancer";
         if (d.playerId === ME.id) {
-          if (ds.tick < ds.stumbleUntil) cls += " stumble";
-          else if (ds.avatarMove) cls += " mv-" + ds.avatarMove;
-        } else if (ds.mateMoves[d.playerId]) {
-          cls += " mv-" + ds.mateMoves[d.playerId];
+          if (view && view.stumbling) cls += " stumble";
+          else if (view && view.lastMove) cls += " mv-" + view.lastMove;
+        } else if (ui.mateMoves[d.playerId]) {
+          cls += " mv-" + ui.mateMoves[d.playerId];
         }
         if (el.className !== cls) el.className = cls;
       }
@@ -281,9 +234,14 @@ ${msgHTML}`;
       if (!mountedRoot) return;
       updateAttentionAndTimerDOM();
       const dc = G.mirrorDanceTeam(MYTEAM);
+      const view = G.mirrorDanceView(ME);
       if (!dc) return;
       const meRec = dc.dancers.find(d => d.playerId === ME.id);
       if (meRec) {
+        if (meRec.misses > ui.lastMisses) {
+          ui.lastMisses = meRec.misses;
+          ui.camMsg = EP.MirrorData.flavor.statusMessages.danceMiss;
+        }
         const setTxt = (sel, txt) => {
           const el = mountedRoot.querySelector(sel);
           if (el) el.textContent = txt;
@@ -301,25 +259,25 @@ ${msgHTML}`;
 
       // Track teammate (including bot) boost gains from the rules to animate avatars and status line.
       for (const d of dc.dancers) {
-        const prev = ds.lastMateBoosts[d.playerId];
+        const prev = ui.lastMateBoosts[d.playerId];
         if (d.playerId !== ME.id && prev !== undefined && d.boost > prev) {
           const moves = EP.MirrorData.flavor.danceMoves;
-          ds.mateMoves[d.playerId] = D.arrows[ds.camCount % D.arrows.length];
-          ds.camMsg = formatMsg(EP.MirrorData.flavor.statusMessages.danceBotMove, {
+          ui.mateMoves[d.playerId] = D.arrows[ui.camCount % D.arrows.length];
+          ui.camMsg = formatMsg(EP.MirrorData.flavor.statusMessages.danceBotMove, {
             name: d.name,
-            move: moves[ds.camCount % moves.length],
+            move: moves[ui.camCount % moves.length],
           });
-          ds.camCount += 1;
+          ui.camCount += 1;
         }
-        ds.lastMateBoosts[d.playerId] = d.boost;
+        ui.lastMateBoosts[d.playerId] = d.boost;
       }
 
       const listEl = mountedRoot.querySelector("#danceRosterList");
       if (listEl) listEl.innerHTML = renderRosterHTML(dc);
       const camEl = mountedRoot.querySelector("#danceCam");
-      if (camEl) camEl.textContent = "> " + (ds.camMsg || "notes incoming. watch the frame.");
-      if (laneEl) laneEl.innerHTML = laneHTML(ds, D);
-      syncAvatarsDOM(dc);
+      if (camEl) camEl.textContent = "> " + (ui.camMsg || "notes incoming. watch the frame.");
+      if (laneEl) laneEl.innerHTML = laneHTML(view, D);
+      syncAvatarsDOM(dc, view);
     };
 
     const flashKey = dir => {
@@ -352,50 +310,6 @@ ${msgHTML}`;
       if (state._danceCleanup === cleanup) state._danceCleanup = null;
     };
 
-    const stepMotion = (dtTicks = 1) => {
-      if (stopped || !isMounted() || isShowtimeEnded()) {
-        cleanup();
-        return false;
-      }
-      if (typeof dtTicks === "number" && Number.isFinite(dtTicks) && dtTicks > 0) {
-        ds.tick += dtTicks;
-      }
-      while (ds.tick >= ds.nextNote) {
-        const spawnT = ds.nextNote;
-        spawnNoteOn(ds, spawnT, D);
-        ds.nextNote = spawnT + noteGapTicks(ds, D);
-      }
-
-      let missedAny = false;
-      for (const n of ds.notes) {
-        if (n.judged) continue;
-        if (ds.tick - (n.t0 + D.travelTicks) > D.goodWindowTicks) {
-          n.judged = "miss";
-          n.judgedAt = ds.tick;
-          const r = G.mirrorDanceMiss(ME);
-          if (r.ok) {
-            ds.stumbleUntil = ds.tick + D.stumbleTicks;
-            ds.camMsg = EP.MirrorData.flavor.statusMessages.danceMiss;
-            missedAny = true;
-          }
-          if (isShowtimeEnded() || (r && (r.failed || r.closed))) {
-            cleanup();
-            if (opts.onRender) opts.onRender();
-            return false;
-          }
-        }
-      }
-      ds.notes = ds.notes.filter(n => !n.judged || ds.tick - n.judgedAt <= 2);
-
-      if (missedAny) {
-        syncDanceDOM();
-      } else {
-        if (laneEl) laneEl.innerHTML = laneHTML(ds, D);
-        syncAvatarsDOM(G.mirrorDanceTeam(MYTEAM));
-      }
-      return true;
-    };
-
     const handleInput = dir => {
       if (stopped || !isMounted() || isShowtimeEnded()) {
         cleanup();
@@ -409,38 +323,15 @@ ${msgHTML}`;
         return { ok: false, reason: "Showtime ended." };
       }
 
-      let best = null;
-      let bd = Infinity;
-      for (const n of ds.notes) {
-        if (n.judged || n.dir !== dir) continue;
-        const d = Math.abs(ds.tick - (n.t0 + D.travelTicks));
-        if (d < bd) {
-          bd = d;
-          best = n;
-        }
-      }
-
-      let res;
-      if (best && bd <= D.goodWindowTicks) {
-        const quality = bd <= D.perfectWindowTicks ? "perfect" : "good";
-        res = G.mirrorDanceHit(ME, quality);
-        if (res.ok) {
-          best.judged = quality;
-          best.judgedAt = ds.tick;
-          ds.avatarMove = dir;
-          ds.stumbleUntil = 0;
-          const moves = EP.MirrorData.flavor.danceMoves;
-          ds.camMsg = quality === "perfect"
-            ? EP.MirrorData.flavor.statusMessages.dancePerfect
-            : formatMsg(EP.MirrorData.flavor.statusMessages.danceGood, { move: moves[ds.camCount++ % moves.length] });
-          flashKey(dir);
-        }
-      } else {
-        res = G.mirrorDanceStray(ME);
-        if (res.ok) {
-          ds.stumbleUntil = ds.tick + D.stumbleTicks;
-          ds.camMsg = EP.MirrorData.flavor.statusMessages.danceStray;
-        }
+      const res = G.mirrorDancePress(ME, dir);
+      if (res.ok && res.hit) {
+        const moves = EP.MirrorData.flavor.danceMoves;
+        ui.camMsg = res.quality === "perfect"
+          ? EP.MirrorData.flavor.statusMessages.dancePerfect
+          : formatMsg(EP.MirrorData.flavor.statusMessages.danceGood, { move: moves[ui.camCount++ % moves.length] });
+        flashKey(dir);
+      } else if (res.ok && res.stray) {
+        ui.camMsg = EP.MirrorData.flavor.statusMessages.danceStray;
       }
 
       if (isShowtimeEnded() || (res && (res.failed || res.closed))) {
@@ -474,7 +365,7 @@ ${msgHTML}`;
       handleInput(dir);
     }
 
-    const frame = ts => {
+    const frame = () => {
       rafId = null;
       if (stopped || !isMounted() || isShowtimeEnded()) {
         const shouldRender = isShowtimeEnded() && isMounted();
@@ -482,10 +373,8 @@ ${msgHTML}`;
         if (shouldRender && opts.onRender) opts.onRender();
         return;
       }
-      const dtMs = lastFrameMs === null ? 0 : Math.max(0, Math.min(500, ts - lastFrameMs));
-      lastFrameMs = ts;
-      const alive = stepMotion(dtMs / EP.MirrorData.timers.tickMs);
-      if (alive && !stopped && isMounted() && !isShowtimeEnded() && typeof root.requestAnimationFrame === "function") {
+      syncDanceDOM();
+      if (!stopped && isMounted() && !isShowtimeEnded() && typeof root.requestAnimationFrame === "function") {
         rafId = root.requestAnimationFrame(frame);
       }
     };
@@ -549,7 +438,6 @@ ${msgHTML}`;
       bind,
       tick,
       cleanup,
-      stepMotion,
       handleInput,
       isLoopRunning: () => !stopped && rafId !== null,
       waitHint: "Finish Presentation Day first",

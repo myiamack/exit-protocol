@@ -536,5 +536,104 @@ console.log("-- 9. Save and load (DanceCrew direct and MirrorTrial / Trial.fromJ
   );
 }
 
+console.log("-- 10. Seeded note chart, tempo ramp, hit judging, miss deadlines, idle gating, and danceViewFor");
+{
+  // (a) Same seed gives the same chart, tempo ramps 6 -> 5 -> 4, <=2 same consecutive, 0 Game.rng draws
+  const buildChartRun = (seed, ticks) => {
+    const team = makeTeam(0, 3, { humans: 3, prefix: "Chart_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [team]);
+    const gameRng = Rng.seeded(seed + 100);
+    const seedRng = Rng.seeded(seed + 200);
+    const dc = new DanceCrew(gameRng, sc, { teams: [team], seedRng });
+    const dId = dc.dancerIdsFor(team)[0];
+    const startAt = 100000;
+    const rngBefore = gameRng.getState();
+    dc.beginShowtime(startAt);
+
+    const seen = new Map();
+    const recordNotes = now => {
+      const v = dc.danceViewFor(dId, now);
+      if (v) {
+        for (const n of v.notes) {
+          if (!seen.has(n.id)) seen.set(n.id, { id: n.id, t0: n.t0, dir: n.dir });
+        }
+      }
+    };
+    recordNotes(startAt);
+    for (let t = 1; t <= ticks; t++) {
+      const now = startAt + t * MirrorData.timers.tickMs;
+      recordNotes(now);
+      const v = dc.danceViewFor(dId, now);
+      const perf = v.notes.find(n => n.zone === "perfect");
+      if (perf) dc.press(dId, perf.dir, { now });
+    }
+    const rngAfter = gameRng.getState();
+    return { notes: [...seen.values()], view: dc.danceViewFor(dId, startAt + ticks * 250), rngUntouched: rngBefore === rngAfter, dc };
+  };
+
+  const cA = buildChartRun(1010, 260);
+  const cB = buildChartRun(1010, 260);
+  const cDiff = buildChartRun(1011, 260);
+  const gaps = [];
+  for (let i = 1; i < cA.notes.length; i++) gaps.push(cA.notes[i].t0 - cA.notes[i - 1].t0);
+  let noTriple = true;
+  for (let i = 2; i < cA.notes.length; i++) {
+    if (cA.notes[i].dir === cA.notes[i - 1].dir && cA.notes[i - 1].dir === cA.notes[i - 2].dir) noTriple = false;
+  }
+
+  expect(
+    "Same seed produces identical DanceCrew chart, tempo ramp 6->5->4, <=2 repeats, with 0 Game.rng draws",
+    cA.rngUntouched &&
+      cA.notes.length > 42 &&
+      gaps[0] === MirrorData.dance.gapInitialTicks &&
+      gaps[20] === MirrorData.dance.gapMidTicks &&
+      gaps[40] === MirrorData.dance.gapFastTicks &&
+      noTriple &&
+      JSON.stringify(cA.notes) === JSON.stringify(cB.notes) &&
+      JSON.stringify(cA.notes) !== JSON.stringify(cDiff.notes)
+  );
+
+  // (b) Miss deadlines, idle exclusion/rejection, and older save backward compatibility
+  const tmIdle = makeTeam(0, 4, { humans: 4, prefix: "IdleD_" });
+  const scIdle = new SetupCrew(Rng.seeded(1020), [tmIdle]);
+  const dcIdle = new DanceCrew(Rng.seeded(1021), scIdle, { teams: [tmIdle], seedRng: Rng.seeded(1022) });
+  const [actId, idleId] = dcIdle.dancerIdsFor(tmIdle);
+  const tStart = 50000;
+  const tickMs = MirrorData.timers.tickMs;
+  dcIdle.beginShowtime(tStart);
+  const miss1At = tStart + (MirrorData.dance.travelTicks + MirrorData.dance.goodWindowTicks + 1) * tickMs;
+  const due0 = dcIdle.nextDeadline(tmIdle, { activeHumanIds: new Set([actId]) });
+  dcIdle.tickDeadlines(tmIdle, miss1At - 1, { activeHumanIds: new Set([actId]) });
+  const zeroBefore = dcIdle.dancerState(actId).misses === 0 && dcIdle.dancerState(idleId).misses === 0;
+  dcIdle.tickDeadlines(tmIdle, miss1At, { activeHumanIds: new Set([actId]) });
+  const actMissedOnce = dcIdle.dancerState(actId).misses === 1 && dcIdle.dancerState(idleId).misses === 0;
+  const rejPress = dcIdle.press(idleId, "left", { now: miss1At, isIdle: true });
+  const rejHit = dcIdle.noteHit(idleId, "perfect", { isIdle: true });
+  const rejMiss = dcIdle.noteMiss(idleId, { isIdle: true });
+  const rejStray = dcIdle.strayPress(idleId, { isIdle: true });
+
+  // Older save without seedRngState/showtimeStartAt/chart still loads cleanly
+  const oldJson = JSON.parse(JSON.stringify(dcIdle.toJSON()));
+  delete oldJson.seedRngState;
+  delete oldJson.showtimeStartAt;
+  for (const td of oldJson.teams) {
+    for (const d of td.dancers) {
+      delete d.chart;
+      delete d.lastMove;
+      delete d.stumbleUntilTick;
+    }
+  }
+  const dcOld = DanceCrew.fromJSON(oldJson, { rng: Rng.seeded(1021) });
+
+  expect(
+    "DanceCrew miss deadlines fire on exact tick for active dancers only, reject idle presses, and load older saves",
+    due0 === miss1At &&
+      zeroBefore &&
+      actMissedOnce &&
+      !rejPress.ok && !rejHit.ok && !rejMiss.ok && !rejStray.ok &&
+      dcOld.started && dcOld.dancerState(actId).misses === 1 && !!dcOld.danceViewFor(actId, miss1At)
+  );
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed.");
 process.exit(fail ? 1 : 0);

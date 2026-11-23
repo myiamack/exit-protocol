@@ -38,8 +38,8 @@ classDiagram
     +sabotage(), gift(), answerGift(), switchTeam()
     +setSopBoard(), closeSop(), splitBrief(), closeSplitBrief()
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
-    +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDanceHit()..mirrorDanceStray()
-    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorSetupView(), mirrorDanceTeam()
+    +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDancePress(), mirrorDanceHit()..mirrorDanceStray()
+    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorSetupView(), mirrorDanceTeam(), mirrorDanceView()
     +startWriting(), submit(), closeWriting(), startVote(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
     +payTrialCosts(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
@@ -334,7 +334,7 @@ classDiagram
     +startLobby(teams), connect(id), miss(id), lobbyCursorStart(id), closeDoors(), startShowtime(opts)
     +nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundAdjust(), soundHeld(), soundFeedback(), micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
     +nextSetupDeadline(), tickSetup(), nextShowtimeEventAt(), setupViewFor()
-    +danceHit(), danceMiss(), danceStray(), advanceBotSetup(), advanceBotDance()
+    +dancePress(), nextDanceDeadline(), tickDance(), danceViewFor(), danceHit(), danceMiss(), danceStray(), advanceBotSetup(), advanceBotDance()
     +attentionFor(), scoreFor(), checkAttention(), finishTeam(), closeMirror(round, teams)
     +crewFor(), roleOf(), lobbyTeamState(), setupTeamState(), danceTeamState(), failReasonOf()
     +rank(round, teams) score plus Focus influence, attention tie-break
@@ -360,8 +360,9 @@ classDiagram
   }
   class DanceCrew {
     <<MirrorParts.js>>
-    -rng, bool #started, #teams, #playerIndex
-    +start(setupCrew, opts), noteHit(), noteMiss(), strayPress()
+    -rng, -seedRng, bool #started, #showtimeStartAt, #teams, #playerIndex
+    +beginShowtime(now), start(setupCrew, opts), press(id, dir, opts), noteHit(), noteMiss(), strayPress()
+    +nextDeadline(), tickDeadlines(), danceViewFor()
     +applyBotBoost(), advanceBotDance(), avgBoostFor(), avgPenaltiesFor()
     +dancersFor(), dancerState(), teamState()
     +toJSON(), fromJSON(data, opts)$
@@ -436,5 +437,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 3b, from commit `1936ad3`).
+Made from the rules code on branch `screen-state-cleanup` (Step 4, from commit `49d37a2`).
 Update this diagram whenever a class in `rules/` changes.

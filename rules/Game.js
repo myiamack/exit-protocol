@@ -193,6 +193,12 @@ class Game {
     }
     closed.push(...this._timer.tick(now));
     this._checkTwist(now);
+    if (this._isMirrorShowtimeActive()) {
+      const cur = this._timer.current;
+      const cap = this.running && cur && cur.name === "mirrorShowtime" ? Math.min(now, cur.deadline) : now;
+      const hadShowtimeTimer = this.running && cur && cur.name === "mirrorShowtime";
+      if (this._advanceMirrorShowtime(cap) && hadShowtimeTimer) closed.push("mirrorShowtime");
+    }
     if (this.hooks.onTick) this.hooks.onTick(this, now);
     if (this._isMirrorShowtimeActive()) {
       const cur = this._timer.current;
@@ -660,6 +666,16 @@ class Game {
       this.round.trial instanceof Trial.MirrorTrial &&
       this.round.trial.phase === "showtime";
   }
+  _resolvePlayer(playerOrId) {
+    if (this.players.includes(playerOrId)) return playerOrId;
+    return this.players.find(p => p.id === playerOrId) || null;
+  }
+  _mirrorDanceOpts(playerOrId, opts = {}) {
+    const out = this._mirrorElapsedOpts(opts);
+    const pl = this._resolvePlayer(playerOrId);
+    out.isIdle = !!(pl && pl.idle);
+    return out;
+  }
   _activeMirrorHumanIds() {
     return new Set(this.players.filter(p => !p.isBot && !p.isStuck() && !p.idle).map(p => p.id));
   }
@@ -723,6 +739,7 @@ class Game {
         for (const team of this.teams) {
           if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
           t.tickSetup(team, nextAt, { activeHumanIds });
+          t.tickDance(team, nextAt, { activeHumanIds });
         }
         for (const team of this.teams) {
           if (!t.isBotOnlyTeam(team)) t.checkAttention(team, secLeftAt);
@@ -748,6 +765,11 @@ class Game {
       if (runChrono()) return true;
     }
     if (!this._isMirrorShowtimeActive()) return true;
+    const activeHumanIdsEnd = this._activeMirrorHumanIds();
+    for (const team of this.teams) {
+      if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
+      t.tickDance(team, targetNow, { activeHumanIds: activeHumanIdsEnd });
+    }
     const left = this.mirrorShowtimeSecondsLeft(targetNow);
     for (const team of this.teams) {
       if (!t.isBotOnlyTeam(team)) t.checkAttention(team, left);
@@ -844,9 +866,10 @@ class Game {
   mirrorAnswerQa(playerOrId, answerIndex, opts) { return this._mirrorCall(t => t.answerQa(playerOrId, answerIndex, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
   mirrorTimeoutQa(playerOrId, opts) { return this._mirrorCall(t => t.timeoutQa(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
   mirrorWrapUp(playerOrId, opts = {}) { return this._mirrorCall(t => t.wrapUp(playerOrId, this._mirrorLeftOpts(opts)), { checkClose: true }); }
-  mirrorDanceHit(playerOrId, quality, opts) { return this._mirrorCall(t => t.danceHit(playerOrId, quality, this._mirrorElapsedOpts(opts))); }
-  mirrorDanceMiss(playerOrId, opts) { return this._mirrorCall(t => t.danceMiss(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
-  mirrorDanceStray(playerOrId, opts) { return this._mirrorCall(t => t.danceStray(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorDancePress(playerOrId, dir, opts) { return this._mirrorCall(t => t.dancePress(playerOrId, dir, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
+  mirrorDanceHit(playerOrId, quality, opts) { return this._mirrorCall(t => t.danceHit(playerOrId, quality, this._mirrorDanceOpts(playerOrId, opts))); }
+  mirrorDanceMiss(playerOrId, opts) { return this._mirrorCall(t => t.danceMiss(playerOrId, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
+  mirrorDanceStray(playerOrId, opts) { return this._mirrorCall(t => t.danceStray(playerOrId, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
   mirrorAttention(teamOrId, now = this.now()) {
     const t = this.round && this.round.trial;
     return t instanceof Trial.MirrorTrial ? t.attentionFor(teamOrId, this.mirrorShowtimeSecondsLeft(now)) : null;
@@ -876,6 +899,7 @@ class Game {
     return team ? t.setupViewFor(team, now) : null;
   }
   mirrorDanceTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceTeamState(teamOrId) : null; }
+  mirrorDanceView(playerOrId, now = this.now()) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceViewFor(playerOrId, now) : null; }
   trialRanking() { return (this.round && this.round.trial && this.round.trial.ranking) || []; }
   teamTrialResults(teamOrId) { const t = typeof teamOrId === "object" && teamOrId ? teamOrId : this.teams.find(x => x.id === teamOrId); return t ? { ...t.trialResults } : {}; }
   teamStandings() { return [...this.teams].sort((a, b) => b.trialWins - a.trialWins).map((team, i) => ({ place: i + 1, team, wins: team.trialWins })); }

@@ -545,7 +545,7 @@ class MirrorTrial extends Trial {
     this.#seedRng = typeof seedRng === "function" ? seedRng : deriveMirrorSeedRng(rng);
     this.#lobby = new MirrorParts.MirrorLobby(rng, null, { seedRng: this.#seedRng });
     this.#setup = new MirrorParts.SetupCrew(rng, null, { seedRng: this.#seedRng });
-    this.#dance = new MirrorParts.DanceCrew(rng);
+    this.#dance = new MirrorParts.DanceCrew(rng, null, { seedRng: this.#seedRng });
   }
 
   static get MAX_SCORE() { return MirrorData.scoring.maxScore; }
@@ -766,6 +766,7 @@ class MirrorTrial extends Trial {
     }
     this.#showtimeStartAt = typeof now === "number" && Number.isFinite(now) ? now : null;
     this.#setup.beginShowtime(this.#showtimeStartAt);
+    this.#dance.beginShowtime(this.#showtimeStartAt);
     this.#phase = "showtime";
     return { ok: true, phase: this.#phase, setup: this.#setup.state(), dance: this.#dance.state() };
   }
@@ -834,6 +835,8 @@ class MirrorTrial extends Trial {
     let earliest = Infinity;
     const setupDue = this.nextSetupDeadline(tid, { activeHumanIds, now });
     if (setupDue !== null && setupDue < earliest) earliest = setupDue;
+    const danceDue = this.nextDanceDeadline(tid, { activeHumanIds });
+    if (danceDue !== null && danceDue < earliest) earliest = danceDue;
     if (includeBots && typeof showStart === "number" && Number.isFinite(showStart)) {
       const autoSet = autoPilotIds instanceof Set
         ? autoPilotIds
@@ -925,6 +928,23 @@ class MirrorTrial extends Trial {
     return res;
   }
 
+  dancePress(playerId, dir, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#dance.press(playerId, dir, opts);
+  }
+  nextDanceDeadline(teamOrId, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#teamShowtimeWhy(tid) || this.#botOnlyTeams.has(tid)) return null;
+    return this.#dance.nextDeadline(tid, opts);
+  }
+  tickDance(teamOrId, now, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    const why = this.#teamShowtimeWhy(tid) || (this.#botOnlyTeams.has(tid) ? "Bot-only team." : null);
+    return why ? { ok: false, reason: why } : this.#dance.tickDeadlines(tid, now, opts);
+  }
+  danceViewFor(playerOrId, now = null) {
+    return this.#dance.danceViewFor(playerOrId, now);
+  }
   danceHit(playerId, quality, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#dance.noteHit(playerId, quality, opts);
@@ -1203,7 +1223,12 @@ class MirrorTrial extends Trial {
         t.#setup.beginShowtime(t.#showtimeStartAt);
       }
     }
-    if (data.dance) t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng });
+    if (data.dance) {
+      t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng, seedRng });
+      if (t.#dance.showtimeStartAt === null && t.#showtimeStartAt !== null) {
+        t.#dance.beginShowtime(t.#showtimeStartAt);
+      }
+    }
     t.#failedTeams = new Set(data.failedTeams || []);
     t.#failReasons = new Map(data.failReasons || []);
     t.#botOnlyTeams = new Set(data.botOnlyTeams || []);

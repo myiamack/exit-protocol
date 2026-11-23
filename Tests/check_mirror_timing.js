@@ -64,6 +64,16 @@ function connectTeam(g, team) {
   return last;
 }
 
+function setDancersIdle(g, teams, idle) {
+  const tr = g.mirror();
+  for (const t of teams) {
+    for (const id of tr.dancerIdsFor(t)) {
+      const p = g.players.find(pl => pl.id === id);
+      if (p) p.idle = idle;
+    }
+  }
+}
+
 function playSetupCleanlyThroughGame(g, team, T = null) {
   const tr = g.mirror();
   const pid = () => tr.setupCurrentPlayerId(team);
@@ -185,6 +195,7 @@ console.log("-- 2. Full timer chain: 30s lobby -> 1s reveal -> 75s showtime -> c
   // At 31s mirrorReveal closes into 75s mirrorShowtime
   T.now = startAt + 31000;
   const closed31 = g.tick(T.now);
+  setDancersIdle(g, [teams[0]], true);
   expect(
     "At 31s mirrorReveal closes into 75s mirrorShowtime with deadline +106s",
     JSON.stringify(closed31) === '["mirrorReveal"]' &&
@@ -206,7 +217,9 @@ console.log("-- 2. Full timer chain: 30s lobby -> 1s reveal -> 75s showtime -> c
 
   // Add dancer boost on team 0 so score is non-zero when 75s expires naturally
   const dancers0 = trial.dancerIdsFor(teams[0]);
+  setDancersIdle(g, [teams[0]], false);
   for (let i = 0; i < 6; i++) g.mirrorDanceHit(dancers0[0], "perfect"); // +18 / 2 = +9 avg boost
+  setDancersIdle(g, [teams[0]], true);
 
   // At +106s (75s showtime elapsed): mirrorShowtime closes and records round.mirrorResults
   T.now = startAt + 106000;
@@ -315,6 +328,7 @@ console.log("-- 5. Setup/Dance Game pass-throughs and partial/full human wrap-up
   connectTeam(g, teams[3]);
   T.now += 1000;
   g.tick(T.now); // startShowtime
+  setDancersIdle(g, [teams[0], teams[1]], true);
 
   // Advance 5.25s into showtime so after 9.75s of mic flashes we reach 15s (60s left -> base 80)
   T.now += 5250;
@@ -350,10 +364,12 @@ console.log("-- 5. Setup/Dance Game pass-throughs and partial/full human wrap-up
   const rQaTo = g.mirrorTimeoutQa(pid0()); // +5 -> 22
 
   const [d0, d1] = trial.dancerIdsFor(teams[0]);
+  setDancersIdle(g, [teams[0]], false);
   const rDHit1 = g.mirrorDanceHit(d0, "perfect"); // +3
   const rDHit2 = g.mirrorDanceHit(d1, "good");    // +2 -> avgBoost = 2.5
   const rDMiss = g.mirrorDanceMiss(d0);           // +2 -> avgPen = 1.0
   const rDStray = g.mirrorDanceStray(d1);         // +1 -> avgPen = 1.5
+  setDancersIdle(g, [teams[0]], true);
   // At 60s left: 80 + 2.5 - 22 - 1.5 = 59 -> score round(59/100*7) = 4
   const preWrapAtt = g.mirrorAttention(teams[0], T.now);
   const preWrapScore = g.mirrorScore(teams[0], T.now);
@@ -391,6 +407,7 @@ console.log("-- 6. Attention hitting 0 during showtime (action-triggered and clo
   connectTeam(gAct, teamsAct[1]);
   TAct.now += 1000;
   gAct.tick(TAct.now); // showtime starts
+  setDancersIdle(gAct, [teamsAct[0]], true);
   TAct.now += 70000;   // 5s left -> base ~6.67
   gAct.tick(TAct.now);
   const sAct = trialAct.setupCurrentPlayerId(teamsAct[0]);
@@ -414,6 +431,7 @@ console.log("-- 6. Attention hitting 0 during showtime (action-triggered and clo
   connectTeam(gClk, teamsClk[1]);
   TClk.now += 1000;
   gClk.tick(TClk.now); // showtime starts (75s deadline)
+  setDancersIdle(gClk, [teamsClk[0]], true);
   TClk.now += 15000;   // 60s left -> base 80
   gClk.tick(TClk.now);
   const sClk = trialClk.setupCurrentPlayerId(teamsClk[0]);
@@ -498,6 +516,7 @@ console.log("-- 7. Mid-trial save and load catch-up + plain JSON");
   for (const t of teamsMid) connectTeam(gMid, t);
   TMid.now += 1000;
   gMid.tick(TMid.now); // showtime starts at midStart + 9000 (deadline midStart + 84000)
+  setDancersIdle(gMid, [teamsMid[0], teamsMid[1]], true);
   TMid.now += 10000;
   gMid.tick(TMid.now);
 
@@ -505,7 +524,9 @@ console.log("-- 7. Mid-trial save and load catch-up + plain JSON");
   gMid.mirrorCableMiss(mPid, "HDMI");
   gMid.mirrorCableHit(mPid, MirrorData.ports[0]);
   gMid.mirrorCableHit(mPid, MirrorData.ports[1]);
+  setDancersIdle(gMid, [teamsMid[0]], false);
   gMid.mirrorDanceHit(trialMid.dancerIdsFor(teamsMid[0])[0], "perfect");
+  setDancersIdle(gMid, [teamsMid[0]], true);
 
   const midJson = gMid.toJSON();
   const midPlainErr = plainProblem(midJson);

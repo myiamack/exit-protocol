@@ -30,5 +30,8 @@ PASS  MirrorTrial gates dance actions to showtime (unclosed), rejects setup/idle
 -- 9. Save and load (DanceCrew direct and MirrorTrial / Trial.fromJSON)
 PASS  DanceCrew.fromJSON produces plain data and continues identically with synced Rng
 PASS  MirrorTrial mid-showtime save/load restores #lobby, #setup, #dance, bot attention, and continues identically
+-- 10. Seeded note chart, tempo ramp, hit judging, miss deadlines, idle gating, and danceViewFor
+PASS  Same seed produces identical DanceCrew chart, tempo ramp 6->5->4, <=2 repeats, with 0 Game.rng draws
+PASS  DanceCrew miss deadlines fire on exact tick for active dancers only, reject idle presses, and load older saves
 
-23 passed, 0 failed.
+25 passed, 0 failed.

@@ -13,7 +13,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 2:** Game clock sync, Gift Window auto-advance, and timer banner alignment (`V-01, V-02, V-11`)
 - [x] **Step 3a:** Level 3 seeds (Lobby cursor, Cables bag, Sound Check spikes and jitter) from `MirrorTrial`'s seeded `Rng` (`V-28, V-32, V-33`)
 - [x] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
-- [ ] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
+- [x] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
 - [ ] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
 - [ ] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
 - [ ] **Step 7 (BLOCKED):** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`) — blocked until Ben decides when the Levels 5-6 vote closes (Q10)
@@ -72,15 +72,16 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
   - During Mirror showtime, `Game.tick()` runs Setup deadlines in time order up to `min(now, timer deadline)` before closing the step timer, so wake-ups after sleep match tick-by-tick runs. Outside showtime, tick order is unchanged.
 - **Checks:** `npm run build`, `npm test` (note: explain any diff in `check_mirror_*` / `check_save` baselines if new deadlines or JSON fields are added; verify Level 1 and Level 2 snapshots are unchanged; no baseline save without explaining diffs), `npm run test:screens`.
 
-#### Step 4: Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial`
+#### Step 4: Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` — DONE
 - **Violations covered:** `V-35, V-36, V-37`
-- **Files touched:** `rules/MirrorParts.js`, `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `mirror-dance-view.js`, `Tests/check_mirror_dance.js`, `Tests/check_mirror_bots.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
+- **Files touched:** `rules/MirrorParts.js`, `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `mirror-dance-view.js`, `Tests/check_mirror_dance.js`, `Tests/check_mirror_bots.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** Existing `DanceCrew` (`rules/MirrorParts.js`) via `MirrorTrial` (`rules/Trial.js`) and `Game` pass-throughs (`rules/Game.js`).
   - Generate each dancer's deterministic note sequence/schedule in `DanceCrew` using `MirrorTrial`'s seeded `Rng` (saved in `DanceCrew.toJSON`/`fromJSON`), removing `Math.random()` from `mirror-dance-view.js:53`.
   - Reject `noteMiss` / `noteHit` / `strayPress` when the dancer is idle (matching `CLAUDE.md`), and advance expired unhit notes on `Game.tick()` (skipping idle dancers so bots auto-pilot them cleanly without charging `-2` misses).
   - `mirror-dance-view.js` uses `requestAnimationFrame` strictly to draw note positions from the rules-owned chart and elapsed showtime, and forwards key/pad presses to `Game`.
 - **QA bugs fixed:** None from Level 2 QA (fixes Level 3 QA Step 10 #1 and #4).
-- **Checks:** `npm run build`, `npm test` (explain any diff in `check_mirror_dance` / `check_save` baselines; Level 1 and Level 2 snapshots unchanged), `npm run test:screens`.
+- **Done notes:** Added `Game.mirrorDancePress(p, dir)` and read-only `Game.mirrorDanceView(p)` with per-dancer charts seeded from `#seedRng` (zero `Game.rng` draws, exact reload persistence), idle press/hit/miss/stray rejection, and miss deadlines interleaved in `_advanceMirrorShowtime` alongside Setup deadlines (also moved post-`mirrorReveal` `_advanceMirrorShowtime` before `hooks.onTick` in `Game.tick()` so late wake-ups fire 0-34s dance misses before bot wrap-up). Progress Board arrow-key blocking was kept unchanged (notes continue to miss on rules time while the board is open).
+- **Checks:** `npm run build`, `npm test` (explain any diff in `check_mirror_dance` / `check_mirror_bots` / `check_save` baselines; Level 1 and Level 2 snapshots unchanged), `npm run test:screens`.
 
 ---
 

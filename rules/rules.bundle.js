@@ -3330,22 +3330,28 @@ class SetupCrew {
 }
 
 /* Dance Crew state for Presentation Day: dancer roster taken from SetupCrew's crew split,
-   results-based note hits (cap 45), misses/strays, averaged boosts and penalties across dancers,
-   bot dance boost timing (+1 every 1.5 to 2.5 seconds, no misses), and toJSON/fromJSON.
+   seeded per-dancer note charts & tempo ramp, hit judging, miss deadlines, idle gating,
+   averaged boosts and penalties across dancers, bot dance boost timing, and toJSON/fromJSON.
    Outside code calls MirrorTrial only. */
 class DanceCrew {
   #rng;
+  #seedRng;
   #started = false;
+  #showtimeStartAt = null;
   #teams = new Map();       // teamId -> { teamId, order: playerId[], dancers: Map<playerId, rec> }
   #playerIndex = new Map(); // playerId -> { teamId, rec }
 
   constructor(rng, entries = null, options = {}) {
     if (typeof rng !== "function") throw new Error("DanceCrew requires a seeded rng.");
     this.#rng = rng;
+    this.#seedRng = options && typeof options.seedRng === "function"
+      ? options.seedRng
+      : deriveSeedRng(rng);
     if (entries !== null) this.start(entries, options);
   }
 
   get started() { return this.#started; }
+  get showtimeStartAt() { return this.#showtimeStartAt; }
 
   #lookupPlayer(playerOrId) {
     const id = idOf(playerOrId);
@@ -3358,6 +3364,124 @@ class DanceCrew {
     const minTicks = Math.round(MirrorData.bots.danceMinSeconds / tickSec);
     const maxTicks = Math.round(MirrorData.bots.danceMaxSeconds / tickSec);
     return (minTicks + Math.floor(this.#rng() * (maxTicks - minTicks + 1))) * tickSec;
+  }
+
+  #rollChartSeed() {
+    return (Math.floor(this.#seedRng() * 0x100000000) | 0);
+  }
+
+  #makeEmptyChart(seedState = null) {
+    return {
+      notes: [],
+      nextNoteTick: 0,
+      spawnedCount: 0,
+      nextId: 1,
+      lastDirs: [],
+      rngState: typeof seedState === "number" ? (seedState | 0) : this.#rollChartSeed(),
+    };
+  }
+
+  #cloneChart(chart) {
+    return {
+      notes: chart.notes.map(n => ({ ...n })),
+      nextNoteTick: chart.nextNoteTick,
+      spawnedCount: chart.spawnedCount,
+      nextId: chart.nextId,
+      lastDirs: chart.lastDirs.slice(),
+      rngState: chart.rngState,
+    };
+  }
+
+  #noteGapTicks(spawnedCount) {
+    const D = MirrorData.dance;
+    if (spawnedCount > D.tempoRampFastNotes) return D.gapFastTicks;
+    if (spawnedCount > D.tempoRampMidNotes) return D.gapMidTicks;
+    return D.gapInitialTicks;
+  }
+
+  #nextArrowDir(lastDirs, rngFn) {
+    const D = MirrorData.dance;
+    const arrows = D.arrows;
+    const maxSame = D.maxConsecutiveSame;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const dir = arrows[Math.floor(rngFn() * arrows.length)];
+      const n = lastDirs.length;
+      if (n >= maxSame && lastDirs.slice(n - maxSame).every(prev => prev === dir)) continue;
+      return dir;
+    }
+    const last = lastDirs[lastDirs.length - 1];
+    return arrows.find(dir => dir !== last) || arrows[0];
+  }
+
+  #spawnOnChart(chart, upToTick) {
+    if (chart.nextNoteTick > upToTick) return;
+    const r = Rng.seeded(0);
+    r.setState(chart.rngState);
+    const maxSame = MirrorData.dance.maxConsecutiveSame;
+    while (chart.nextNoteTick <= upToTick) {
+      const spawnT = chart.nextNoteTick;
+      const dir = this.#nextArrowDir(chart.lastDirs, r);
+      chart.lastDirs.push(dir);
+      if (chart.lastDirs.length > maxSame) chart.lastDirs.shift();
+      chart.notes.push({ id: chart.nextId++, dir, t0: spawnT, judged: null, judgedAt: null });
+      chart.spawnedCount += 1;
+      chart.nextNoteTick = spawnT + this.#noteGapTicks(chart.spawnedCount);
+    }
+    chart.rngState = r.getState();
+  }
+
+  #spawnUpTo(rec, upToTick) {
+    this.#spawnOnChart(rec.chart, upToTick);
+  }
+
+  #pruneJudged(chart, currentTick) {
+    chart.notes = chart.notes.filter(n => !n.judged || currentTick - n.judgedAt <= 2);
+  }
+
+  #resumeChartFromIdle(chart, atTick) {
+    chart.notes = chart.notes.filter(n => !n.judged && this.#missTickOf(n.t0) > atTick);
+    const nextTick = Math.ceil(atTick);
+    if (chart.nextNoteTick < nextTick) chart.nextNoteTick = nextTick;
+  }
+
+  #missTickOf(t0) {
+    const D = MirrorData.dance;
+    return t0 + D.travelTicks + D.goodWindowTicks + 1;
+  }
+
+  #tickFromOpts(elapsedSeconds, now) {
+    const tickMs = MirrorData.timers.tickMs;
+    if (typeof now === "number" && Number.isFinite(now) && this.#showtimeStartAt !== null) {
+      return Math.max(0, (now - this.#showtimeStartAt) / tickMs);
+    }
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      return Math.max(0, elapsedSeconds * (1000 / tickMs));
+    }
+    return 0;
+  }
+
+  #isIdlePlayer(playerOrId, opts) {
+    return !!(opts && opts.isIdle) || !!(playerOrId && typeof playerOrId === "object" && playerOrId.idle);
+  }
+
+  #isActiveHumanDancer(rec, activeHumanIds) {
+    if (!rec || rec.isBot) return false;
+    if (activeHumanIds === null || activeHumanIds === undefined) return true;
+    return activeHumanIds instanceof Set
+      ? activeHumanIds.has(rec.playerId)
+      : Array.isArray(activeHumanIds) && activeHumanIds.includes(rec.playerId);
+  }
+
+  beginShowtime(now = null) {
+    this.#showtimeStartAt = typeof now === "number" && Number.isFinite(now) ? now : null;
+    for (const ts of this.#teams.values()) {
+      for (const pid of ts.order) {
+        const rec = ts.dancers.get(pid);
+        if (rec && !rec.isBot && rec.chart.spawnedCount === 0) {
+          this.#spawnUpTo(rec, 0);
+        }
+      }
+    }
   }
 
   #makeDancerRecord(p) {
@@ -3380,6 +3504,10 @@ class DanceCrew {
       lastActionAt: 0,
       lastBotAt: 0,
       nextBotBoostAt: isBot ? this.#rollBotInterval() : null,
+      lastMove: "",
+      stumbleUntilTick: 0,
+      wasIdle: false,
+      chart: this.#makeEmptyChart(),
     };
   }
 
@@ -3445,13 +3573,68 @@ class DanceCrew {
     return this.state();
   }
 
-  /* Record a note hit ("perfect" +3 or "good" +2), capped at 45 boost per dancer. */
-  noteHit(playerOrId, quality, { elapsedSeconds = null } = {}) {
+  /* Judge an arrow press ("left" | "up" | "right" | "down") against the dancer's seeded note schedule. */
+  press(playerOrId, dir, opts = {}) {
     const chk = this.#checkDancer(playerOrId);
     if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
+    const D = MirrorData.dance;
+    if (!D.arrows.includes(dir)) {
+      return { ok: false, reason: "Invalid arrow." };
+    }
+    const { rec } = chk;
+    const { elapsedSeconds = null, now = null } = opts;
+    const atTick = this.#tickFromOpts(elapsedSeconds, now);
+    const elSec = (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds))
+      ? elapsedSeconds
+      : (atTick * MirrorData.timers.tickMs) / 1000;
+    if (rec.wasIdle) {
+      this.#resumeChartFromIdle(rec.chart, atTick);
+      rec.wasIdle = false;
+    }
+    this.#spawnUpTo(rec, Math.floor(atTick));
+
+    let best = null;
+    let bd = Infinity;
+    for (const n of rec.chart.notes) {
+      if (n.judged || n.dir !== dir) continue;
+      const d = Math.abs(atTick - (n.t0 + D.travelTicks));
+      if (d < bd) {
+        bd = d;
+        best = n;
+      }
+    }
+
+    if (best && bd <= D.goodWindowTicks) {
+      const quality = bd <= D.perfectWindowTicks ? "perfect" : "good";
+      best.judged = quality;
+      best.judgedAt = atTick;
+      rec.lastMove = dir;
+      rec.stumbleUntilTick = 0;
+      this.#pruneJudged(rec.chart, atTick);
+      const res = this.noteHit(playerOrId, quality, { elapsedSeconds: elSec });
+      return { ...res, hit: true, stray: false, dir, noteId: best.id };
+    }
+
+    rec.stumbleUntilTick = atTick + D.stumbleTicks;
+    this.#pruneJudged(rec.chart, atTick);
+    const res = this.strayPress(playerOrId, { elapsedSeconds: elSec });
+    return { ...res, hit: false, stray: true, dir, noteId: null };
+  }
+
+  /* Record a note hit ("perfect" +3 or "good" +2), capped at 45 boost per dancer. */
+  noteHit(playerOrId, quality, opts = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
     if (quality !== "perfect" && quality !== "good") {
       return { ok: false, reason: "Hit quality must be perfect or good." };
     }
+    const { elapsedSeconds = null } = opts;
     const { ts, rec } = chk;
     const D = MirrorData.dance;
     const rawGain = quality === "perfect" ? D.perfectBoost : D.goodBoost;
@@ -3481,9 +3664,13 @@ class DanceCrew {
   }
 
   /* Record a missed note costing 2 attention (averaged across dancers) and resetting combo. */
-  noteMiss(playerOrId, { elapsedSeconds = null } = {}) {
+  noteMiss(playerOrId, opts = {}) {
     const chk = this.#checkDancer(playerOrId);
     if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
+    const { elapsedSeconds = null } = opts;
     const { ts, rec } = chk;
     const penaltyAdded = MirrorData.dance.missPenalty;
     rec.penalties += penaltyAdded;
@@ -3506,9 +3693,13 @@ class DanceCrew {
   }
 
   /* Record an off-beat stray key press costing 1 attention (averaged across dancers) and resetting combo. */
-  strayPress(playerOrId, { elapsedSeconds = null } = {}) {
+  strayPress(playerOrId, opts = {}) {
     const chk = this.#checkDancer(playerOrId);
     if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
+    const { elapsedSeconds = null } = opts;
     const { ts, rec } = chk;
     const penaltyAdded = MirrorData.dance.strayPenalty;
     rec.penalties += penaltyAdded;
@@ -3603,6 +3794,163 @@ class DanceCrew {
     };
   }
 
+  /* Next miss deadline (ms) among active non-idle human dancers on a team, or null. */
+  nextDeadline(teamOrId, { activeHumanIds = null } = {}) {
+    if (!this.#started || this.#showtimeStartAt === null) return null;
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return null;
+    const tickMs = MirrorData.timers.tickMs;
+    let earliest = Infinity;
+    for (const pid of ts.order) {
+      const rec = ts.dancers.get(pid);
+      if (!this.#isActiveHumanDancer(rec, activeHumanIds)) continue;
+      let minT0 = null;
+      for (const n of rec.chart.notes) {
+        if (!n.judged && (minT0 === null || n.t0 < minT0)) minT0 = n.t0;
+      }
+      if (minT0 === null) minT0 = rec.chart.nextNoteTick;
+      const dueAt = this.#showtimeStartAt + this.#missTickOf(minT0) * tickMs;
+      if (dueAt < earliest) earliest = dueAt;
+    }
+    return Number.isFinite(earliest) ? earliest : null;
+  }
+
+  /* Spawn notes and record any missed-note deadlines up to now for active non-idle human dancers. */
+  tickDeadlines(teamOrId, now, { activeHumanIds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Dance Crew has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Dance Crew." };
+    if (typeof now !== "number" || !Number.isFinite(now)) {
+      return { ok: false, reason: "Invalid timestamp." };
+    }
+    if (this.#showtimeStartAt === null) {
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        events: [],
+        avgBoost: this.avgBoostFor(ts.teamId),
+        avgPenalties: this.avgPenaltiesFor(ts.teamId),
+      };
+    }
+
+    const tickMs = MirrorData.timers.tickMs;
+    const D = MirrorData.dance;
+    const currentTick = Math.max(0, (now - this.#showtimeStartAt) / tickMs);
+    const events = [];
+
+    for (const pid of ts.order) {
+      const rec = ts.dancers.get(pid);
+      if (!rec || rec.isBot) continue;
+      if (!this.#isActiveHumanDancer(rec, activeHumanIds)) {
+        // Idle human dancers follow bot auto-pilot and receive no -2 missed notes.
+        rec.wasIdle = true;
+        rec.chart.notes = rec.chart.notes.filter(n => !n.judged && this.#missTickOf(n.t0) > currentTick);
+        continue;
+      }
+      if (rec.wasIdle) {
+        this.#resumeChartFromIdle(rec.chart, currentTick);
+        rec.wasIdle = false;
+      }
+      this.#spawnUpTo(rec, Math.floor(currentTick));
+      for (const n of rec.chart.notes) {
+        if (n.judged) continue;
+        const missTick = this.#missTickOf(n.t0);
+        if (missTick <= currentTick) {
+          n.judged = "miss";
+          n.judgedAt = missTick;
+          rec.stumbleUntilTick = missTick + D.stumbleTicks;
+          const missRes = this.noteMiss(pid, { elapsedSeconds: (missTick * tickMs) / 1000 });
+          events.push({
+            kind: "danceMiss",
+            at: this.#showtimeStartAt + missTick * tickMs,
+            teamId: ts.teamId,
+            playerId: pid,
+            noteId: n.id,
+            dir: n.dir,
+            penaltyAdded: missRes.penaltyAdded,
+            penalties: missRes.penalties,
+          });
+        }
+      }
+      this.#pruneJudged(rec.chart, currentTick);
+    }
+
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      events,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Read-only snapshot of a dancer's rhythm lane and note schedule at clock now. */
+  danceViewFor(playerOrId, now = null) {
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return null;
+    const { teamId, rec } = entry;
+    const D = MirrorData.dance;
+    const tickMs = MirrorData.timers.tickMs;
+    const hasNow = typeof now === "number" && Number.isFinite(now) && this.#showtimeStartAt !== null;
+    const currentTick = hasNow ? Math.max(0, (now - this.#showtimeStartAt) / tickMs) : 0;
+
+    const preview = this.#cloneChart(rec.chart);
+    if (!rec.isBot && hasNow && rec.wasIdle) {
+      this.#resumeChartFromIdle(preview, currentTick);
+    }
+    if (!rec.isBot && hasNow) {
+      this.#spawnOnChart(preview, Math.floor(currentTick));
+    }
+    const visibleNotes = [];
+    for (const n of preview.notes) {
+      if (n.judged && currentTick - n.judgedAt > 2) continue;
+      const progress = (currentTick - n.t0) / D.travelTicks;
+      const leftPct = Math.max(-6, (1 - progress) * 100);
+      let zone;
+      if (n.judged) {
+        zone = "judged";
+      } else {
+        const diff = Math.abs(currentTick - (n.t0 + D.travelTicks));
+        zone = diff <= D.perfectWindowTicks ? "perfect" : diff <= D.goodWindowTicks ? "good" : "incoming";
+      }
+      visibleNotes.push({
+        id: n.id,
+        dir: n.dir,
+        t0: n.t0,
+        judged: n.judged,
+        judgedAt: n.judgedAt,
+        progress,
+        leftPct,
+        zone,
+      });
+    }
+
+    return {
+      teamId,
+      playerId: rec.playerId,
+      name: rec.name,
+      isBot: rec.isBot,
+      tick: currentTick,
+      elapsedSeconds: (currentTick * tickMs) / 1000,
+      boost: rec.boost,
+      boostCap: D.boostCap,
+      penalties: rec.penalties,
+      combo: rec.combo,
+      maxCombo: rec.maxCombo,
+      perfects: rec.perfects,
+      goods: rec.goods,
+      misses: rec.misses,
+      strays: rec.strays,
+      hits: rec.perfects + rec.goods,
+      spawnedCount: preview.spawnedCount,
+      gapTicks: this.#noteGapTicks(preview.spawnedCount),
+      nextNoteTick: preview.nextNoteTick,
+      notes: visibleNotes,
+      stumbling: currentTick < rec.stumbleUntilTick,
+      lastMove: rec.lastMove,
+    };
+  }
+
   teamIds() { return [...this.#teams.keys()]; }
   hasPlayer(playerOrId) { return !!this.#lookupPlayer(playerOrId); }
 
@@ -3614,12 +3962,16 @@ class DanceCrew {
   dancersFor(teamOrId) {
     const ts = this.#teams.get(idOf(teamOrId));
     if (!ts) return [];
-    return ts.order.map(id => ({ ...ts.dancers.get(id), teamId: ts.teamId }));
+    return ts.order.map(id => {
+      const rec = ts.dancers.get(id);
+      return { ...rec, teamId: ts.teamId, chart: this.#cloneChart(rec.chart) };
+    });
   }
 
   dancerState(playerOrId) {
     const entry = this.#lookupPlayer(playerOrId);
-    return entry ? { ...entry.rec, teamId: entry.teamId } : null;
+    if (!entry) return null;
+    return { ...entry.rec, teamId: entry.teamId, chart: this.#cloneChart(entry.rec.chart) };
   }
 
   boostFor(playerOrId) {
@@ -3690,20 +4042,71 @@ class DanceCrew {
   toJSON() {
     return {
       started: this.#started,
+      showtimeStartAt: this.#showtimeStartAt,
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
       teams: [...this.#teams.values()].map(ts => ({
         teamId: ts.teamId,
-        dancers: ts.order.map(id => ({ ...ts.dancers.get(id) })),
+        dancers: ts.order.map(id => {
+          const rec = ts.dancers.get(id);
+          return {
+            playerId: rec.playerId,
+            name: rec.name,
+            isBot: rec.isBot,
+            boost: rec.boost,
+            penalties: rec.penalties,
+            combo: rec.combo,
+            maxCombo: rec.maxCombo,
+            perfects: rec.perfects,
+            goods: rec.goods,
+            misses: rec.misses,
+            strays: rec.strays,
+            botBoosts: rec.botBoosts,
+            lastActionAt: rec.lastActionAt,
+            lastBotAt: rec.lastBotAt,
+            nextBotBoostAt: rec.nextBotBoostAt,
+            lastMove: rec.lastMove,
+            stumbleUntilTick: rec.stumbleUntilTick,
+            wasIdle: !!rec.wasIdle,
+            chart: {
+              ...this.#cloneChart(rec.chart),
+              gapTicks: this.#noteGapTicks(rec.chart.spawnedCount),
+            },
+          };
+        }),
       })),
     };
   }
 
-  static fromJSON(data, { rng } = {}) {
+  static fromJSON(data, { rng, seedRng = null } = {}) {
     if (!data || typeof data !== "object") throw new Error("Invalid DanceCrew save data.");
-    const dc = new DanceCrew(rng);
+    let useSeedRng = typeof seedRng === "function" ? seedRng : null;
+    if (!useSeedRng && typeof data.seedRngState === "number") {
+      useSeedRng = Rng.seeded(0);
+      useSeedRng.setState(data.seedRngState);
+    }
+    const dc = new DanceCrew(rng, null, { seedRng: useSeedRng });
     dc.#started = !!data.started;
+    dc.#showtimeStartAt = typeof data.showtimeStartAt === "number" ? data.showtimeStartAt : null;
     for (const td of (data.teams || [])) {
       const ts = { teamId: td.teamId, order: [], dancers: new Map() };
       for (const d of (td.dancers || [])) {
+        const savedChart = d.chart && typeof d.chart === "object" ? d.chart : null;
+        const chart = savedChart ? {
+          notes: Array.isArray(savedChart.notes)
+            ? savedChart.notes.map(n => ({
+                id: n.id,
+                dir: n.dir,
+                t0: n.t0,
+                judged: n.judged || null,
+                judgedAt: typeof n.judgedAt === "number" ? n.judgedAt : null,
+              }))
+            : [],
+          nextNoteTick: typeof savedChart.nextNoteTick === "number" ? savedChart.nextNoteTick : 0,
+          spawnedCount: typeof savedChart.spawnedCount === "number" ? savedChart.spawnedCount : 0,
+          nextId: typeof savedChart.nextId === "number" ? savedChart.nextId : 1,
+          lastDirs: Array.isArray(savedChart.lastDirs) ? savedChart.lastDirs.slice() : [],
+          rngState: typeof savedChart.rngState === "number" ? (savedChart.rngState | 0) : dc.#rollChartSeed(),
+        } : dc.#makeEmptyChart();
         const rec = {
           playerId: d.playerId,
           name: d.name,
@@ -3720,6 +4123,10 @@ class DanceCrew {
           lastActionAt: d.lastActionAt || 0,
           lastBotAt: d.lastBotAt || 0,
           nextBotBoostAt: d.nextBotBoostAt ?? null,
+          lastMove: typeof d.lastMove === "string" ? d.lastMove : "",
+          stumbleUntilTick: typeof d.stumbleUntilTick === "number" ? d.stumbleUntilTick : 0,
+          wasIdle: !!d.wasIdle,
+          chart,
         };
         ts.order.push(rec.playerId);
         ts.dancers.set(rec.playerId, rec);
@@ -4279,7 +4686,7 @@ class MirrorTrial extends Trial {
     this.#seedRng = typeof seedRng === "function" ? seedRng : deriveMirrorSeedRng(rng);
     this.#lobby = new MirrorParts.MirrorLobby(rng, null, { seedRng: this.#seedRng });
     this.#setup = new MirrorParts.SetupCrew(rng, null, { seedRng: this.#seedRng });
-    this.#dance = new MirrorParts.DanceCrew(rng);
+    this.#dance = new MirrorParts.DanceCrew(rng, null, { seedRng: this.#seedRng });
   }
 
   static get MAX_SCORE() { return MirrorData.scoring.maxScore; }
@@ -4500,6 +4907,7 @@ class MirrorTrial extends Trial {
     }
     this.#showtimeStartAt = typeof now === "number" && Number.isFinite(now) ? now : null;
     this.#setup.beginShowtime(this.#showtimeStartAt);
+    this.#dance.beginShowtime(this.#showtimeStartAt);
     this.#phase = "showtime";
     return { ok: true, phase: this.#phase, setup: this.#setup.state(), dance: this.#dance.state() };
   }
@@ -4568,6 +4976,8 @@ class MirrorTrial extends Trial {
     let earliest = Infinity;
     const setupDue = this.nextSetupDeadline(tid, { activeHumanIds, now });
     if (setupDue !== null && setupDue < earliest) earliest = setupDue;
+    const danceDue = this.nextDanceDeadline(tid, { activeHumanIds });
+    if (danceDue !== null && danceDue < earliest) earliest = danceDue;
     if (includeBots && typeof showStart === "number" && Number.isFinite(showStart)) {
       const autoSet = autoPilotIds instanceof Set
         ? autoPilotIds
@@ -4659,6 +5069,23 @@ class MirrorTrial extends Trial {
     return res;
   }
 
+  dancePress(playerId, dir, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#dance.press(playerId, dir, opts);
+  }
+  nextDanceDeadline(teamOrId, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#teamShowtimeWhy(tid) || this.#botOnlyTeams.has(tid)) return null;
+    return this.#dance.nextDeadline(tid, opts);
+  }
+  tickDance(teamOrId, now, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    const why = this.#teamShowtimeWhy(tid) || (this.#botOnlyTeams.has(tid) ? "Bot-only team." : null);
+    return why ? { ok: false, reason: why } : this.#dance.tickDeadlines(tid, now, opts);
+  }
+  danceViewFor(playerOrId, now = null) {
+    return this.#dance.danceViewFor(playerOrId, now);
+  }
   danceHit(playerId, quality, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#dance.noteHit(playerId, quality, opts);
@@ -4937,7 +5364,12 @@ class MirrorTrial extends Trial {
         t.#setup.beginShowtime(t.#showtimeStartAt);
       }
     }
-    if (data.dance) t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng });
+    if (data.dance) {
+      t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng, seedRng });
+      if (t.#dance.showtimeStartAt === null && t.#showtimeStartAt !== null) {
+        t.#dance.beginShowtime(t.#showtimeStartAt);
+      }
+    }
     t.#failedTeams = new Set(data.failedTeams || []);
     t.#failReasons = new Map(data.failReasons || []);
     t.#botOnlyTeams = new Set(data.botOnlyTeams || []);
@@ -5586,6 +6018,12 @@ class Game {
     }
     closed.push(...this._timer.tick(now));
     this._checkTwist(now);
+    if (this._isMirrorShowtimeActive()) {
+      const cur = this._timer.current;
+      const cap = this.running && cur && cur.name === "mirrorShowtime" ? Math.min(now, cur.deadline) : now;
+      const hadShowtimeTimer = this.running && cur && cur.name === "mirrorShowtime";
+      if (this._advanceMirrorShowtime(cap) && hadShowtimeTimer) closed.push("mirrorShowtime");
+    }
     if (this.hooks.onTick) this.hooks.onTick(this, now);
     if (this._isMirrorShowtimeActive()) {
       const cur = this._timer.current;
@@ -6053,6 +6491,16 @@ class Game {
       this.round.trial instanceof Trial.MirrorTrial &&
       this.round.trial.phase === "showtime";
   }
+  _resolvePlayer(playerOrId) {
+    if (this.players.includes(playerOrId)) return playerOrId;
+    return this.players.find(p => p.id === playerOrId) || null;
+  }
+  _mirrorDanceOpts(playerOrId, opts = {}) {
+    const out = this._mirrorElapsedOpts(opts);
+    const pl = this._resolvePlayer(playerOrId);
+    out.isIdle = !!(pl && pl.idle);
+    return out;
+  }
   _activeMirrorHumanIds() {
     return new Set(this.players.filter(p => !p.isBot && !p.isStuck() && !p.idle).map(p => p.id));
   }
@@ -6116,6 +6564,7 @@ class Game {
         for (const team of this.teams) {
           if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
           t.tickSetup(team, nextAt, { activeHumanIds });
+          t.tickDance(team, nextAt, { activeHumanIds });
         }
         for (const team of this.teams) {
           if (!t.isBotOnlyTeam(team)) t.checkAttention(team, secLeftAt);
@@ -6141,6 +6590,11 @@ class Game {
       if (runChrono()) return true;
     }
     if (!this._isMirrorShowtimeActive()) return true;
+    const activeHumanIdsEnd = this._activeMirrorHumanIds();
+    for (const team of this.teams) {
+      if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
+      t.tickDance(team, targetNow, { activeHumanIds: activeHumanIdsEnd });
+    }
     const left = this.mirrorShowtimeSecondsLeft(targetNow);
     for (const team of this.teams) {
       if (!t.isBotOnlyTeam(team)) t.checkAttention(team, left);
@@ -6237,9 +6691,10 @@ class Game {
   mirrorAnswerQa(playerOrId, answerIndex, opts) { return this._mirrorCall(t => t.answerQa(playerOrId, answerIndex, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
   mirrorTimeoutQa(playerOrId, opts) { return this._mirrorCall(t => t.timeoutQa(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
   mirrorWrapUp(playerOrId, opts = {}) { return this._mirrorCall(t => t.wrapUp(playerOrId, this._mirrorLeftOpts(opts)), { checkClose: true }); }
-  mirrorDanceHit(playerOrId, quality, opts) { return this._mirrorCall(t => t.danceHit(playerOrId, quality, this._mirrorElapsedOpts(opts))); }
-  mirrorDanceMiss(playerOrId, opts) { return this._mirrorCall(t => t.danceMiss(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
-  mirrorDanceStray(playerOrId, opts) { return this._mirrorCall(t => t.danceStray(playerOrId, this._mirrorElapsedOpts(opts)), { checkAttention: true }); }
+  mirrorDancePress(playerOrId, dir, opts) { return this._mirrorCall(t => t.dancePress(playerOrId, dir, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
+  mirrorDanceHit(playerOrId, quality, opts) { return this._mirrorCall(t => t.danceHit(playerOrId, quality, this._mirrorDanceOpts(playerOrId, opts))); }
+  mirrorDanceMiss(playerOrId, opts) { return this._mirrorCall(t => t.danceMiss(playerOrId, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
+  mirrorDanceStray(playerOrId, opts) { return this._mirrorCall(t => t.danceStray(playerOrId, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
   mirrorAttention(teamOrId, now = this.now()) {
     const t = this.round && this.round.trial;
     return t instanceof Trial.MirrorTrial ? t.attentionFor(teamOrId, this.mirrorShowtimeSecondsLeft(now)) : null;
@@ -6269,6 +6724,7 @@ class Game {
     return team ? t.setupViewFor(team, now) : null;
   }
   mirrorDanceTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceTeamState(teamOrId) : null; }
+  mirrorDanceView(playerOrId, now = this.now()) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceViewFor(playerOrId, now) : null; }
   trialRanking() { return (this.round && this.round.trial && this.round.trial.ranking) || []; }
   teamTrialResults(teamOrId) { const t = typeof teamOrId === "object" && teamOrId ? teamOrId : this.teams.find(x => x.id === teamOrId); return t ? { ...t.trialResults } : {}; }
   teamStandings() { return [...this.teams].sort((a, b) => b.trialWins - a.trialWins).map((team, i) => ({ place: i + 1, team, wins: team.trialWins })); }
