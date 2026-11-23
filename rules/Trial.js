@@ -835,7 +835,7 @@ class MirrorTrial extends Trial {
     let earliest = Infinity;
     const setupDue = this.nextSetupDeadline(tid, { activeHumanIds, now });
     if (setupDue !== null && setupDue < earliest) earliest = setupDue;
-    const danceDue = this.nextDanceDeadline(tid, { activeHumanIds });
+    const danceDue = this.nextDanceDeadline(tid, { activeHumanIds, includeSpawns: true });
     if (danceDue !== null && danceDue < earliest) earliest = danceDue;
     if (includeBots && typeof showStart === "number" && Number.isFinite(showStart)) {
       const autoSet = autoPilotIds instanceof Set

@@ -2255,7 +2255,7 @@ class DanceCrew {
   }
 
   /* Next miss deadline (ms) among active non-idle human dancers on a team, or null. */
-  nextDeadline(teamOrId, { activeHumanIds = null } = {}) {
+  nextDeadline(teamOrId, { activeHumanIds = null, includeSpawns = false } = {}) {
     if (!this.#started || this.#showtimeStartAt === null) return null;
     const ts = this.#teams.get(idOf(teamOrId));
     if (!ts) return null;
@@ -2271,6 +2271,10 @@ class DanceCrew {
       if (minT0 === null) minT0 = rec.chart.nextNoteTick;
       const dueAt = this.#showtimeStartAt + this.#missTickOf(minT0) * tickMs;
       if (dueAt < earliest) earliest = dueAt;
+      if (includeSpawns) {
+        const spawnAt = this.#showtimeStartAt + rec.chart.nextNoteTick * tickMs;
+        if (spawnAt < earliest) earliest = spawnAt;
+      }
     }
     return Number.isFinite(earliest) ? earliest : null;
   }

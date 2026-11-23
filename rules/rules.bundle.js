@@ -3795,7 +3795,7 @@ class DanceCrew {
   }
 
   /* Next miss deadline (ms) among active non-idle human dancers on a team, or null. */
-  nextDeadline(teamOrId, { activeHumanIds = null } = {}) {
+  nextDeadline(teamOrId, { activeHumanIds = null, includeSpawns = false } = {}) {
     if (!this.#started || this.#showtimeStartAt === null) return null;
     const ts = this.#teams.get(idOf(teamOrId));
     if (!ts) return null;
@@ -3811,6 +3811,10 @@ class DanceCrew {
       if (minT0 === null) minT0 = rec.chart.nextNoteTick;
       const dueAt = this.#showtimeStartAt + this.#missTickOf(minT0) * tickMs;
       if (dueAt < earliest) earliest = dueAt;
+      if (includeSpawns) {
+        const spawnAt = this.#showtimeStartAt + rec.chart.nextNoteTick * tickMs;
+        if (spawnAt < earliest) earliest = spawnAt;
+      }
     }
     return Number.isFinite(earliest) ? earliest : null;
   }
@@ -4976,7 +4980,7 @@ class MirrorTrial extends Trial {
     let earliest = Infinity;
     const setupDue = this.nextSetupDeadline(tid, { activeHumanIds, now });
     if (setupDue !== null && setupDue < earliest) earliest = setupDue;
-    const danceDue = this.nextDanceDeadline(tid, { activeHumanIds });
+    const danceDue = this.nextDanceDeadline(tid, { activeHumanIds, includeSpawns: true });
     if (danceDue !== null && danceDue < earliest) earliest = danceDue;
     if (includeBots && typeof showStart === "number" && Number.isFinite(showStart)) {
       const autoSet = autoPilotIds instanceof Set
