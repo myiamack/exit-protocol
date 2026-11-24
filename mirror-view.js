@@ -281,7 +281,7 @@ ${opts.sabotageAlert || ""}`;
 </div>`;
 
       const hint = opts.costHint ? `<span class="hint">${opts.costHint()}</span>` : "";
-      return `${attnBarHTML}${failBannerHTML}<div class="result" id="mirrorResult"><b style="color:${mineWon ? "var(--ok)" : "var(--bad)"}">Team ${mineWon ? "WIN" : "LOSS"}. Score ${mineScore} of ${maxScore}.</b><span class="hint">Final attention: ${formatAtt(mineAtt)}%. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win. Your team's ${esc(opts.attrName || "Focus")} can move the score a little.</span><span class="hint" id="mirrorTieRule">Ties: higher exact attention wins, then random.</span><table class="levels" id="mirrorRankTable"><thead><tr><th>Place</th><th>Team</th><th>Attention</th><th>Score</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table>${summaryHTML}${hint}</div>`;
+      return `${attnBarHTML}${failBannerHTML}<div class="result" id="mirrorResult"><b style="color:${mineWon ? "var(--ok)" : "var(--bad)"}">Team ${mineWon ? "WIN" : "LOSS"}. Score ${mineScore} of ${maxScore}.</b><span class="hint">Final attention: ${formatAtt(mineAtt)}%. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win. Your team's ${esc(opts.attrName || "Focus")} can move the score a little.</span><table class="levels" id="mirrorRankTable"><thead><tr><th>Place</th><th>Team</th><th>Attention</th><th>Score</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table>${summaryHTML}${hint}</div>`;
     };
 
     let mountedRoot = null;

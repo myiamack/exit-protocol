@@ -519,7 +519,7 @@ async function fullSevenLevelGame() {
             cells[3].includes(r.base + " / 7") &&
             cells[4] === (r.won ? "Win" : "Loss");
         });
-        const tieOk = (document.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random.";
+        const tieOk = !document.querySelector("#mirrorTieRule");
         const lt = G.mirrorLobbyTeam(MYTEAM);
         const st = G.mirrorSetupTeam(MYTEAM);
         const dc = G.mirrorDanceTeam(MYTEAM);
@@ -545,7 +545,7 @@ async function fullSevenLevelGame() {
           clean: !/Cooperative|Independent|Contrarian|Secret path|Lifeline|Auditor|Exploit/i.test(stg) && !/bot/i.test(stg),
         };
       })()`);
-      check("Level 3 trial result screen shows rules score, attention, ranking, tie rule, and team summary", res3.rowsMatch && res3.tieOk && res3.summaryOk && res3.winLossOk && res3.costOk && res3.clean);
+      check("Level 3 trial result screen shows rules score, attention, ranking, and team summary (no tie rule)", res3.rowsMatch && res3.tieOk && res3.summaryOk && res3.winLossOk && res3.costOk && res3.clean);
     } else if (kind === "auto") {
       check("Level " + lv + " renders AutoTrial placeholder", !!$("#runAuto"));
       $("#runAuto").click(); await sleep(20);
@@ -2762,7 +2762,7 @@ async function mirrorStep6eCases() {
       failedOtherRow.textContent.includes("Failed lobby") &&
       failedOtherRow.textContent.includes("0%") &&
       failedOtherRow.textContent.includes("0 / 7");
-    const tieLineOk = (boxA1.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random.";
+    const tieLineOk = !boxA1.querySelector("#mirrorTieRule") && !/ties:|tie rule|bonus|influence|exact/i.test(textA1);
     const stA1 = gA.mirrorSetupTeam(tA1);
     const dcA1 = gA.mirrorDanceTeam(tA1);
     const ltA1 = gA.mirrorLobbyTeam(tA1);
@@ -2795,7 +2795,7 @@ async function mirrorStep6eCases() {
       boxA2.querySelector("#mirrorSumLobby").textContent.includes("Failed (1 of 4 connected before doors closed)") &&
       boxA2.querySelector("#mirrorSumSetup").textContent.includes("lobby failed") &&
       boxA2.querySelector("#mirrorSumDance").textContent.includes("lobby failed") &&
-      (boxA2.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random." &&
+      !boxA2.querySelector("#mirrorTieRule") &&
       !LEAK_RE.test(textA2) && !HARDCODED_TEAMS_RE.test(textA2) && !/bot/i.test(textA2);
 
     // B. Attention-0 failure result screen and 0-dancer team summary
@@ -2845,7 +2845,7 @@ async function mirrorStep6eCases() {
       textB2.includes("ROOM EMPTIED") &&
       textB2.includes("Score 0 of 7.") &&
       boxB2.querySelector('#mirrorRankTable tbody tr[data-team-id="' + tB2.id + '"]').textContent.includes("Attention 0%") &&
-      (boxB2.querySelector("#mirrorTieRule") || {}).textContent === "Ties: higher exact attention wins, then random." &&
+      !boxB2.querySelector("#mirrorTieRule") &&
       !LEAK_RE.test(textB2);
 
     // C & D. Presentation Day Complete (exact L1-L3 history after save/load, boardStatus(), attributes order,
@@ -3031,7 +3031,7 @@ async function mirrorStep6eCases() {
   })()`);
 
   check("Level 3 result screen matches rules scores, exact attention, and ranking", res.rankRowsMatch && res.winLossA1Ok && res.cleanA1);
-  check("Level 3 result screen shows tie rule line", res.tieLineOk);
+  check("Level 3 result screen hides trial tie rule line", res.tieLineOk);
   check("Level 3 result screen plainly shows lobby-failed teams (other and own)", res.failedOtherShownPlainly && res.ownLobbyFailOk);
   check("Level 3 result screen team summary matches rules lobby, setup hiccups, and dance averages", res.sumA1Ok && res.zeroDancerSummaryOk);
   check("Level 3 result screen shows ROOM EMPTIED when attention hits 0%", res.attnZeroResultOk);
@@ -5218,7 +5218,7 @@ async function step10RuleChecksCases() {
 async function step11ScoringAndStandingsCases() {
   const gameSrc = fs.readFileSync(path.join(repo, "game.js"), "utf8");
   const sbSrc = fs.readFileSync(path.join(repo, "splitbrief-view.js"), "utf8");
-  const cleanTextRe = /tie rule|bonus|influence|exact/i;
+  const cleanTextRe = /ties:|tie rule|bonus|influence|exact/i;
 
   const gameResultSlice = [
     gameSrc.match(/function trialResultHTML[\s\S]*?\n\}/)?.[0] || "",
@@ -5316,19 +5316,24 @@ async function step11ScoringAndStandingsCases() {
     const s1Text = $("#stage").textContent;
     if (cleanTextRe.test(s1Text)) noLeakWordsOk = false;
 
-    // 3. Level 3 Presentation Day Complete shared places
+    // 3. Level 3 result view + Presentation Day Complete shared places
     w.eval('devJump(3);'); await sleep(20);
     next(); await sleep(10); // -> Open Floor
     finishTimedStep("openFloor"); await sleep(20); // -> Mirror Lobby
-    w.eval(`(() => {
+    const l3ResCheck = w.eval(`(() => {
       G.closeMirrorLobby();
       if (!G.didRun("runTrial")) G.closeMirror({ showtimeSecondsLeft: 0 });
+      S.step = 7; render();
+      const text = document.querySelector("#stage").textContent;
+      const hasTieEl = !!document.querySelector("#mirrorTieRule");
       G.endTrial(); G.endGlitchReport(); G.advance(); G.advance(); G.lockIn(); G.advance();
       G.computeEarnings(); G.placeAllRemaining(); G.finishRound();
       G.teams[0].trialWins = 1; G.teams[1].trialWins = 2; G.teams[2].trialWins = 2; G.teams[3].trialWins = 0;
       S.step = 9; render();
+      return { text, hasTieEl };
     })()`);
     await sleep(15);
+    if (l3ResCheck.hasTieEl || cleanTextRe.test(l3ResCheck.text)) noLeakWordsOk = false;
     const pdcPlaces = $$("#stage table.levels tbody tr").map(tr => tr.children[0].textContent.trim());
     const pdcText = $("#stage").textContent;
     if (cleanTextRe.test(pdcText)) noLeakWordsOk = false;
@@ -5375,7 +5380,7 @@ async function step11ScoringAndStandingsCases() {
   check("Sprint 1 Complete, Presentation Day Complete, and Final Results show shared places and 'Tied teams share a place.'", standingsScreensOk);
   check("Gift and Accusation hints show stat tie order from Game.statTieOrderLabel()", tieLabelOk && hintsOk);
   check("G.trialResultView and G.splitBriefView supply rounded scores/SOP flags with no Math.round or sort( in result code", noScoreMathInResults && sopAndAutoOk && splitResultOk);
-  check("Step 11 screen text contains no 'tie rule', 'bonus', 'influence', or 'exact'", noLeakWordsOk);
+  check("Step 11 and Level 3 result screen text contains no 'ties:', 'tie rule', 'bonus', 'influence', or 'exact'", noLeakWordsOk);
 }
 
 w.addEventListener("load", async () => {
