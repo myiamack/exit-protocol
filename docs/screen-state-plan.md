@@ -17,7 +17,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
 - [x] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
 - [x] **Step 7:** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`)
-- [ ] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
+- [x] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
 - [ ] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
 - [ ] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
 - [ ] **Step 11:** Remove scoring, ranking, and tie-break math from screen code (`V-12, V-13, V-22`)
@@ -122,14 +122,15 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 
 ### Phase 3: Player Data Reads
 
-#### Step 8: Draft-aware player reads and remove stale round copies
+#### Step 8: Draft-aware player reads and remove stale round copies — DONE
 - **Violations covered:** `V-07, V-08, V-09, V-16, V-39`
-- **Files touched:** `rules/Attributes.js`, `rules/Player.js`, `rules/Round.js`, `rules/Economy.js`, `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `world-map.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
+- **Files touched:** `rules/Attributes.js`, `rules/Player.js`, `rules/Round.js`, `rules/Economy.js`, `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `world-map.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** Existing `Attributes` (`rules/Attributes.js`), `Player` (`rules/Player.js`), `Round` (`rules/Round.js`), `Economy` (`rules/Economy.js`), and `Game` (`rules/Game.js`).
   - Allow `Attributes.abilityLines(draft = null)` / `Player.abilityLines(draft = null)` to preview `attrs + draft` during Stats Update and Graduation (default `null` keeps existing tests identical).
   - Persist per-player trial payments (`round.trialPayments`) and SOP timeout flag (`round.sopTimedOut`) in `Round` (`toJSON`/`fromJSON`), and record `safe` on `round.accusations` entries.
   - Add player-scoped read pass-throughs on `Game` (`playerState(p)`, `roundSummary(p)`, `sabotageOptions(p)`, `giftOptions(p)`, `answerGiftByIndex(p, index, accept)`) so `game.js` and `world-map.js` delete `S.pay`, `S.acc`, `S.gw.sent`, `S.sop.inTime`, `S.prog`, dummy `new EP.Round(1)`, and direct `G.round.*` / `EP.Gift.*` / `EP.Sabotage.*` accesses.
 - **QA bugs fixed:** **Bug 6** (Level 1 Stats Update ability text updates live as draft points are added/removed before Lock In).
+- **Done notes:** Added `abilityLines(draft = null)` to `Attributes` and `Player`; persisted `trialPayments`, `sopTimedOut`, and `accusations[].safe` in `Round` (`toJSON`/`fromJSON` with old-save defaults `{}`, `false`, `false`); tracked `submitSop` and `skipAccusation:<id>` in `round.completed` without extra RNG draws; added grouped `playerState`, `roundSummary`, `sabotageOptions`, `giftOptions`, and `answerGiftByIndex` pass-throughs on `Game` (normalizing Independent `"refused"` gifts to `"declined"` and hiding other players' types, stats, hearts, gifts, Skim, and Cash Out); and removed `S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`, `new EP.Round(1)`, and direct `G.round.*`/`EP.Gift.*`/`EP.Sabotage.*` calls from `game.js` and `world-map.js`.
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
 #### Step 9: Move anomaly tracking (`S.found`) into `Player` / `Game` save state

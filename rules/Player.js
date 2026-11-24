@@ -114,7 +114,7 @@ class Player {
   abilityChance(k) { return this.#attributes.abilityChance(k); }
   voteWeight() { return this.#attributes.voteWeight(); }
   rollAbility(k, rng) { return this.#attributes.rollAbility(k, rng); }
-  abilityLines() { return this.#attributes.abilityLines(); }
+  abilityLines(draft = null) { return this.#attributes.abilityLines(draft); }
 
   /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
   wasCaughtBy(teamId) { return this.caughtBy.includes(teamId); }

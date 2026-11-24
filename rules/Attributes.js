@@ -63,10 +63,12 @@ class Attributes {
     return rng() < this.abilityChance(k);
   }
   /* Lines for this player's own screen only. Never show them for other players. */
-  abilityLines() {
+  abilityLines(draft = null) {
     return KEYS.map(k => {
-      const v = this.abilityValue(k), a = ABILITY[k];
-      const amount = k === "initiative" ? "x" + this.voteWeight().toFixed(1) : Math.round(v * a.per * 100) + "%";
+      const add = draft && typeof draft === "object" ? (draft[k] || 0) : 0;
+      const v = Math.max(0, Math.min(10, this.#attrs[k] + add));
+      const a = ABILITY[k];
+      const amount = k === "initiative" ? "x" + (1 + v / 10).toFixed(1) : Math.round(v * a.per * 100) + "%";
       return { key: k, value: v, text: a.name + " " + v + ": " + amount + " " + a.what };
     });
   }

@@ -44,6 +44,7 @@ classDiagram
     +startWriting(), submit(), closeWriting(), startVote(), castVote(), judgedView(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
     +payTrialCosts(), accuse(), skipAccusation(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
+    +playerState(p, draft), roundSummary(p), sabotageOptions(p), giftOptions(p), answerGiftByIndex(p, index, accept)
     +board() public view
     +results() endings
     +toJSON(), fromJSON()$
@@ -99,7 +100,7 @@ classDiagram
     +lockIn(), lockAttendanceGlitch(), reboot()
     +placePoints(), canCashOut(), cashOut(), takeSkim()
     +creditPath(), gradChecks(), graduates(), lockEnding(), wins(), ending()
-    +rollAbility(), voteWeight(), flag(), boardStatus()
+    +rollAbility(), abilityLines(draft), voteWeight(), flag(), boardStatus()
     +toJSON(), fromJSON(data)$
   }
 
@@ -108,7 +109,7 @@ classDiagram
     -attrs  5 attributes
     +KEYS$, TIE_ORDER$, START_EACH$, SPEND$, BOOST$, ABILITY$
     +rate(), attr(), addAttr(), total(), lowest(), highestKey(), lowestKey()
-    +abilityValue(), abilityChance(), voteWeight(), rollAbility(), abilityLines()
+    +abilityValue(), abilityChance(), voteWeight(), rollAbility(), abilityLines(draft)
     +lose(), cover(), payTrial(), takeFromHighest(), giftTarget(), receiveGift(), reboot()
     +toJSON(), fromJSON(player, data)$
   }
@@ -182,7 +183,7 @@ classDiagram
     +attr, int cost, bool isFinal, int stepIndex
     +completed, trial
     +sabotages[], accusations[], gifts[]
-    +sopBoards, sopResults, mirrorResults, earnings, quietHearts, gritBonus
+    +sopBoards, sopResults, mirrorResults, trialPayments, bool sopTimedOut, earnings, quietHearts, gritBonus
     +steps, step, LEVELS$, STEPS$
     +nextStep(), saboteurs(), drainOn(p), caughtOn(team, except)
     +sabotage(), gift(), answerGift(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
@@ -438,5 +439,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 7, from commit `e283f7e`).
+Made from the rules code on branch `screen-state-cleanup` (Step 8, from commit `c297a1d`).
 Update this diagram whenever a class in `rules/` changes.

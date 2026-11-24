@@ -24,6 +24,7 @@ import { Gift } from "./Gift.js";
 import { Player } from "./Player.js";
 import { Rng } from "./Rng.js";
 import { Round } from "./Round.js";
+import { Sabotage } from "./Sabotage.js";
 import { Team } from "./Team.js";
 import { Timer } from "./Timer.js";
 import { Trial } from "./Trial.js";
@@ -611,12 +612,14 @@ class Game {
     const board = built === undefined ? this.sopBoard(team) : built;
     const res = this.round.trial.setSopBoard(this.round, p, team, board);
     if (!res.ok) return res;
+    this.round.completed.add("submitSop");
     return { ok: true, board: this.sopBoard(team).slice() };
   }
   /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
      stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
      Results per team id: { right, endlessOut, score } in round.sopResults. */
   closeSop() {
+    this.round.sopTimedOut = !this.didRun("submitSop");
     const ranking = this.sop().closeSop(this.round, this.teams);
     this.refreshTimer();
     return ranking;
@@ -1163,11 +1166,14 @@ class Game {
   }
   /* Player clicks Skip on Glitch Report: validates step/eligibility only; never closes the Glitch Report timer early. */
   skipAccusation(p) {
+    const pl = this._resolvePlayer(p);
     const why = this.wrongStep("glitchReport") ||
       (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null) ||
-      (p.accusedThisRound ? "You already accused this round." : null) ||
-      (p.idle ? "You are idle." : null);
+      (!pl ? "Unknown player." : null) ||
+      (pl.accusedThisRound ? "You already accused this round." : null) ||
+      (pl.idle ? "You are idle." : null);
     if (why) return { ok: false, reason: why };
+    this.round.completed.add("skipAccusation:" + pl.id);
     return { ok: true, skipped: true };
   }
   endGlitchReport() {
@@ -1334,6 +1340,176 @@ class Game {
     }
     if (tick) g.tick();
     return g;
+  }
+
+  /* Player-scoped read/action pass-throughs (Step 8): screens read only p's own data plus public board fields. */
+  playerState(p, draft = undefined) {
+    const pl = this._resolvePlayer(p);
+    if (!pl) return null;
+    const team = this.teamOf(pl);
+    const levelsDone = this.over ? this.level : this.didRun("finishRound") ? this.level : Math.max(0, this.level - 1);
+    const useDraft = draft === undefined ? pl.draft : draft;
+    return {
+      id: pl.id,
+      name: pl.name,
+      teamId: team ? team.id : null,
+      teamName: team ? team.name : null,
+      level: this.level,
+      levelsDone,
+      attrs: pl.attrs,
+      draft: { ...pl.draft },
+      hearts: pl.hearts.count,
+      glitches: pl.glitches,
+      status: pl.boardStatus(),
+      isStuck: pl.isStuck(),
+      idle: !!pl.idle,
+      earned: pl.earned,
+      placedThisRound: pl.placedThisRound,
+      placeLeft: pl.placeLeft(pl.draft),
+      canCashOut: pl.canCashOut(),
+      cashedOutThisRound: !!pl.cashedOutThisRound,
+      pathProgress: pl.pathProgress,
+      pathDone: !!pl.pathDone,
+      gradChecks: pl.gradChecks(),
+      graduates: pl.graduates(),
+      abilityLines: pl.abilityLines(useDraft),
+    };
+  }
+  roundSummary(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    const r = this.round;
+    if (!pl || !r || !team) return null;
+    const accClosed = this.didRun("endGlitchReport");
+    const acc = r.accusations.find(a => a.accuser === pl);
+    const skipped = !acc && (r.completed.has("skipAccusation:" + pl.id) || accClosed);
+    return {
+      n: r.n,
+      name: r.name,
+      trialName: r.trialName,
+      attr: r.attr,
+      cost: r.cost,
+      isFinal: r.isFinal,
+      trialKind: r.trialKind,
+      teamWon: !!team.won,
+      trialPayment: r.trialPayments && r.trialPayments[pl.id] ? { ...r.trialPayments[pl.id] } : null,
+      sopTimedOut: !!r.sopTimedOut,
+      sopSubmitted: r.completed.has("submitSop"),
+      sopResult: r.sopResults && r.sopResults[team.id] ? { ...r.sopResults[team.id] } : null,
+      ranking: (r.trial && r.trial.ranking ? r.trial.ranking : []).map(x => ({
+        place: x.place,
+        teamId: x.team.id,
+        teamName: x.team.name,
+        isMine: x.team === team,
+        base: x.base,
+        score: x.score,
+        won: x.won,
+      })),
+      drainOn: r.drainOn(pl),
+      caughtOn: accClosed ? r.caughtOn(team, pl).map(q => ({ id: q.id, name: q.name })) : [],
+      accusation: acc
+        ? { target: acc.target.name, result: !!acc.correct, safe: !!acc.safe, done: true, skipped: false }
+        : { target: "", result: null, safe: false, done: skipped, skipped },
+      earnings: r.earnings && r.earnings[pl.id] ? r.earnings[pl.id].slice() : [],
+    };
+  }
+  sabotageOptions(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const stepWhy = this.wrongStep("openFloor");
+    const cost = Sabotage.cost(pl);
+    const targets = team.mates(pl).map(q => {
+      const why = stepWhy || Sabotage.check(pl, q, team);
+      return {
+        id: q.id,
+        name: q.name,
+        status: q.boardStatus(),
+        isStuck: q.isStuck(),
+        canSabotage: !why,
+        reason: why,
+      };
+    });
+    return {
+      canRole: pl.type.canSabotage(),
+      open: !stepWhy,
+      cost,
+      attr: this.round ? this.round.attr : null,
+      blockedThisRound: !!pl.sabotageBlockedThisRound,
+      caughtByTeam: pl.wasCaughtBy(team.id),
+      canAny: targets.some(t => t.canSabotage),
+      targets,
+    };
+  }
+  giftOptions(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const stepWhy = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+      "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
+    const targets = team.mates(pl).map(q => ({
+      id: q.id,
+      name: q.name,
+      status: q.boardStatus(),
+      isStuck: q.isStuck(),
+      amounts: q.isStuck()
+        ? []
+        : [1, 2].map(pts => {
+            const cost = Gift.cost(pl, pts);
+            const why = stepWhy || Gift.check(pl, q, team, pts);
+            return { pts, cost, canGift: !why, reason: why };
+          }),
+    }));
+    const gifts = this.round ? this.round.gifts : [];
+    const sent = [];
+    const incoming = [];
+    gifts.forEach((g, index) => {
+      if (g.giver === pl) {
+        sent.push({
+          index,
+          toId: g.receiver.id,
+          toName: g.receiver.name,
+          pts: g.pts,
+          cost: g.cost,
+          status: g.status === "refused" ? "declined" : g.status,
+          discount: !!g.discount,
+          cancelled: !!g.cancelled,
+          overflow: g.overflow || 0,
+        });
+      }
+      if (g.receiver === pl && g.status !== "refused") {
+        incoming.push({
+          index,
+          fromId: g.giver.id,
+          fromName: g.giver.name,
+          pts: g.pts,
+          status: g.status,
+          target: g.target || null,
+        });
+      }
+    });
+    return {
+      open: !stepWhy,
+      canAcceptGifts: pl.type.canAcceptGifts(),
+      costs: { 1: Gift.cost(pl, 1), 2: Gift.cost(pl, 2) },
+      targets,
+      sent,
+      incoming,
+    };
+  }
+  answerGiftByIndex(p, index, accept) {
+    const pl = this._resolvePlayer(p);
+    if (!pl) return { ok: false, reason: "Unknown player." };
+    const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+      "Not allowed now. Gifts are answered in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
+    if (why) return { ok: false, reason: why };
+    if (!this.round) return { ok: false, reason: "No active round." };
+    if (!Number.isInteger(index) || index < 0 || index >= this.round.gifts.length) {
+      return { ok: false, reason: "No such gift." };
+    }
+    const g = this.round.gifts[index];
+    if (g.receiver !== pl) return { ok: false, reason: "That gift is not for you." };
+    return this.round.answerGift(g, accept);
   }
 
   /* Progress board: read-only, open to every player at any time. Returns new plain objects with only

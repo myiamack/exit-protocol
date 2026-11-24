@@ -4572,7 +4572,7 @@ async function step5CleanupCases() {
         G.timerView() && G.timerView().name === "glitchReport" &&
         !document.querySelector("#banner").hidden &&
         !!document.querySelector("#accWait") &&
-        S.acc.done === true;
+        G.roundSummary(ME).accusation.done === true;
       simNow = G.timer.deadline;
       afterClose(G.tick());
       G.activity(ME);
@@ -4627,7 +4627,7 @@ async function step5CleanupCases() {
       document.querySelector("#accuse").click();
       const accWaitOk = G.step === "glitchReport" && !G.didRun("endGlitchReport") &&
         G.timerView() && G.timerView().name === "glitchReport" &&
-        !!document.querySelector("#accWait") && S.acc.done === true;
+        !!document.querySelector("#accWait") && G.roundSummary(ME).accusation.done === true;
 
       // 8. Graduation (timed 60s): Lock in final points saves picks + waits for timer
       devJump(7);
@@ -4904,6 +4904,137 @@ async function step7JudgedCleanupCases() {
   check("pages/vote-test.js has no ME.earned, ME.placePoints, G.startVote, toVote, or G.round.trial", vtClean);
 }
 
+/* Step 8: draft-aware abilityLines, Round persistence, player-scoped Game reads, and screen cleanup. */
+async function step8PlayerReadsCases() {
+  const res = w.eval(`(() => {
+    const { Bots, Game, Player, Rng, Team } = EP;
+    let simNow = 1000000;
+    try {
+      // 1. Live Stats Update ability text preview before Lock In + abilityLines() default parity
+      devJump(1);
+      G._timer.clock = () => simNow;
+      G.activity(ME);
+      goForward(); // -> openFloor
+      simNow = G.timer.deadline; afterClose(G.tick()); G.activity(ME); // -> sop
+      simNow = G.timer.deadline; afterClose(G.tick()); G.activity(ME); // close sop (timed out)
+      const sopTimedOutSummary = G.roundSummary(ME).sopTimedOut === true;
+      goForward(); // -> glitchReport (pays trial costs)
+      G.activity(ME);
+      const paymentPreReload = G.roundSummary(ME).trialPayment;
+      const mateTarget = MYTEAM.mates(ME)[0];
+      G.accuse(ME, mateTarget);
+      const accPreReload = G.roundSummary(ME).accusation;
+
+      // Save and reload mid-round keeps trialPayment, accusation result, and sopTimedOut
+      const savedMid = G.toJSON();
+      const GReload = Game.fromJSON(savedMid, { clock: () => simNow, hooks: Bots.hooks, tick: false });
+      const meReload = GReload.players.find(p => p.id === ME.id);
+      const sumReload = GReload.roundSummary(meReload);
+      const saveReloadOk = sopTimedOutSummary &&
+        !!paymentPreReload &&
+        JSON.stringify(sumReload.trialPayment) === JSON.stringify(paymentPreReload) &&
+        sumReload.sopTimedOut === true &&
+        sumReload.accusation.done === true &&
+        sumReload.accusation.target === accPreReload.target &&
+        sumReload.accusation.result === accPreReload.result &&
+        sumReload.accusation.safe === accPreReload.safe;
+
+      // Older saves missing trialPayments, sopTimedOut, and accusations[].safe load cleanly
+      const oldData = JSON.parse(JSON.stringify(savedMid));
+      delete oldData.round.trialPayments;
+      delete oldData.round.sopTimedOut;
+      oldData.round.accusations.forEach(a => { delete a.safe; });
+      const GOld = Game.fromJSON(oldData, { clock: () => simNow, hooks: Bots.hooks, tick: false });
+      const oldSaveOk = JSON.stringify(GOld.round.trialPayments) === "{}" &&
+        GOld.round.sopTimedOut === false &&
+        GOld.round.accusations.every(a => a.safe === false);
+
+      // Advance to Stats Update to verify live Bug 6 preview before Lock In
+      simNow = G.timer.deadline; afterClose(G.tick()); G.activity(ME); // -> giftWindow
+      simNow = G.timer.deadline; afterClose(G.tick()); G.activity(ME); // -> statsUpdate
+      const noDraftMatch = JSON.stringify(ME.abilityLines()) === JSON.stringify(ME.abilityLines(null));
+      const noDraftTextOk = ME.abilityLines()[0].text === ("Focus " + Math.max(0, Math.min(10, ME.attrs.focus)) + ": " + (Math.max(0, Math.min(10, ME.attrs.focus)) * 10) + "% safe accusation");
+      const abPanelText = () => {
+        const panel = [...document.querySelectorAll("#stage .panel")].find(el => el.textContent.includes("Your abilities"));
+        return panel ? panel.textContent : "";
+      };
+      const beforeAbText = abPanelText();
+      const plusBtn = document.querySelector("[data-pinc]:not([disabled])");
+      const pickKey = plusBtn ? plusBtn.dataset.pinc : null;
+      const beforeCommitted = pickKey ? ME.attrs[pickKey] : null;
+      if (plusBtn) plusBtn.click();
+      const addedAbText = abPanelText();
+      const committedUnchanged = pickKey ? ME.attrs[pickKey] === beforeCommitted : false;
+      const minusBtn = pickKey ? document.querySelector('[data-pdec="' + pickKey + '"]:not([disabled])') : null;
+      if (minusBtn) minusBtn.click();
+      const revertedAbText = abPanelText();
+      const liveDraftOk = !!plusBtn && !!minusBtn && committedUnchanged &&
+        addedAbText !== beforeAbText &&
+        revertedAbText === beforeAbText &&
+        ME.earned > 0;
+
+      // 2. Privacy & answerGiftByIndex check on custom team with Coop, Indep, Contra
+      const pCoop = new Player({ id: 90, name: "CoopA", type: "coop", spend: Bots.typicalSpend("coop") });
+      const pIndep = new Player({ id: 91, name: "IndepB", type: "indep", spend: Bots.typicalSpend("indep") });
+      const pContra = new Player({ id: 92, name: "ContraC", type: "contra", spend: Bots.typicalSpend("contra") });
+      const pCoop2 = new Player({ id: 93, name: "CoopD", type: "coop", spend: Bots.typicalSpend("coop") });
+      const mkOther = (idBase, name) => [0, 1, 2].map(i => Bots.makePlayer(idBase + i, name + i, "coop"));
+      const t0 = new Team({ id: 0, name: "PrivTeam", members: [pCoop, pIndep, pContra, pCoop2] });
+      const t1 = new Team({ id: 1, name: "Other1", members: mkOther(100, "O1_") });
+      const t2 = new Team({ id: 2, name: "Other2", members: mkOther(110, "O2_") });
+      const gPriv = new Game({ teams: [t0, t1, t2], rng: Rng.seeded(888), clock: () => 500000 });
+      gPriv.startNextRound();
+      gPriv.advance(); // openFloor
+      gPriv.sabotage(pContra, pCoop);
+      gPriv.gift(pCoop, pIndep, 1); // refused by Independent
+      gPriv.gift(pCoop, pCoop2, 1); // pending for CoopD
+      const wrongReceiver = gPriv.answerGiftByIndex(pIndep, 1, true);
+      const ansOk = gPriv.answerGiftByIndex(pCoop2, 1, true);
+      gPriv.advance(); // trial
+      gPriv.submitSop(pCoop, EP.Trial.SopTrial.STEPS);
+      gPriv.closeSop();
+      const sopInTimeOk = gPriv.roundSummary(pCoop).sopTimedOut === false;
+      gPriv.endTrial(); // glitchReport
+      gPriv.accuse(pCoop, pContra);
+
+      const rsJson = JSON.stringify(gPriv.roundSummary(pCoop));
+      const goJson = JSON.stringify(gPriv.giftOptions(pCoop));
+      const soJson = JSON.stringify(gPriv.sabotageOptions(pContra));
+      const leakWords = /"attrs"|"hearts"|"type"|"skimUsed"|"cashOutUsed"|"refused"|"coop"|"indep"|"contra"/i;
+      const sentIndep = gPriv.giftOptions(pCoop).sent.find(x => x.toId === pIndep.id);
+      const privacyOk = !!sentIndep && sentIndep.status === "declined" &&
+        wrongReceiver.ok === false && ansOk.ok === true &&
+        !leakWords.test(rsJson) && !leakWords.test(goJson) && !leakWords.test(soJson);
+
+      return {
+        liveDraftOk,
+        noDraftOk: noDraftMatch && noDraftTextOk,
+        saveReloadOk,
+        oldSaveOk,
+        sopInTimeOk,
+        privacyOk,
+      };
+    } finally {
+      elevTimers.forEach(clearTimeout);
+      elevTimers = [];
+      endSession();
+      S = fresh();
+      render();
+    }
+  })()`);
+
+  const gameSrc = fs.readFileSync(path.join(repo, "game.js"), "utf8");
+  const mapSrc = fs.readFileSync(path.join(repo, "world-map.js"), "utf8");
+  const forbiddenRe = /S\.pay|S\.acc|S\.gw\.sent|S\.sop\.inTime|S\.prog|new EP\.Round|G\.round\.|EP\.Gift\.|EP\.Sabotage\./;
+  const screensClean = !forbiddenRe.test(gameSrc) && !forbiddenRe.test(mapSrc);
+
+  check("Stats Update ability text previews draft points live and reverts before Lock In", res.liveDraftOk);
+  check("abilityLines() with no draft matches abilityLines(null) and baseline format", res.noDraftOk);
+  check("Save and reload mid-round keeps trialPayments, accusation result, and sopTimedOut (and loads old saves cleanly)", res.saveReloadOk && res.oldSaveOk && res.sopInTimeOk);
+  check("roundSummary(p), giftOptions(p), and sabotageOptions(p) hide other players' stats, hearts, and types", res.privacyOk);
+  check("game.js and world-map.js contain no stale round copies or direct Round/Gift/Sabotage calls", screensClean);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -4961,6 +5092,8 @@ w.addEventListener("load", async () => {
     await step6SplitBriefCleanupCases();
     log("run 20: Step 7 Levels 5-6 writing/vote Game ownership and judgedView privacy");
     await step7JudgedCleanupCases();
+    log("run 21: Step 8 draft-aware abilityLines, Round records, and player-scoped Game reads");
+    await step8PlayerReadsCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

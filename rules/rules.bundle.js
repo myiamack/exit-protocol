@@ -401,10 +401,12 @@ class Attributes {
     return rng() < this.abilityChance(k);
   }
   /* Lines for this player's own screen only. Never show them for other players. */
-  abilityLines() {
+  abilityLines(draft = null) {
     return KEYS.map(k => {
-      const v = this.abilityValue(k), a = ABILITY[k];
-      const amount = k === "initiative" ? "x" + this.voteWeight().toFixed(1) : Math.round(v * a.per * 100) + "%";
+      const add = draft && typeof draft === "object" ? (draft[k] || 0) : 0;
+      const v = Math.max(0, Math.min(10, this.#attrs[k] + add));
+      const a = ABILITY[k];
+      const amount = k === "initiative" ? "x" + (1 + v / 10).toFixed(1) : Math.round(v * a.per * 100) + "%";
       return { key: k, value: v, text: a.name + " " + v + ": " + amount + " " + a.what };
     });
   }
@@ -696,7 +698,7 @@ class Player {
   abilityChance(k) { return this.#attributes.abilityChance(k); }
   voteWeight() { return this.#attributes.voteWeight(); }
   rollAbility(k, rng) { return this.#attributes.rollAbility(k, rng); }
-  abilityLines() { return this.#attributes.abilityLines(); }
+  abilityLines(draft = null) { return this.#attributes.abilityLines(draft); }
 
   /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
   wasCaughtBy(teamId) { return this.caughtBy.includes(teamId); }
@@ -1078,11 +1080,13 @@ class Round {
     this.stepIndex = 0;
     this.trial = null;
     this.sabotages = [];    // { actor, target, drain, cost }
-    this.accusations = [];  // { accuser, target, correct }
+    this.accusations = [];  // { accuser, target, correct, safe }
     this.gifts = [];        // { giver, receiver, pts, cost, refused, cancelled }
     this.completed = new Set();   // one-time Game actions already run this round
     this.sopBoards = {};
     this.sopResults = {};
+    this.trialPayments = {};
+    this.sopTimedOut = false;
     this.earnings = {};
     this.quietHearts = [];
     this.gritBonus = [];
@@ -1132,13 +1136,13 @@ class Round {
     const out = {
       n: this.n, stepIndex: this.stepIndex, completed: [...this.completed],
       sabotages: this.sabotages.map(s => ({ ...s, actor: s.actor.id, target: s.target.id })),
-      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id })),
+      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id, safe: !!a.safe })),
       gifts: this.gifts.map(g => ({ ...g, giver: g.giver.id, receiver: g.receiver.id })),
     };
     if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
     if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
     if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
-    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "trialPayments", "sopTimedOut", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
     return out;
   }
   /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
@@ -1148,13 +1152,13 @@ class Round {
     r.stepIndex = data.stepIndex;
     r.completed = new Set(data.completed);
     r.sabotages = data.sabotages.map(s => ({ ...s, actor: P(s.actor), target: P(s.target) }));
-    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target) }));
+    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target), safe: a.safe !== undefined ? !!a.safe : false }));
     r.gifts = data.gifts.map(g => ({ ...g, giver: P(g.giver), receiver: P(g.receiver) }));
     const ts = data.trialState || (data.trial && typeof data.trial === "object" ? data.trial : null);
     if (ts) r.trial = trialFromJSON(ts);
     if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
     if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
-    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "trialPayments", "sopTimedOut", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
     return r;
   }
 }
@@ -5731,10 +5735,15 @@ class Economy {
   /* Trial cost for every non-Stuck player. */
   payTrialCosts(players, round) {
     const out = new Map();
+    const rec = {};
     for (const p of players) {
       const r = p.payTrial(round.attr, round.cost);
-      if (r) out.set(p, r);
+      if (r) {
+        out.set(p, r);
+        rec[p.id] = { ...r };
+      }
     }
+    round.trialPayments = rec;
     return out;
   }
 
@@ -6440,12 +6449,14 @@ class Game {
     const board = built === undefined ? this.sopBoard(team) : built;
     const res = this.round.trial.setSopBoard(this.round, p, team, board);
     if (!res.ok) return res;
+    this.round.completed.add("submitSop");
     return { ok: true, board: this.sopBoard(team).slice() };
   }
   /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
      stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
      Results per team id: { right, endlessOut, score } in round.sopResults. */
   closeSop() {
+    this.round.sopTimedOut = !this.didRun("submitSop");
     const ranking = this.sop().closeSop(this.round, this.teams);
     this.refreshTimer();
     return ranking;
@@ -6992,11 +7003,14 @@ class Game {
   }
   /* Player clicks Skip on Glitch Report: validates step/eligibility only; never closes the Glitch Report timer early. */
   skipAccusation(p) {
+    const pl = this._resolvePlayer(p);
     const why = this.wrongStep("glitchReport") ||
       (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null) ||
-      (p.accusedThisRound ? "You already accused this round." : null) ||
-      (p.idle ? "You are idle." : null);
+      (!pl ? "Unknown player." : null) ||
+      (pl.accusedThisRound ? "You already accused this round." : null) ||
+      (pl.idle ? "You are idle." : null);
     if (why) return { ok: false, reason: why };
+    this.round.completed.add("skipAccusation:" + pl.id);
     return { ok: true, skipped: true };
   }
   endGlitchReport() {
@@ -7163,6 +7177,176 @@ class Game {
     }
     if (tick) g.tick();
     return g;
+  }
+
+  /* Player-scoped read/action pass-throughs (Step 8): screens read only p's own data plus public board fields. */
+  playerState(p, draft = undefined) {
+    const pl = this._resolvePlayer(p);
+    if (!pl) return null;
+    const team = this.teamOf(pl);
+    const levelsDone = this.over ? this.level : this.didRun("finishRound") ? this.level : Math.max(0, this.level - 1);
+    const useDraft = draft === undefined ? pl.draft : draft;
+    return {
+      id: pl.id,
+      name: pl.name,
+      teamId: team ? team.id : null,
+      teamName: team ? team.name : null,
+      level: this.level,
+      levelsDone,
+      attrs: pl.attrs,
+      draft: { ...pl.draft },
+      hearts: pl.hearts.count,
+      glitches: pl.glitches,
+      status: pl.boardStatus(),
+      isStuck: pl.isStuck(),
+      idle: !!pl.idle,
+      earned: pl.earned,
+      placedThisRound: pl.placedThisRound,
+      placeLeft: pl.placeLeft(pl.draft),
+      canCashOut: pl.canCashOut(),
+      cashedOutThisRound: !!pl.cashedOutThisRound,
+      pathProgress: pl.pathProgress,
+      pathDone: !!pl.pathDone,
+      gradChecks: pl.gradChecks(),
+      graduates: pl.graduates(),
+      abilityLines: pl.abilityLines(useDraft),
+    };
+  }
+  roundSummary(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    const r = this.round;
+    if (!pl || !r || !team) return null;
+    const accClosed = this.didRun("endGlitchReport");
+    const acc = r.accusations.find(a => a.accuser === pl);
+    const skipped = !acc && (r.completed.has("skipAccusation:" + pl.id) || accClosed);
+    return {
+      n: r.n,
+      name: r.name,
+      trialName: r.trialName,
+      attr: r.attr,
+      cost: r.cost,
+      isFinal: r.isFinal,
+      trialKind: r.trialKind,
+      teamWon: !!team.won,
+      trialPayment: r.trialPayments && r.trialPayments[pl.id] ? { ...r.trialPayments[pl.id] } : null,
+      sopTimedOut: !!r.sopTimedOut,
+      sopSubmitted: r.completed.has("submitSop"),
+      sopResult: r.sopResults && r.sopResults[team.id] ? { ...r.sopResults[team.id] } : null,
+      ranking: (r.trial && r.trial.ranking ? r.trial.ranking : []).map(x => ({
+        place: x.place,
+        teamId: x.team.id,
+        teamName: x.team.name,
+        isMine: x.team === team,
+        base: x.base,
+        score: x.score,
+        won: x.won,
+      })),
+      drainOn: r.drainOn(pl),
+      caughtOn: accClosed ? r.caughtOn(team, pl).map(q => ({ id: q.id, name: q.name })) : [],
+      accusation: acc
+        ? { target: acc.target.name, result: !!acc.correct, safe: !!acc.safe, done: true, skipped: false }
+        : { target: "", result: null, safe: false, done: skipped, skipped },
+      earnings: r.earnings && r.earnings[pl.id] ? r.earnings[pl.id].slice() : [],
+    };
+  }
+  sabotageOptions(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const stepWhy = this.wrongStep("openFloor");
+    const cost = Sabotage.cost(pl);
+    const targets = team.mates(pl).map(q => {
+      const why = stepWhy || Sabotage.check(pl, q, team);
+      return {
+        id: q.id,
+        name: q.name,
+        status: q.boardStatus(),
+        isStuck: q.isStuck(),
+        canSabotage: !why,
+        reason: why,
+      };
+    });
+    return {
+      canRole: pl.type.canSabotage(),
+      open: !stepWhy,
+      cost,
+      attr: this.round ? this.round.attr : null,
+      blockedThisRound: !!pl.sabotageBlockedThisRound,
+      caughtByTeam: pl.wasCaughtBy(team.id),
+      canAny: targets.some(t => t.canSabotage),
+      targets,
+    };
+  }
+  giftOptions(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const stepWhy = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+      "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
+    const targets = team.mates(pl).map(q => ({
+      id: q.id,
+      name: q.name,
+      status: q.boardStatus(),
+      isStuck: q.isStuck(),
+      amounts: q.isStuck()
+        ? []
+        : [1, 2].map(pts => {
+            const cost = Gift.cost(pl, pts);
+            const why = stepWhy || Gift.check(pl, q, team, pts);
+            return { pts, cost, canGift: !why, reason: why };
+          }),
+    }));
+    const gifts = this.round ? this.round.gifts : [];
+    const sent = [];
+    const incoming = [];
+    gifts.forEach((g, index) => {
+      if (g.giver === pl) {
+        sent.push({
+          index,
+          toId: g.receiver.id,
+          toName: g.receiver.name,
+          pts: g.pts,
+          cost: g.cost,
+          status: g.status === "refused" ? "declined" : g.status,
+          discount: !!g.discount,
+          cancelled: !!g.cancelled,
+          overflow: g.overflow || 0,
+        });
+      }
+      if (g.receiver === pl && g.status !== "refused") {
+        incoming.push({
+          index,
+          fromId: g.giver.id,
+          fromName: g.giver.name,
+          pts: g.pts,
+          status: g.status,
+          target: g.target || null,
+        });
+      }
+    });
+    return {
+      open: !stepWhy,
+      canAcceptGifts: pl.type.canAcceptGifts(),
+      costs: { 1: Gift.cost(pl, 1), 2: Gift.cost(pl, 2) },
+      targets,
+      sent,
+      incoming,
+    };
+  }
+  answerGiftByIndex(p, index, accept) {
+    const pl = this._resolvePlayer(p);
+    if (!pl) return { ok: false, reason: "Unknown player." };
+    const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+      "Not allowed now. Gifts are answered in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
+    if (why) return { ok: false, reason: why };
+    if (!this.round) return { ok: false, reason: "No active round." };
+    if (!Number.isInteger(index) || index < 0 || index >= this.round.gifts.length) {
+      return { ok: false, reason: "No such gift." };
+    }
+    const g = this.round.gifts[index];
+    if (g.receiver !== pl) return { ok: false, reason: "That gift is not for you." };
+    return this.round.answerGift(g, accept);
   }
 
   /* Progress board: read-only, open to every player at any time. Returns new plain objects with only

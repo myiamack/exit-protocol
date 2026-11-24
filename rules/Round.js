@@ -28,11 +28,13 @@ class Round {
     this.stepIndex = 0;
     this.trial = null;
     this.sabotages = [];    // { actor, target, drain, cost }
-    this.accusations = [];  // { accuser, target, correct }
+    this.accusations = [];  // { accuser, target, correct, safe }
     this.gifts = [];        // { giver, receiver, pts, cost, refused, cancelled }
     this.completed = new Set();   // one-time Game actions already run this round
     this.sopBoards = {};
     this.sopResults = {};
+    this.trialPayments = {};
+    this.sopTimedOut = false;
     this.earnings = {};
     this.quietHearts = [];
     this.gritBonus = [];
@@ -82,13 +84,13 @@ class Round {
     const out = {
       n: this.n, stepIndex: this.stepIndex, completed: [...this.completed],
       sabotages: this.sabotages.map(s => ({ ...s, actor: s.actor.id, target: s.target.id })),
-      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id })),
+      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id, safe: !!a.safe })),
       gifts: this.gifts.map(g => ({ ...g, giver: g.giver.id, receiver: g.receiver.id })),
     };
     if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
     if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
     if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
-    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "trialPayments", "sopTimedOut", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
     return out;
   }
   /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
@@ -98,13 +100,13 @@ class Round {
     r.stepIndex = data.stepIndex;
     r.completed = new Set(data.completed);
     r.sabotages = data.sabotages.map(s => ({ ...s, actor: P(s.actor), target: P(s.target) }));
-    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target) }));
+    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target), safe: a.safe !== undefined ? !!a.safe : false }));
     r.gifts = data.gifts.map(g => ({ ...g, giver: P(g.giver), receiver: P(g.receiver) }));
     const ts = data.trialState || (data.trial && typeof data.trial === "object" ? data.trial : null);
     if (ts) r.trial = trialFromJSON(ts);
     if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
     if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
-    for (const k of ["sopBoards", "sopResults", "mirrorResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "trialPayments", "sopTimedOut", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
     return r;
   }
 }
