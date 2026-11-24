@@ -135,6 +135,7 @@ Hannah's file boundaries:
 
 - If `game.js` scores any trial differently, report and ask before changing. Tested attribute stays hidden on screen until that level's Briefing.
 - **Ranking:** Top half of teams win, rounded up (`ceil(n/2)`). Light influence (L1-4 only): `score += 0.5 * (team active avg in tested attr - all-teams avg)`. Ties: Split Brief = earliest post-twist Lock In then `Rng`; Mirror = higher exact attention then `Rng`; Judged = more 1st places then `Rng`; others = `Rng`.
+- **Hidden math:** Player screens show rounded scores only. No trial tie rules, exact scores, or influence bonus appear on any player screen. Host-only `FAC_BY_LEVEL` lines may show them. Losing by a small hidden margin is part of the game.
 - **Level 1 SOP:** Shared team board (any active teammate edits), scored when 60 s timer ends. 1 pt/step in right place (0-6), +1 if endless step left out (max 7; empty board scores 0 and no endless-step pt). Bot teams roll 0-7.
 
 ### Round step order and timers
