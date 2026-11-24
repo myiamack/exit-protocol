@@ -44,7 +44,7 @@ const CLUES=[
   {level:1,id:"id",kind:"WATCHER",where:"Your badge",found:"Your intern ID says ATTEMPT 02. You have been here before.",hint:"Your badge flickered. Did you read it closely?"},
   {level:1,id:"loop",kind:"LOOP",where:"SOP trial",found:"One SOP step told you to repeat forever. You left it out.",hint:"One step in the procedure didn't belong."}];
 /* Anomalies: the 3 CLUES above are the only ones that count. Ghosts give hints only. */
-const anomaliesFound=()=>CLUES.filter(c=>S.found[c.id]).length;
+const anomaliesFound=()=>G&&ME?G.anomaliesFor(ME).length:0;
 const STEPS=["Sign in","Menu","Wardrobe","Work style","Arrival","Briefing","Open Floor","Trial","Glitch Report","Stats Update"];
 const FAC=[
   ["Players sign in with their i.c.stars email and the join code you give them.","Do NOT mention a simulation. If anyone asks about the capital L, say: \"Please report any issues to IT.\""],
@@ -208,7 +208,7 @@ function teaHint(){const h=LEVEL_HINTS[currentLevel()]||LEVEL_HINTS[1];return h.
 function facLines(step,level,phase){const byLv=FAC_BY_LEVEL[level],entry=byLv&&byLv[step];if(entry&&!Array.isArray(entry)){const p=phase||(G&&G.mirrorPhase?G.mirrorPhase():null);if(p==="lobby")return entry.lobby;if(p==="reveal"||p==="showtime")return entry.showtime;return [...entry.lobby,...entry.showtime]}return entry||FAC[step]||[];}
 
 /* ---------- state ---------- */
-const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",found:{},
+const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",pendingL:false,
   av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
   type:null,spend:{focus:0,initiative:0,collab:0,composure:0,grit:0},
   room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
@@ -227,6 +227,7 @@ function newSession(){
   ({game:G,me:ME,team:MYTEAM}=EP.Bots.soloGame({me:{name:S.name,type:S.type,spend:S.spend},
     myTeam:{name:"Team Kestrel",mates:TEAM.map(p=>p.n)},others:OTHERS.map(o=>({name:o.t,players:o.p})),
     rng:EP.Rng.seeded(EP.Rng.randomSeed()),hooks:EP.Bots.hooks}));   /* seeded so the game can be saved; bots act through Game hooks */
+  if(S.pendingL){G.recordAnomaly(ME,"L");S.pendingL=false}
 }
 /* Round progress comes from Game, not from screen flags. */
 const floorOpen=()=>!!G&&G.step==="openFloor";
@@ -300,7 +301,6 @@ function afterClose(closed){
   for(const n of closed){
     if(n==="intermission"){if(S.step===4)target=5}
     else if(n==="openFloor"){if(S.step===6)target=7}
-    else if(n==="sop"){sopScored()}
     else if(n==="writing"){S.trialUI.msg=""}
     else if(n==="giftWindow"){if(S.step===8)target=9}
   }
@@ -402,7 +402,7 @@ function go(n){S.panel=false;if(n!==2)S.wardFrom=null;if(n===2&&S.step!==2)S.dra
 /* ---------- views ---------- */
 const V=[];
 V[0]=()=>`<div class="login"><div class="login-inner">
-  <div class="logo" aria-label="Exit_ProtocoL"><span class="w1">EXIT_</span><span class="w2">PROTOCO<button class="glitch-L ${S.found.L?"found":""}" id="theL" aria-label="Letter L">L</button></span></div>
+  <div class="logo" aria-label="Exit_ProtocoL"><span class="w1">EXIT_</span><span class="w2">PROTOCO<button class="glitch-L ${S.pendingL||(G&&ME&&G.anomaliesFor(ME).includes("L"))?"found":""}" id="theL" aria-label="Letter L">L</button></span></div>
   <div class="boot"><span>&gt; loading employee_profile ....... ok</span><span>&gt; assigning cohort CYCLE_60 ...... ok</span><span>&gt; checking exit_conditions ....... <span class="s">NOT FOUND</span></span></div>
   <div class="idcard"><div class="strip"><b>Employee access</b><span>i.c.stars only</span></div>
   <form id="signForm" novalidate>
@@ -419,9 +419,9 @@ function screenContent(){
   if(S.menu==="badge")return `<span class="title">My Badge</span><div class="rule"></div>${badgeCard()}`;
   return `<span class="rec">LIVE · FLOOR 60</span><span class="title">The Office</span><div class="rule"></div><div class="mapwrap fog">${minimapSVG(false)}</div><p class="hint">Floor 60 of 7 floors. You won't see the whole floor until you walk it. Rooms marked LVL stay locked until later levels. Press <b>Play</b> to design your character and take the elevator up.</p>`;
 }
-function badgeCard(){const idn=String(((S.name.length*37)+S.email.length*11)%900+100),ps=G&&ME?G.playerState(ME):null,lv=ps?ps.level:0,dn=ps?ps.levelsDone:0;
+function badgeCard(){const idn=String(((S.name.length*37)+S.email.length*11)%900+100),ps=G&&ME?G.playerState(ME):null,lv=ps?ps.level:0,dn=ps?ps.levelsDone:0,hasId=G&&ME&&G.anomaliesFor(ME).includes("id");
   return `<div class="badgecard"><div class="bc-pic">${avatarSVG(S.av,{label:"Badge photo"})}</div><div class="bc-data">
-   <span class="wide"><span class="k">Employee ID</span><br><button class="idline ${S.found.id?"found":""}" id="idline" style="color:#13294b">060-${idn} · <span class="flick">ATTEMPT 02</span></button></span>
+   <span class="wide"><span class="k">Employee ID</span><br><button class="idline ${hasId?"found":""}" id="idline" style="color:#13294b">060-${idn} · <span class="flick">ATTEMPT 02</span></button></span>
    <span class="wide"><span class="k">Display name</span><br><span class="v">${esc(shownName())}</span></span>
    <span><span class="k">Team</span><br><span class="v">Kestrel</span></span><span><span class="k">Cohort</span><br><span class="v">Cycle 60</span></span>
    <span><span class="k">Level</span><br><span class="v">${lv}</span></span><span><span class="k">XP · ${dn} of 7 levels</span><div class="xp"><i style="width:${Math.round(dn/7*100)}%"></i></div></span>
@@ -581,13 +581,13 @@ let currentTrialView=null;
 function trialView(){const fn=TRIAL_SCREENS[R().trialKind]||trialAutoScreen;return fn();}
 V[7]=()=>currentTrialView?currentTrialView.html:"";
 
-V[8]=()=>{const sm=R(),p=sm.trialPayment,a=sm.accusation,k=sm.attr,go=G.giftOptions(ME);return `<div class="meeting">All-hands meeting</div>
+V[8]=()=>{const sm=R(),p=sm.trialPayment,a=sm.accusation,k=sm.attr,go=G.giftOptions(ME),anoms=G&&ME?G.anomaliesFor(ME):[];return `<div class="meeting">All-hands meeting</div>
 <div class="report shake"><span class="h">&gt; GLITCH REPORT: irregularities detected in your environment</span>
 <span>&gt; trial: ${esc(MYTEAM.name)} ${sm.teamWon?"WIN":"LOSS"} · cost paid: ${p?`${AN[k]} −${sm.cost}`:"none (Stuck)"}</span>
 ${sm.drainOn?`<span>&gt; sabotage before the trial: ${AN[k]} −${sm.drainOn}</span>`:""}
 ${p?`<span>&gt; your ${AN[k]} at the trial: ${p.before} → ${p.after}${p.heartsUsed?` (hearts used: ${p.heartsUsed}, ${ME.rate(k)} per point)`:""}${p.after<0?` · <b style="color:var(--pink)">GLITCHING</b>`:""}</span>`
 :`<span>&gt; you are Stuck and paid no trial cost this round.</span>`}
-${CLUES.filter(c=>c.level===sm.n).map(c=>S.found[c.id]?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
+${CLUES.filter(c=>c.level===sm.n).map(c=>anoms.includes(c.id)?`<div class="clue"><span class="tag s">${c.kind}</span><span><b>${c.where}.</b> ${esc(c.found)}</span></div>`:`<div class="clue"><span class="tag m">???</span><span>${esc(c.hint)}</span></div>`).join("")}
 <span>&gt; please continue working normally.</span></div>
 ${accDone()?caughtNotices():""}
 ${accDone()&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>&gt; CAUGHT:</b> a teammate correctly accused you. This round does not count toward Exploit. You cannot sabotage on any team next round, or ever again while on this team.`:`<b>&gt; CLEAN:</b> nobody caught your sabotage. Exploit progress ${ME.pathProgress}/${T().goal}.`}</div>`:""}
@@ -800,7 +800,7 @@ function render(){
 const on=(sel,fn)=>{const e=$(sel);if(e)e.onclick=fn};
 function bind(){
   if(S.step===0){
-    on("#theL",()=>{S.found.L=1;render()});
+    on("#theL",()=>{if(G&&ME){G.recordAnomaly(ME,"L");S.pendingL=false}else{S.pendingL=true}render()});
     $("#signForm").onsubmit=e=>{e.preventDefault();const em=$("#em").value.trim(),jc=$("#jc").value.trim().toUpperCase();S.email=em;S.code=jc;
       if(!/^[^@\s]+@icstars\.org$/i.test(em)){$("#signErr").textContent="Use your i.c.stars email (ends in @icstars.org). This game is for the i.c.stars community only.";return}
       if(jc!=="CYCLE60"){$("#signErr").textContent="That join code doesn't match an open game. Check with your host.";return}
@@ -811,7 +811,6 @@ function bind(){
     on("#howTo",()=>{S.menu="howto";render()});
     $$("[data-dnext]").forEach(b=>b.onclick=()=>{const i=+b.dataset.dnext;DPOS[i]=(DPOS[i]+1)%DIALOGS[i].lines.length;render()});
     $$("[data-menu]").forEach(b=>b.onclick=()=>{S.menu=b.dataset.menu;render()});
-    on("#idline",()=>{S.found.id=1;render()});
     on("#toWardrobe",()=>{go(2);S.wardFrom="badge"});on("#toName",()=>{go(2);S.wardFrom="badge";setTimeout(()=>{const n=$("#nm");if(n)n.focus()},50)});
   }
   if(S.step===2){
@@ -869,7 +868,6 @@ function lockPoints(){
 function checkSop(){if(trialDone()||S.sop.submitted)return;if(!G.submitSop(ME).ok)return;S.sop.submitted=true;render()}
 /* Available steps: the display order, minus the steps already on the board. */
 function sopPile(){const b=G.sopBoard(MYTEAM);return S.sop.pile.filter(t=>!b.includes(t))}
-function sopScored(){const rs=G&&ME?G.roundSummary(ME):null,r=rs&&rs.sopResult;if(r&&r.endlessOut)S.found.loop=1}   /* nothing placed: no LOOP */
 function payCost(){
   if(G.didRun("payTrialCosts"))return;
   G.endTrial();   // pay the cost, then Trial > Glitch Report
@@ -914,7 +912,7 @@ function devJump(n){
   if(!S.type){S.type="coop";S.spend=EP.Bots.typicalSpend("coop")}
   else if(spendLeft()!==0)S.spend=EP.Bots.typicalSpend(S.type);
   const startNew=!G||n<=G.level;
-  if(startNew){endSession();S.found={};S.maxStep=5;newSession()}
+  if(startNew){endSession();S.pendingL=false;S.maxStep=5;newSession()}
   G.jumpToLevel(n);
   MYTEAM=G.teamOf(ME);
   resetRoundUI();

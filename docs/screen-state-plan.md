@@ -18,7 +18,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
 - [x] **Step 7:** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`)
 - [x] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
-- [ ] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
+- [x] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
 - [ ] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
 - [ ] **Step 11:** Remove scoring, ranking, and tie-break math from screen code (`V-12, V-13, V-22`)
 - [ ] **Step 12:** Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap (`V-10, V-15, V-17`)
@@ -133,11 +133,12 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - **Done notes:** Added `abilityLines(draft = null)` to `Attributes` and `Player`; persisted `trialPayments`, `sopTimedOut`, and `accusations[].safe` in `Round` (`toJSON`/`fromJSON` with old-save defaults `{}`, `false`, `false`); tracked `submitSop` and `skipAccusation:<id>` in `round.completed` without extra RNG draws; added grouped `playerState`, `roundSummary`, `sabotageOptions`, `giftOptions`, and `answerGiftByIndex` pass-throughs on `Game` (normalizing Independent `"refused"` gifts to `"declined"` and hiding other players' types, stats, hearts, gifts, Skim, and Cash Out); and removed `S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`, `new EP.Round(1)`, and direct `G.round.*`/`EP.Gift.*`/`EP.Sabotage.*` calls from `game.js` and `world-map.js`.
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
-#### Step 9: Move anomaly tracking (`S.found`) into `Player` / `Game` save state
+#### Step 9: Move anomaly tracking (`S.found`) into `Player` / `Game` save state — DONE
 - **Violations covered:** `V-06, V-38`
-- **Files touched:** `rules/Player.js`, `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `world-map.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
+- **Files touched:** `rules/Player.js`, `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `world-map.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** Existing `Player` (`rules/Player.js`) and `Game` (`rules/Game.js`). Store found anomaly IDs (`["L", "id", "loop"]`) on `Player` (saved in `Player.toJSON`/`fromJSON`, defaulting to `[]` for older saves; no new class needed). Add `Game.recordAnomaly(p, id)` and `Game.anomaliesFor(p)` pass-throughs (auto-recording `"loop"` inside `SopTrial.closeSop` when `endlessOut` is true). Per Q3, `WATCHER` counts once, from the `ATTEMPT 02` badge printed at Reception check-in (any second trigger is a bug). Remove `S.found` from `game.js` and `world-map.js`.
 - **QA bugs fixed:** None (fixes save/load loss of `ANOMALIES` and duplicate `WATCHER` trigger).
+- **Done notes:** Added private `#anomalies` on `Player` (valid IDs `"L"`, `"id"`, `"loop"`, deduplicated, persisted in `toJSON`/`fromJSON` with `[]` default for older saves) and `Game.recordAnomaly(p, id)` / `Game.anomaliesFor(p)` pass-throughs (never exposed on `Game.board()`, zero `Rng` draws); `Game.closeSop()` records `"loop"` for every member of each team with `endlessOut`. Removed `S.found` and the `#idline` click trigger from `game.js` and `world-map.js`, using plain UI flag `S.pendingL` on sign-in until `ME` exists in `newSession()` and reading HUD / Glitch Report anomaly counts from `G.anomaliesFor(ME)`. Updated `Tests/check_save.js` and `Tests/check_screens.js`.
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
 ---

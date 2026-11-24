@@ -621,6 +621,11 @@ class Game {
   closeSop() {
     this.round.sopTimedOut = !this.didRun("submitSop");
     const ranking = this.sop().closeSop(this.round, this.teams);
+    for (const t of this.teams) {
+      if (this.round.sopResults[t.id] && this.round.sopResults[t.id].endlessOut) {
+        for (const p of t.members) this.recordAnomaly(p, "loop");
+      }
+    }
     this.refreshTimer();
     return ranking;
   }
@@ -1510,6 +1515,16 @@ class Game {
     const g = this.round.gifts[index];
     if (g.receiver !== pl) return { ok: false, reason: "That gift is not for you." };
     return this.round.answerGift(g, accept);
+  }
+
+  /* Anomalies (Step 9): per-player found anomaly ids ("L", "id", "loop"), never exposed on Game.board(). */
+  recordAnomaly(p, id) {
+    const pl = this._resolvePlayer(p);
+    return pl ? pl.recordAnomaly(id) : false;
+  }
+  anomaliesFor(p) {
+    const pl = this._resolvePlayer(p);
+    return pl ? pl.anomalies() : [];
   }
 
   /* Progress board: read-only, open to every player at any time. Returns new plain objects with only

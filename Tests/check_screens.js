@@ -2933,8 +2933,8 @@ async function mirrorStep6eCases() {
           arrived: true,
           step: 9,
           maxStep: 9,
-          found: { L: 1 },
         };
+        G.recordAnomaly(ME, "L");
         resetRoundUI();
         render();
       };
@@ -2996,7 +2996,7 @@ async function mirrorStep6eCases() {
       mountPdc();
       document.querySelector("#replay").click();
       replayWorksOk = G === null && S.step === 3 && S.name === reloadedMe.name && S.email === "pdc@icstars.org" &&
-        Object.keys(S.found).length === 0 && !!document.querySelector('[data-type="coop"]');
+        !("found" in S) && anomaliesFound() === 0 && !!document.querySelector('[data-type="coop"]');
 
       // Test Back to sign-in button from Presentation Day Complete
       mountPdc();
@@ -3137,9 +3137,9 @@ async function devJumpCases() {
 
     // 3. Forward jump keeps the same Game instance and fast-forwards through rules (including mid-Level 3 Showtime)
     sendJump(1); await sleep(15);
-    w.eval('window._djG1 = G; window._djMe1 = ME; S.found.L = 1;');
+    w.eval('window._djG1 = G; window._djMe1 = ME; G.recordAnomaly(ME, "L");');
     sendJump(3); await sleep(15);
-    const fwd13 = w.eval('({ sameGame: G === window._djG1, sameMe: ME === window._djMe1, level: G.level, step: G.step, keptClue: S.found.L === 1, res1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", res2: typeof G.teamTrialResults(MYTEAM)[2] === "boolean" })');
+    const fwd13 = w.eval('({ sameGame: G === window._djG1, sameMe: ME === window._djMe1, level: G.level, step: G.step, keptClue: G.anomaliesFor(ME).includes("L"), res1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", res2: typeof G.teamTrialResults(MYTEAM)[2] === "boolean" })');
     next(); await sleep(15); // Open Floor
     finishTimedStep("openFloor"); await sleep(15); // Mirror Lobby
     // Connect bots + human cleanly into Mirror Showtime via rules clock, then forward-jump to Level 5
@@ -3157,9 +3157,9 @@ async function devJumpCases() {
     );
 
     // 4. Same-level and backward jumps start a new Game and fast-forward; partial V[3] creation jump works
-    w.eval('window._djG5 = G; S.found.L = 1;');
+    w.eval('window._djG5 = G; G.recordAnomaly(ME, "L");');
     sendJump(5); await sleep(15); // same-level jump 5 -> 5
-    const sameLv = w.eval('({ newGame: G !== window._djG5, level: G.level, step: G.step, clearedClues: Object.keys(S.found).length === 0, r1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", r4: typeof G.teamTrialResults(MYTEAM)[4] === "boolean", r5: G.teamTrialResults(MYTEAM)[5] === undefined })');
+    const sameLv = w.eval('({ newGame: G !== window._djG5, level: G.level, step: G.step, clearedClues: G.anomaliesFor(ME).length === 0, r1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", r4: typeof G.teamTrialResults(MYTEAM)[4] === "boolean", r5: G.teamTrialResults(MYTEAM)[5] === undefined })');
     w.eval('window._djG5b = G;');
     sendJump(2); await sleep(15); // backward jump 5 -> 2
     const backLv = w.eval('({ newGame: G !== window._djG5b, level: G.level, step: G.step, r1: typeof G.teamTrialResults(MYTEAM)[1] === "boolean", r2: G.teamTrialResults(MYTEAM)[2] === undefined })');
@@ -5035,6 +5035,83 @@ async function step8PlayerReadsCases() {
   check("game.js and world-map.js contain no stale round copies or direct Round/Gift/Sabotage calls", screensClean);
 }
 
+/* Step 9: anomalies saved on Player via Game, S.found removed, WATCHER counts once at Reception, HUD matches Game. */
+async function step9AnomaliesCases() {
+  const gameSrc = fs.readFileSync(path.join(repo, "game.js"), "utf8");
+  const mapSrc = fs.readFileSync(path.join(repo, "world-map.js"), "utf8");
+  const noSFoundInCode = !/\bS\.found\b/.test(gameSrc) && !/\bS\.found\b/.test(mapSrc) &&
+    w.eval('!("found" in fresh()) && !("found" in S)');
+  check("S.found is gone from game.js, world-map.js, and screen state", noSFoundInCode);
+
+  const hudAnomText = () => {
+    const row = [...d.querySelectorAll("#hud .side .row")].find(r => r.textContent.includes("Anomalies"));
+    return row ? row.querySelector("span:last-child").textContent.trim() : "";
+  };
+
+  let res = null;
+  try {
+    // 1. Click capital L at sign-in before ME exists -> held in S.pendingL, transferred on newSession(), flag dropped
+    w.eval('endSession(); S = fresh(); S.step = 0; S.maxStep = 0; render();');
+    await sleep(20);
+    $("#theL").click(); await sleep(10);
+    const pendingBeforeSession = w.eval('S.pendingL === true && document.querySelector("#theL").classList.contains("found")');
+
+    // Sign in -> My Badge: clicking #idline does not trigger WATCHER (only Reception check-in does)
+    $("#em").value = "anom@icstars.org";
+    $("#jc").value = "CYCLE60";
+    next(); await sleep(20);
+    w.eval('S.menu = "badge"; render();'); await sleep(10);
+    $("#idline").click(); await sleep(10);
+
+    // Wardrobe + Work style -> newSession()
+    w.eval('S.name = "AnomTest"; S.step = 3; S.maxStep = 3; render();'); await sleep(10);
+    $('[data-type="coop"]').click(); await sleep(10);
+    while (true) { const b = $$("[data-inc]").find(x => !x.disabled); if (!b) break; b.click(); }
+    next(); await sleep(20); // -> arrival + newSession()
+    const afterSession = w.eval('({ pendingL: S.pendingL, list: G.anomaliesFor(ME), hudCount: anomaliesFound() })');
+    w.eval('skipArrival(); S.arrived = true; render();'); await sleep(10);
+    const hud1 = hudAnomText();
+
+    // Advance to Level 1 Open Floor and check in at Reception twice -> WATCHER ("id") added once only
+    next(); await sleep(10); // -> Briefing
+    next(); await sleep(10); // -> Open Floor
+    w.eval('S.wroom = "reception"; doUse(); doUse();'); await sleep(10);
+    const afterReceptionTwice = w.eval('({ list: G.anomaliesFor(ME), hudCount: anomaliesFound() })');
+    const hud2 = hudAnomText();
+
+    // Advance to Level 1 SOP, leave out endless step, close SOP timer -> "loop" added, HUD & Glitch Report show 3/3
+    finishTimedStep("openFloor"); await sleep(20);
+    for (const stepText of w.eval('EP.Trial.SopTrial.STEPS')) {
+      const btn = $$("[data-pile]").find(b => b.textContent.includes(stepText));
+      if (btn) btn.click();
+    }
+    $("#check").click(); await sleep(10);
+    finishTimedStep("sop"); await sleep(20);
+    const afterSop = w.eval('({ list: G.anomaliesFor(ME), hudCount: anomaliesFound() })');
+    const hud3 = hudAnomText();
+    next(); await sleep(20); // -> Glitch Report
+    const foundTags = $$(".report .clue .tag.s").map(el => el.textContent.trim());
+    const hud3Report = hudAnomText();
+
+    res = {
+      pendingBeforeSession,
+      afterSessionOk: afterSession.pendingL === false &&
+        JSON.stringify(afterSession.list) === '["L"]' &&
+        afterSession.hudCount === 1 && hud1 === "1/3",
+      receptionTwiceOk: JSON.stringify(afterReceptionTwice.list) === '["L","id"]' &&
+        afterReceptionTwice.hudCount === 2 && hud2 === "2/3",
+      sopAndReportOk: JSON.stringify(afterSop.list) === '["L","id","loop"]' &&
+        afterSop.hudCount === 3 && hud3 === "3/3" && hud3Report === "3/3" &&
+        foundTags.length === 3 && foundTags.includes("ERROR") && foundTags.includes("WATCHER") && foundTags.includes("LOOP"),
+    };
+  } finally {
+    w.eval('elevTimers.forEach(clearTimeout); elevTimers = []; endSession(); S = fresh(); render();');
+  }
+
+  check("Sign-in ERROR transfers to Player on creation and Reception check-in twice records WATCHER once", !!res && res.pendingBeforeSession && res.afterSessionOk && res.receptionTwiceOk);
+  check("HUD and Glitch Report anomaly counts match G.anomaliesFor(ME).length (including LOOP)", !!res && res.sopAndReportOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -5094,6 +5171,8 @@ w.addEventListener("load", async () => {
     await step7JudgedCleanupCases();
     log("run 21: Step 8 draft-aware abilityLines, Round records, and player-scoped Game reads");
     await step8PlayerReadsCases();
+    log("run 22: Step 9 anomalies saved on Player via Game");
+    await step9AnomaliesCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

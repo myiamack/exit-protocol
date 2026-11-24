@@ -45,6 +45,7 @@ classDiagram
     +payTrialCosts(), accuse(), skipAccusation(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
     +playerState(p, draft), roundSummary(p), sabotageOptions(p), giftOptions(p), answerGiftByIndex(p, index, accept)
+    +recordAnomaly(p, id), anomaliesFor(p)
     +board() public view
     +results() endings
     +toJSON(), fromJSON()$
@@ -94,12 +95,15 @@ classDiagram
     -PlayerStatus #status
     -PathTracker #pathTracker
     -Wallet #wallet
+    -string[] #anomalies
+    +ANOMALIES$
     +caughtBy  team ids
     +round flags, attendance times
     +payTrial(), lose(), cover(), takeFromHighest(), giftTarget(), receiveGift()
     +lockIn(), lockAttendanceGlitch(), reboot()
     +placePoints(), canCashOut(), cashOut(), takeSkim()
     +creditPath(), gradChecks(), graduates(), lockEnding(), wins(), ending()
+    +recordAnomaly(id), anomalies()
     +rollAbility(), abilityLines(draft), voteWeight(), flag(), boardStatus()
     +toJSON(), fromJSON(data)$
   }
@@ -439,5 +443,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 8, from commit `c297a1d`).
+Made from the rules code on branch `screen-state-cleanup` (Step 9, from commit `1eba203`).
 Update this diagram whenever a class in `rules/` changes.

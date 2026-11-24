@@ -554,5 +554,70 @@ console.log("-- 6. Mid-dance save and load restores chart, counter, and tempo");
   );
 }
 
+/* ----- 7. Mid-round save/reload preserves round details and anomalies (old saves default to []) ----- */
+console.log("-- 7. Mid-round save/reload preserves round details and anomalies (old saves default to [])");
+{
+  const T = { now: 1e9 };
+  const mkTeam = (id, name, base) => new EP.Team({
+    id,
+    name,
+    members: [0, 1, 2, 3].map(i => {
+      const p = Bots.makePlayer(base + i, name + "_" + i, "coop");
+      if (id === 0 && i === 0) p.isBot = false;
+      return p;
+    }),
+  });
+  const teams = [mkTeam(0, "Alpha", 10), mkTeam(1, "Beta", 20), mkTeam(2, "Gamma", 30)];
+  const g = new Game({ teams, rng: Rng.seeded(901), clock: () => T.now, hooks: {} });
+  const me = g.players[0];
+  const mate = g.players[1];
+
+  g.startNextRound(); // Level 1 briefing
+  g.advance();        // openFloor
+  g.advance();        // trial (SOP)
+
+  const addL1 = g.recordAnomaly(me, "L");
+  const addL2 = g.recordAnomaly(me, "L");
+  const addId = g.recordAnomaly(me, "id");
+  const addBad = g.recordAnomaly(me, "bogus");
+
+  // Leave endless step out without calling submitSop, so closeSop sets sopTimedOut=true and records "loop" for team 0
+  g.setSopBoard(me, Trial.SopTrial.STEPS);
+  g.closeSop();
+  g.endTrial(); // pays trial costs -> glitchReport
+
+  me.setAttrsForTest({ focus: 10 }); // guarantees wrong accusation is safe via Focus
+  g.accuse(me, mate);
+
+  const snap = save(g);
+  const parsed = JSON.parse(snap);
+  const g2 = load(snap, T, { hooks: {}, tick: false });
+  const me2 = g2.players.find(p => p.id === me.id);
+  const mate2 = g2.players.find(p => p.id === mate.id);
+
+  const listCopy = g2.anomaliesFor(me2);
+  listCopy.push("loop"); // mutating returned copy must not affect saved state
+  const acc1 = g.round.accusations[0];
+  const acc2 = g2.round.accusations[0];
+
+  const oldParsed = JSON.parse(snap);
+  for (const p of oldParsed.players) delete p.anomalies;
+  const gOld = Game.fromJSON(oldParsed, { clock: () => T.now, hooks: {}, tick: false });
+
+  ok(
+    "mid-round save/reload keeps trialPayments, accusations[].safe, sopTimedOut, and anomalies (old saves default to [])",
+    addL1 === true && addL2 === false && addId === true && addBad === false &&
+      g.round.sopTimedOut === true && g2.round.sopTimedOut === true &&
+      Object.keys(g.round.trialPayments).length > 0 &&
+      JSON.stringify(g2.round.trialPayments) === JSON.stringify(g.round.trialPayments) &&
+      !!acc1 && !!acc2 && acc1.safe === true && acc2.safe === true &&
+      JSON.stringify(g2.anomaliesFor(me2)) === '["L","id","loop"]' &&
+      JSON.stringify(g2.anomaliesFor(mate2)) === '["loop"]' &&
+      !JSON.stringify(g2.board()).includes("anomalies") &&
+      gOld.players.every(p => JSON.stringify(gOld.anomaliesFor(p)) === "[]") &&
+      !plainProblem(parsed) && save(g) === save(g2)
+  );
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed  (" + ((Date.now() - t0) / 1000).toFixed(1) + " s)");
 process.exit(fail ? 1 : 0);

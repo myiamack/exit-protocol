@@ -23,5 +23,7 @@ PASS  mid-Mic-flash save/reload hides sequence at exact same timestamp
 PASS  mid-Q&A save/reload times out at exact same timestamp
 -- 6. Mid-dance save and load restores chart, counter, and tempo
 PASS  mid-dance save/reload restores chart, spawnedCount, tempo gapTicks, and fires identical misses/spawns
+-- 7. Mid-round save/reload preserves round details and anomalies (old saves default to [])
+PASS  mid-round save/reload keeps trialPayments, accusations[].safe, sopTimedOut, and anomalies (old saves default to [])
 
-19 passed, 0 failed  (4.6 s)
+20 passed, 0 failed  (4.6 s)
