@@ -102,9 +102,9 @@ const Bots = {
       game.startWriting();
       Bots.submit(game);
       game.closeWriting();
-      Bots.vote(game, game.startVote(), rng);
+      if (!game.didRun("runTrial")) Bots.vote(game, game.startVote(), rng);
     }
-    return game.runTrial();
+    return game.didRun("runTrial") ? game.trialRanking() : game.runTrial();
   },
 
   /* Levels 5-6: every active bot submits the text "Bot answer" so tests still run the vote. */
@@ -355,8 +355,9 @@ const Bots = {
   /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
      beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends;
        Split Brief bots post any due notes before the trial closes; Mirror bots finish any due connect/setup/dance.
-     onStart: Split Brief and Mirror initialize/process bot actions; bots gift when the gift window opens;
-       place points when Stats Update or Graduation opens.
+     onStart: Split Brief and Mirror initialize/process bot actions; bots submit "Bot answer" when writing opens;
+       bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     onVoteStart: bots cast their ballots when Levels 5-6 voting opens.
      onTick: Split Brief and Mirror bots advance scheduled actions as time passes.
      onGift: bot receiver answers an incoming gift immediately using game.rng.
      Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
@@ -370,9 +371,13 @@ const Bots = {
     onStart(game, name) {
       if (name === "splitBrief") Bots.splitBrief(game, game.now());
       else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
+      else if (name === "writing") Bots.submit(game);
       else if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
+    },
+    onVoteStart(game, vote) {
+      Bots.vote(game, vote, game.rng);
     },
     onTick(game, now) {
       Bots.splitBrief(game, now);

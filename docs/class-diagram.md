@@ -27,7 +27,7 @@ classDiagram
     -Timer _timer
     +rng  function from Rng.seeded
     +bool host
-    +hooks  onStart, onTick, beforeClose, onGift, onFastForward
+    +hooks  onStart, onVoteStart, onTick, beforeClose, onGift, onFastForward
     +log, prompts, submissions
     +step  current step, read-only
     +over  results ran, read-only
@@ -41,7 +41,7 @@ classDiagram
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
     +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDancePress(), mirrorDanceHit()..mirrorDanceStray()
     +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorSetupView(), mirrorDanceTeam(), mirrorDanceView()
-    +startWriting(), submit(), closeWriting(), startVote(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
+    +startWriting(), submit(), closeWriting(), startVote(), castVote(), judgedView(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
     +payTrialCosts(), accuse(), skipAccusation(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
     +board() public view
@@ -205,7 +205,7 @@ classDiagram
   class Bots {
     <<plain object, not a class>>
     +SETTINGS  rates from sim_v2.py
-    +hooks  onStart, onTick, beforeClose, onGift, onFastForward
+    +hooks  onStart, onVoteStart, onTick, beforeClose, onGift, onFastForward
     +soloGame(...), typicalSpend(type), makePlayer(id, name, type)
     +openFloor(), trial(), splitBrief(), mirror(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
     +allocate(p, n, final)
@@ -233,7 +233,7 @@ classDiagram
 
   Economy ..> Player : reads and updates
   Attendance ..> Player : reads and sets times
-  Bots ..> Game : connects only via hooks (onStart, onTick, beforeClose, onGift, onFastForward)
+  Bots ..> Game : connects only via hooks (onStart, onVoteStart, onTick, beforeClose, onGift, onFastForward)
   Bots ..> Economy : allocate
   Bots ..> Player : makePlayer
   Bots ..> Team : soloGame
@@ -438,5 +438,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 6, from commit `0570e3a`).
+Made from the rules code on branch `screen-state-cleanup` (Step 7, from commit `e283f7e`).
 Update this diagram whenever a class in `rules/` changes.

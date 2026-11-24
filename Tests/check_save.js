@@ -154,7 +154,7 @@ function act(g, T, d) {
         return "wait";
       }
       if (!t.vote) { g.startVote(); return "startVote"; }
-      if (r < 0.5) { const c = t.vote.choicesFor(h).slice(); const rank = []; while (rank.length < t.vote.slotsFor(h) && c.length) rank.push(c.splice(Math.floor(d() * c.length), 1)[0]); return "vote " + t.vote.cast(h, rank).ok; }
+      if (r < 0.5) { const c = t.vote.choicesFor(h).slice(); const rank = []; while (rank.length < t.vote.slotsFor(h) && c.length) rank.push(c.splice(Math.floor(d() * c.length), 1)[0]); return "vote " + g.castVote(h, rank).ok; }
       Bots.vote(g, t.vote, g.rng); g.runTrial(); return "runTrial";
     }
     if (!g.didRun("runTrial")) { g.runTrial(); return "runTrial"; }

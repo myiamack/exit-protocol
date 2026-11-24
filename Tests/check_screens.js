@@ -4783,6 +4783,127 @@ async function step6SplitBriefCleanupCases() {
   check("splitbrief-view.js contains no G.round.trial or direct trial calls", noDirectTrial);
 }
 
+/* Step 7: Levels 5-6 writing/vote owned by Game, Bots.hooks, castVote close rules, judgedView privacy, and clean screens. */
+async function step7JudgedCleanupCases() {
+  const res = w.eval(`(() => {
+    const { Bots, Game, Rng, Team } = EP;
+    const mkGame = (seed, humanIds = [0, 4]) => {
+      const ps = Array.from({ length: 12 }, (_, i) => {
+        const p = Bots.makePlayer(1100 + i, "JV" + i, ["coop", "indep", "contra"][i % 3]);
+        if (humanIds.includes(i)) p.isBot = false;
+        return p;
+      });
+      const teams = [0, 1, 2].map(i => new Team({ id: "jvT" + i, name: "JV Team " + i, members: ps.slice(i * 4, i * 4 + 4) }));
+      const clock = { now: 1000000 };
+      const g = new Game({ teams, rng: Rng.seeded(seed), clock: () => clock.now, hooks: Bots.hooks });
+      return { g, ps, teams, clock };
+    };
+
+    // (d) Rejects outside the Levels 5-6 vote step
+    const { g, ps, clock } = mkGame(707, [0, 4]);
+    const [h1, h2] = [ps[0], ps[4]];
+    const rejectIntermission = g.castVote(h1, [ps[4].id, ps[8].id, ps[9].id]).ok === false;
+    g.startNextRound(); // L1 briefing
+    g.advance();        // L1 openFloor
+    g.advance();        // L1 sop
+    const rejectLevel1 = g.castVote(h1, [ps[4].id, ps[8].id, ps[9].id]).ok === false;
+
+    g.jumpToLevel(5);
+    const rejectBriefing = g.castVote(h1, [ps[4].id, ps[8].id, ps[9].id]).ok === false;
+    g.advance();        // L5 openFloor
+    const rejectOpenFloor = g.castVote(h1, [ps[4].id, ps[8].id, ps[9].id]).ok === false;
+    g.advance();        // L5 trial -> auto-opens writing + Bots.submit via onStart("writing")
+    const writingAutoOpened = g.round.trial.writing === "open" &&
+      ps.filter(p => p.isBot).every(p => g.round.trial.submissions.has(p));
+    const rejectDuringWriting = g.castVote(h1, [ps[4].id, ps[8].id, ps[9].id]).ok === false;
+
+    // Close writing -> auto-opens vote + Bots.vote via onVoteStart
+    g.submit(h1, "Human 1 answer");
+    g.submit(h2, "Human 2 answer");
+    const voteAutoOpened = g.round.trial.writing === "closed" && !!g.round.trial.vote &&
+      ps.filter(p => p.isBot).every(p => g.round.trial.vote.ballots.has(p));
+
+    // (e) judgedView(p) hides other ballots, Initiative weight, stats, types, and pre-close ranking
+    const v1Pre = g.judgedView(h1);
+    const v2Pre = g.judgedView(h2);
+    const h1Choices = v1Pre.choices.slice(0, v1Pre.slots).map(c => c.id);
+    const h2Choices = v2Pre.choices.slice(0, v2Pre.slots).map(c => c.id);
+
+    // (a) One human vote does not close the vote while another active human has not voted
+    const r1 = g.castVote(h1, h1Choices);
+    const oneVoteStaysOpen = r1.ok === true && r1.closed === false && !g.didRun("runTrial");
+
+    const v1Mid = g.judgedView(h1);
+    const v2Mid = g.judgedView(h2);
+    const v2Json = JSON.stringify(v2Mid);
+    const privacyOk = v1Mid.hasVoted === true &&
+      JSON.stringify(v1Mid.myBallot) === JSON.stringify(h1Choices) &&
+      v2Mid.hasVoted === false && v2Mid.myBallot === null &&
+      v1Mid.ranking === null && v2Mid.ranking === null &&
+      !v2Json.includes("ballots") &&
+      !v2Json.includes("voteWeight") &&
+      !v2Json.includes('"attrs"') &&
+      !v2Json.includes('"type"');
+
+    // (b) The vote closes when the last active voter votes
+    const r2 = g.castVote(h2, h2Choices);
+    const v1Post = g.judgedView(h1);
+    const lastVoteCloses = r2.ok === true && r2.closed === true && g.didRun("runTrial") &&
+      v1Post.done === true && Array.isArray(v1Post.ranking) && v1Post.ranking.length === 3;
+    const rejectAfterClose = g.castVote(h1, h1Choices).ok === false;
+
+    // (c) Voter going idle lets the vote close on tick(), prior ballot stays, and 0 active voters closes at once
+    const g2Ctx = mkGame(708, [0, 4]);
+    const g2 = g2Ctx.g, pA = g2Ctx.ps[0], pB = g2Ctx.ps[4];
+    g2.jumpToLevel(5);
+    g2.advance(); // openFloor
+    g2.advance(); // trial (writing open)
+    g2.closeWriting(); // opens vote (bots voted, pA and pB have not)
+    const picksA = g2.judgedView(pA).choices.slice(0, 3).map(c => c.id);
+    const rA = g2.castVote(pA, picksA);
+    pA.idle = true; // prior ballot must stay
+    pB.idle = true; // last unvoted human goes idle
+    const rejectIdleCall = g2.castVote(pB, picksA).ok === false;
+    const closedOnTick = g2.tick(g2Ctx.clock.now + 1000);
+    const idleTickOk = rA.ok && !rA.closed && rejectIdleCall && closedOnTick.includes("vote") && g2.didRun("runTrial") &&
+      g2.round.trial.vote.ballots.has(pA);
+
+    // 0 active voters when voting opens -> closes at once
+    const g3Ctx = mkGame(709, [0]);
+    const g3 = g3Ctx.g;
+    g3.jumpToLevel(5);
+    g3.advance(); // openFloor
+    g3.advance(); // trial (writing open)
+    g3.players.forEach(p => { p.idle = true; });
+    g3.closeWriting();
+    const zeroVotersAutoClosed = g3.didRun("runTrial") && !!g3.round.trial.ranking;
+
+    return {
+      rejectOutsideOk: rejectIntermission && rejectLevel1 && rejectBriefing && rejectOpenFloor && rejectDuringWriting && rejectAfterClose,
+      autoOpenOk: writingAutoOpened && voteAutoOpened,
+      oneVoteStaysOpen,
+      lastVoteCloses,
+      idleTickOk,
+      zeroVotersAutoClosed,
+      privacyOk,
+    };
+  })()`);
+
+  const jvSrc = fs.readFileSync(path.join(repo, "judged-view.js"), "utf8");
+  const vtSrc = fs.readFileSync(path.join(repo, "pages", "vote-test.js"), "utf8");
+  const jvClean = !jvSrc.includes("G.round.trial") && !/\bv\.cast\b/.test(jvSrc) && !/\bEP\.Bots\b/.test(jvSrc);
+  const vtClean = !/\bME\.earned\b/.test(vtSrc) && !/\bME\.placePoints\b/.test(vtSrc) && !/\bG\.startVote\b/.test(vtSrc) && !/\btoVote\b/.test(vtSrc) && !vtSrc.includes("G.round.trial");
+
+  check("Game.castVote rejects calls outside the Levels 5-6 vote step", res.rejectOutsideOk);
+  check("Writing and voting auto-open in Game and run Bots.hooks", res.autoOpenOk);
+  check("One human vote does not close the vote while another active human has not voted", res.oneVoteStaysOpen);
+  check("Vote closes when the last active voter votes", res.lastVoteCloses);
+  check("Voter going idle lets vote close on tick, keeping prior ballots, and 0 active voters closes at once", res.idleTickOk && res.zeroVotersAutoClosed);
+  check("Game.judgedView(p) hides other ballots, Initiative weights, stats, types, and pre-close ranking", res.privacyOk);
+  check("judged-view.js has no G.round.trial, v.cast, or EP.Bots", jvClean);
+  check("pages/vote-test.js has no ME.earned, ME.placePoints, G.startVote, toVote, or G.round.trial", vtClean);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -4838,6 +4959,8 @@ w.addEventListener("load", async () => {
     await step5CleanupCases();
     log("run 19: Step 6 Split Brief Game pass-throughs and player-scoped view");
     await step6SplitBriefCleanupCases();
+    log("run 20: Step 7 Levels 5-6 writing/vote Game ownership and judgedView privacy");
+    await step7JudgedCleanupCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

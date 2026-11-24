@@ -5913,7 +5913,7 @@ class Game {
   /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }.
      clock: returns the time in ms. Times Attendance and the step timers. Tests pass a fake one.
      rng: the game's random numbers. Use Rng.seeded(seed) if the game will be saved (toJSON).
-     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName), onTick(game, now), onGift(game, gift) }.
+     hooks (optional, not saved): { onStart(game, timerName), onVoteStart(game, vote), beforeClose(game, timerName), onTick(game, now), onGift(game, gift) }.
        The prototype passes Bots.hooks so bots act at the same moments as before. Base44 passes none. */
   constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now(), hooks = {} }) {
     this.teams = teams;
@@ -6034,6 +6034,7 @@ class Game {
       const hadShowtimeTimer = this.running && cur && cur.name === "mirrorShowtime";
       if (this._advanceMirrorShowtime(now) && hadShowtimeTimer) closed.push("mirrorShowtime");
     }
+    if (this._maybeCloseVote()) closed.push("vote");
     return closed;
   }
   closeTimer(now) { return this._timer.close(now); }
@@ -6173,6 +6174,9 @@ class Game {
     if (step === "trial" && this.round.trial instanceof Trial.MirrorTrial) {
       if (!this.round.trial.lobbyStarted) this.round.trial.startLobby(this.teams);
     }
+    if (step === "trial" && this.round.trial instanceof Trial.JudgedTrial && !this.host) {
+      if (!this.round.trial.writing) this.round.trial.startWriting({ host: this.host, prompts: this.prompts });
+    }
     this.syncAttendance();
     this.refreshTimer();
     return step;
@@ -6300,7 +6304,7 @@ class Game {
                 this.startVote();
               } else {
                 if (this.hooks.onFastForward) this.hooks.onFastForward(this, "vote");
-                this.runTrial();
+                if (!this.didRun("runTrial")) this.runTrial();
               }
             } else {
               this.runTrial();
@@ -6826,7 +6830,9 @@ class Game {
   }
   /* Opens writing. No host: the engine picks a prompt at random. */
   startWriting() {
-    const prompt = this.judged().startWriting({ host: this.host, prompts: this.prompts });
+    const jt = this.judged();
+    if (jt.writing === "open") return jt.prompt;
+    const prompt = jt.startWriting({ host: this.host, prompts: this.prompts });
     this.refreshTimer();
     return prompt;
   }
@@ -6842,15 +6848,121 @@ class Game {
     const jt = this.judged();
     this.activity(p, now);
     const r = jt.submit(p, text, { players: this.players, submissions: this.submissions });
-    if (r.closed) this.refreshTimer();
+    if (r.closed) {
+      this.refreshTimer();
+      this.startVote();
+    }
     return r;
   }
-  /* The 3-minute timer ran out (or the host closes it). Submissions go on the game record. */
+  /* The 3-minute timer ran out (or the host closes it). Submissions go on the game record, and voting opens. */
   closeWriting() {
-    if (this.judged().closeWriting(this.submissions)) this.refreshTimer();
+    if (!this.judged().closeWriting(this.submissions)) return false;
+    this.refreshTimer();
+    this.startVote();
+    return true;
   }
   startVote() {
-    return this.judged().startVote(this.teams);
+    const jt = this.judged();
+    const hadVote = !!jt.vote;
+    const vote = jt.startVote(this.teams);
+    if (!hadVote) {
+      if (this.hooks.onVoteStart) this.hooks.onVoteStart(this, vote);
+      this._maybeCloseVote();
+    }
+    return vote;
+  }
+  _maybeCloseVote() {
+    if (this.step !== "trial" || this.didRun("runTrial")) return false;
+    const jt = this.round && this.round.trial;
+    if (!(jt instanceof Trial.JudgedTrial) || !jt.vote || jt.ranking) return false;
+    const activeVoters = this.players.filter(p => p.isActive());
+    if (!activeVoters.every(p => jt.vote.ballots.has(p))) return false;
+    this.runTrial();
+    return true;
+  }
+  /* Cast a Levels 5-6 ballot by player (or id) and target player ids. Closes and ranks when all active voters vote. */
+  castVote(voter, targetIds) {
+    const why = this.wrongStep("trial") ||
+      (!(this.round.trial instanceof Trial.JudgedTrial) ? "This level is not judged." : null);
+    if (why) return { ok: false, reason: why };
+    const jt = this.round.trial;
+    if (this.didRun("runTrial") || jt.ranking) return { ok: false, reason: "The vote is closed." };
+    if (jt.writing !== "closed" || !jt.vote) return { ok: false, reason: "Voting is not open." };
+    const v = this._resolvePlayer(voter);
+    if (!v) return { ok: false, reason: "Unknown player." };
+    if (v.isStuck()) return { ok: false, reason: "Stuck players do not vote." };
+    if (v.idle || !v.isActive()) return { ok: false, reason: "You are idle." };
+    if (jt.vote.ballots.has(v)) return { ok: false, reason: "You already voted." };
+    if (!Array.isArray(targetIds)) return { ok: false, reason: "Choose a player for every place." };
+    if (targetIds.some(x => x === "" || x === null || x === undefined)) {
+      return { ok: false, reason: "Choose a player for every place." };
+    }
+    const targets = targetIds.map(x => this._resolvePlayer(x) || this.players.find(p => String(p.id) === String(x)) || null);
+    if (targets.some(t => !t)) return { ok: false, reason: "Unknown player." };
+    this.activity(v);
+    const res = jt.vote.cast(v, targets);
+    if (!res.ok) return res;
+    const closed = this._maybeCloseVote();
+    return { ok: true, closed };
+  }
+  /* Player-scoped read-only view for Levels 5-6 judged trials. Hides other ballots, Initiative weights, stats, and types. */
+  judgedView(p) {
+    const jt = this.round && this.round.trial;
+    if (!(jt instanceof Trial.JudgedTrial)) return null;
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const done = this.didRun("runTrial") || !!jt.ranking;
+    const active = this.players.filter(x => x.isActive());
+    const vote = jt.vote;
+    const myBallot = vote && vote.ballots.has(pl) ? vote.ballots.get(pl).map(q => q.id) : null;
+    return {
+      done,
+      phase: done ? "result" : jt.writing === "open" ? "writing" : vote ? "vote" : "prompt",
+      writing: jt.writing,
+      prompt: jt.prompt ? { level: jt.prompt.level, index: jt.prompt.index, text: jt.prompt.text, custom: jt.prompt.custom } : null,
+      maxChars: Trial.JudgedTrial.MAX_CHARS,
+      mySubmission: jt.submissions.has(pl) ? jt.submissions.get(pl) : null,
+      activeCount: active.length,
+      submittedCount: active.filter(x => jt.submissions.has(x)).length,
+      hasMissingSubmissions: this.players.some(x => !x.isStuck() && !jt.submissions.has(x)),
+      submissions: jt.writing === "closed"
+        ? this.teams.flatMap(t => t.members
+            .filter(q => jt.submissions.has(q))
+            .map(q => ({
+              playerId: q.id,
+              name: q.name,
+              teamId: t.id,
+              teamName: t.name,
+              isMine: t === team,
+              text: jt.submissions.get(q),
+            })))
+        : [],
+      voteOpen: !!vote && !done,
+      canVote: !!vote && !done && pl.isActive(),
+      isStuck: pl.isStuck(),
+      isIdle: !!pl.idle,
+      choices: vote && !done
+        ? vote.choicesFor(pl).map(q => ({ id: q.id, name: q.name, teamName: this.teamOf(q).name }))
+        : [],
+      slots: vote && !done ? vote.slotsFor(pl) : 0,
+      myBallot,
+      hasVoted: myBallot !== null,
+      votersDone: vote ? active.filter(x => vote.ballots.has(x)).length : 0,
+      votersTotal: active.length,
+      ranking: done
+        ? (jt.ranking || []).map(r => ({
+            place: r.place,
+            teamId: r.team.id,
+            teamName: r.team.name,
+            isMine: r.team === team,
+            total: r.total,
+            score: r.score,
+            firsts: r.firsts,
+            won: r.won,
+          }))
+        : null,
+    };
   }
   /* Returns the ranked list: [{ team, place, won, ... }] best first. */
   runTrial() {
@@ -7187,9 +7299,9 @@ const Bots = {
       game.startWriting();
       Bots.submit(game);
       game.closeWriting();
-      Bots.vote(game, game.startVote(), rng);
+      if (!game.didRun("runTrial")) Bots.vote(game, game.startVote(), rng);
     }
-    return game.runTrial();
+    return game.didRun("runTrial") ? game.trialRanking() : game.runTrial();
   },
 
   /* Levels 5-6: every active bot submits the text "Bot answer" so tests still run the vote. */
@@ -7440,8 +7552,9 @@ const Bots = {
   /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
      beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends;
        Split Brief bots post any due notes before the trial closes; Mirror bots finish any due connect/setup/dance.
-     onStart: Split Brief and Mirror initialize/process bot actions; bots gift when the gift window opens;
-       place points when Stats Update or Graduation opens.
+     onStart: Split Brief and Mirror initialize/process bot actions; bots submit "Bot answer" when writing opens;
+       bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     onVoteStart: bots cast their ballots when Levels 5-6 voting opens.
      onTick: Split Brief and Mirror bots advance scheduled actions as time passes.
      onGift: bot receiver answers an incoming gift immediately using game.rng.
      Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
@@ -7455,9 +7568,13 @@ const Bots = {
     onStart(game, name) {
       if (name === "splitBrief") Bots.splitBrief(game, game.now());
       else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
+      else if (name === "writing") Bots.submit(game);
       else if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
+    },
+    onVoteStart(game, vote) {
+      Bots.vote(game, vote, game.rng);
     },
     onTick(game, now) {
       Bots.splitBrief(game, now);

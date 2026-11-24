@@ -16,7 +16,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
 - [x] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
 - [x] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
-- [ ] **Step 7 (BLOCKED):** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`) — blocked until Ben decides when the Levels 5-6 vote closes (Q10)
+- [x] **Step 7:** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`)
 - [ ] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
 - [ ] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
 - [ ] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
@@ -106,16 +106,16 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - **Done notes:** Added `splitBriefPostNote(p, text)`, `splitBriefSetBoard(p, taskIds)`, `splitBriefLockIn(p)`, and read-only `splitBriefView(p)` to `Game` (`rules/Game.js`), enforcing the Level 2 Split Brief trial step on action pass-throughs and returning only `p`'s own cards (without `botNote`), `p`'s twist card when `p` is the holder, `p`'s team notes/board/lock status, public tasks/title/`twistFired`, and post-close answer/score/ranking only after the trial closes. Updated `splitbrief-view.js` to use only these `Game` methods with zero `G.round.trial` or direct `trial.*` calls, keeping screen rendering and behavior identical.
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
-#### Step 7: Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` — BLOCKED
-- **Status:** BLOCKED until Ben decides when the Levels 5-6 vote closes (Open Question #10).
+#### Step 7: Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` — DONE
 - **Violations covered:** `V-24, V-25, V-26, V-40, V-41, V-42`
-- **Files touched:** `rules/Game.js`, `rules/Trial.js`, `rules/bots.js`, `rules/rules.bundle.js`, `judged-view.js`, `pages/vote-test.js`, `Tests/check_steps.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
+- **Files touched:** `rules/Game.js`, `rules/bots.js`, `rules/rules.bundle.js`, `judged-view.js`, `pages/vote-test.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`, `CLAUDE.md`
 - **Where logic moves:** Existing `Game` (`rules/Game.js`), `JudgedTrial` (`rules/Trial.js`), `Vote` (`rules/Vote.js`), and `Bots.hooks` (`rules/bots.js`).
   - Auto-open writing in `Game.advance()` when entering a `JudgedTrial` step with `!this.host` (matching how `advance()` deals `SplitBriefTrial` and starts `MirrorTrial` lobby), and auto-open voting inside `closeWriting()` / early submit close.
-  - Trigger `Bots.submit` via `Bots.hooks.onStart("writing")` and `Bots.vote` via a `Bots.hooks` vote callback when voting opens.
-  - Add `Game.castVote(voter, targetIds)` (vote closing behavior pending Open Question #10) and read-only `Game.judgedView(p)` pass-throughs.
-  - Update `judged-view.js` to call only `Game` methods with zero render-time mutations; simplify `pages/vote-test.js` to use `EP.Bots.hooks`, `G.jumpToLevel(5)`, and `Game` pass-throughs (removing `ME.earned = ...`, `ME.placePoints(...)`, and manual round/vote loops).
+  - Trigger `Bots.submit` via `Bots.hooks.onStart("writing")` and `Bots.vote` via `Bots.hooks.onVoteStart(game, vote)` when voting opens.
+  - Add `Game.castVote(voter, targetIds)` (closes the untimed vote and ranks the trial when all active voters have a ballot, also checked in `Game.tick()`, closing at once if 0 active voters exist; answers Q10) and read-only `Game.judgedView(p)` pass-throughs.
+  - Update `judged-view.js` to call only `Game` methods with zero render-time mutations; simplify `pages/vote-test.js` to use `EP.Bots.hooks`, `G.jumpToLevel(5)`, and `Game` pass-throughs (removing `ME.earned = ...`, `ME.placePoints(...)`, and manual round/vote loops, keeping only a plain `G.tick()` + `G.pollAttendance()` interval).
 - **QA bugs fixed:** None (fixes render-time state mutation, direct `Vote.cast`, and single-voter trial close in Levels 5-6).
+- **Done notes:** Added `Game.castVote(voter, targetIds)`, `_maybeCloseVote()`, and player-scoped read-only `Game.judgedView(p)`; `Game.advance()` opens writing when `!host`, `closeWriting()` and all-submitted `submit()` open voting, and `Bots.hooks.onStart("writing")` / `onVoteStart` handle bot answers and ballots. Updated `judged-view.js` to use only `Game` methods with zero render-time mutations and `pages/vote-test.js` to use `EP.Bots.hooks`, `G.jumpToLevel(5)`, and a plain `G.tick()`/`G.pollAttendance()` clock without `toVote`/`startVote`.
 - **Checks:** `npm run build`, `npm test` (exact baseline match; if `check_steps` or `check_save` adds new `castVote` assertions, explain the diff), `npm run test:screens`.
 
 ---
@@ -202,10 +202,10 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - **Q2. Empty Split Brief Lock In (Bug 1):** Should `SplitBriefTrial.lockIn()` require at least 1 task on the board, or require all 2 slots filled?
 - **Q7. Team standings ties (Bug 7):** On `Sprint 1 Complete`, `Presentation Day Complete`, and `Final Results`, should teams tied on `trialWins` share the same place number (e.g. `1, 1, 3, 4`) or show a tie note?
 - **Q9. Open Floor tap speed (Bug 3):** For tapped movement keys on Floor 60, do you prefer a longer tap impulse (e.g. ~80-100px per tap) or grid-step movement?
-- **Q10. When the Levels 5-6 vote closes (blocks Step 7):** When should the Levels 5-6 player vote close (e.g. when all active voters cast, on a timer, or both)?
 - **Q11. Untimed step ownership in multiplayer:** Untimed steps that one click advances for everyone (Briefing 'Open the floor', post-trial 'All-hands' which pays trial costs, Start Level): who owns these in multiplayer, host or actor?
 
 ### Answered
+- **Q10. When the Levels 5-6 vote closes — ANSWERED:** Untimed, as in `CLAUDE.md`. Closes when every active voter has cast a ballot (checked on `castVote` and `Game.tick()`, closing at once if 0 active voters exist; prior ballots from now-idle voters stay) (see Step 7).
 - **Q3. Reception `WATCHER` anomaly — ANSWERED:** `WATCHER` counts once, from the `ATTEMPT 02` badge printed at Reception check-in. Any second trigger is a bug (see Step 9).
 - **Q4. Multiplayer early phase close — ANSWERED:** Timed steps (`SOP`, `Glitch Report`, `Stats Update`, `Graduation`) close only when their timer runs out. One player's click never closes a timed step for others. Only Levels 5-6 writing and Split Brief close early (see Step 5).
 - **Q5. Level 3 action authority on Base44 — ANSWERED:** Rules own Level 3 deadlines (new Screen State Rule): rules own all Level 3 deadlines, timeouts, penalties, content picks, randomness, and scoring; screens draw motion from rules data and report player input (see Steps 3a, 3b, 4).

@@ -8,11 +8,11 @@ At the start of every task, read `CLAUDE.md` and `docs/screen-state-plan.md`.
 
 Two parallel tracks:
 - Ben: screen state cleanup on `screen-state-cleanup`, one step per task from `docs/screen-state-plan.md`.
-- Hannah: Levels 4, 5 and 6 on `levels-4-6` (branched from `screen-state-cleanup`). Hannah's designs are final for those levels. She also owns plan Step 7 (Levels 5-6 vote cleanup).
+- Hannah: Levels 4, 5 and 6 on `levels-4-6` (branched from `screen-state-cleanup`). Hannah's designs are final for those levels.
 
 Hannah's file boundaries:
 - New files for each level: rules (for example `rules/Level4Parts.js`), data (for example `rules/level4Data.js`), and screen (for example `level4-view.js`). Same pattern as Level 3.
-- Shared files she may edit, with small, listed changes only: `rules/Game.js` (one-line pass-throughs), `rules/index.js` (exports), `rules/Round.js` (`LEVELS` entries), `rules/Trial.js` (new `Trial` subclass registration only), `game.js` (show her screen), `judged-view.js` and `pages/vote-test.js` (Step 7).
+- Shared files she may edit, with small, listed changes only: `rules/Game.js` (one-line pass-throughs), `rules/index.js` (exports), `rules/Round.js` (`LEVELS` entries), `rules/Trial.js` (new `Trial` subclass registration only), `game.js` (show her screen).
 - If a design needs a change to a shared rule (hearts, step order, costs, glitch, gifts, accusations, vote math), stop and report it. Do not build it.
 - Every commit on `levels-4-6` must pass `npm run build`, `npm test`, `npm run test:screens`, and the new-files guard test.
 
