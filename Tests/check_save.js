@@ -84,7 +84,13 @@ function act(g, T, d) {
         return "splitBoard " + t.setBoard(h, board).ok;
       }
       if (r < 0.4) return "splitNote " + t.postNote(h, "Note " + Math.floor(d() * 100)).ok;
-      if (r < 0.48) return "splitLock " + t.lockIn(h).ok;
+      if (r < 0.48) {
+        if (!t.boardFor(team).length) {
+          const wrongTask = t.tasks.find(x => !t.postTwistAnswer.includes(x.id)).id;
+          t.setBoard(h, [wrongTask]); // Step 10: lockIn now needs at least 1 task; wrong task keeps score 0
+        }
+        return "splitLock " + t.lockIn(h).ok;
+      }
       if (r < 0.52) return "close " + g.closeTimer(T.now);
       return "wait";
     }

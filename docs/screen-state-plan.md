@@ -19,7 +19,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 7:** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`)
 - [x] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
 - [x] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
-- [ ] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
+- [x] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
 - [ ] **Step 11:** Remove scoring, ranking, and tie-break math from screen code (`V-12, V-13, V-22`)
 - [ ] **Step 12:** Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap (`V-10, V-15, V-17`)
 - [ ] **Step 13:** Add automated guard test `Tests/check_screen_rules.js` (using `// cosmetic-ok` markers)
@@ -145,15 +145,16 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 
 ### Phase 4: Rule Checks and Scoring
 
-#### Step 10: Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules)
+#### Step 10: Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) — DONE
 - **Violations covered:** `V-14, V-21, V-34`
-- **Files touched:** `rules/Trial.js`, `rules/MirrorParts.js`, `rules/Game.js`, `rules/rules.bundle.js`, `splitbrief-view.js`, `mirror-view.js`, `game.js`, `Tests/check_split_brief.js`, `Tests/check_mirror_setup.js`, `Tests/check_screens.js`
+- **Files touched:** `rules/Trial.js`, `rules/MirrorParts.js`, `rules/Game.js`, `rules/rules.bundle.js`, `splitbrief-view.js`, `game.js`, `Tests/check_split_brief.js`, `Tests/check_split_timing.js`, `Tests/check_save.js`, `Tests/check_mirror_setup.js`, `Tests/check_screens.js`, `Tests/baseline/check_split_brief.txt`, `Tests/baseline/check_mirror_setup.txt`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** Existing `SplitBriefTrial` (`rules/Trial.js`), `SetupCrew` (`rules/MirrorParts.js`), `SopTrial` (`rules/Trial.js`), and `Game` (`rules/Game.js`).
-  - In `SplitBriefTrial.lockIn(player)`: reject locking in an empty board (`board.length === 0`, or `< 2` pending Ben's answer to Open Question #2), and disable `#splitLockBtn` in `splitbrief-view.js` to match. Fix `restoreFocus` in `splitbrief-view.js:127-130` so posting the 3rd note moves focus to an Add/board control or safe heading instead of `#splitLockBtn`.
-  - In `SetupCrew` (`rules/MirrorParts.js`) and `Game._mirrorCall`: reject human Setup actions (`soundFeedback`, `timeoutQa`, etc.) when the player is `idle` (auto-pilot calls pass through `Bots.mirror`).
-  - Add static rule validation helpers on `Game` (`Game.checkEmail(email)`, `Game.checkJoinCode(code, expected)`) and align SOP empty-submit validation between `SopTrial` and `game.js`.
+  - In `SplitBriefTrial.lockIn(player)`: reject locking in an empty board (`board.length === 0`, answering Q2: 1 or 2 tasks may lock), and disable `#splitLockBtn` in `splitbrief-view.js` to match. Fix `restoreFocus` in `splitbrief-view.js` so posting the 3rd note moves focus to an Add control or `#splitBoardHead` (`tabindex="-1"`) instead of `#splitLockBtn`.
+  - In `SetupCrew` (`rules/MirrorParts.js`) and `Game._mirrorCall`: reject human Setup actions (`soundFeedback`, `soundAdjust`, `soundHeld`, `cableHit`, `cableMiss`, `micTap`, `pickFile`, `answerQa`, `timeoutQa`, `wrapUp`) when the player is `idle` or not active (auto-pilot calls pass through `Bots.mirror` -> `advanceBotSetup`, and deadlines were already gated in Step 3b).
+  - Add static rule validation helpers on `Game` (`Game.checkEmail(email)`, `Game.checkJoinCode(code, expected)`) and align SOP empty-submit validation (`SopTrial.canSubmit`, `Game.canSubmitSop`, `Game.submitSop`) while leaving `closeSop()` empty-board 0 scoring unchanged.
 - **QA bugs fixed:** **Bug 1** (empty board cannot be locked in rules or UI; 3rd note no longer opens Lock In warning by accident) and Level 3 QA Step 10 #1 (idle Setup actions rejected).
-- **Checks:** `npm run build`, `npm test` (explain expected `check_split_brief` / `check_mirror_setup` assertion additions; simulation baselines unchanged), `npm run test:screens`.
+- **Done notes:** Added non-empty board requirement in `SplitBriefTrial.lockIn(player)` with `splitBriefLockIn(p)` returning the rejection, disabled `#splitLockBtn` on empty boards in `splitbrief-view.js`, and updated `restoreFocus` for `post` to pick `#splitNoteIn`, first enabled `[data-sb-add]`, or `#splitBoardHead` (`tabindex="-1"`). Added idle/inactive human rejection in `SetupCrew.#checkTurn` and `Game._mirrorCall` / `_mirrorSetupOpts` for all 10 human Setup actions while keeping `Bots.mirror` auto-pilot and Step 3b deadline gating intact. Added `Game.checkEmail`, `Game.checkJoinCode`, `SopTrial.canSubmit`, and `Game.canSubmitSop` / empty-board rejection in `Game.submitSop`, wiring `game.js` to call them with zero `Rng` draws. Updated empty-board `lockIn` test setups in `Tests/check_split_timing.js`, `Tests/check_split_brief.js`, and `Tests/check_save.js` with 1 wrong task (0 score, 0 extra draws) so existing baselines stayed identical apart from the new assertions in `check_split_brief` and `check_mirror_setup`.
+- **Checks:** `npm run build`, `npm test` (only `check_split_brief` and `check_mirror_setup` assertion additions; all other baselines unchanged), `npm run test:screens`.
 
 #### Step 11: Remove scoring, ranking, and tie-break math from screen code
 - **Violations covered:** `V-12, V-13, V-22`
@@ -201,12 +202,12 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 
 ### Still Open
 - **Q1. Open Floor position:** Is player `(x, y)` / room position on Floor 60 game state (shared on Base44 so players see teammates move, and saved on reload) or local UI state only?
-- **Q2. Empty Split Brief Lock In (Bug 1):** Should `SplitBriefTrial.lockIn()` require at least 1 task on the board, or require all 2 slots filled?
 - **Q7. Team standings ties (Bug 7):** On `Sprint 1 Complete`, `Presentation Day Complete`, and `Final Results`, should teams tied on `trialWins` share the same place number (e.g. `1, 1, 3, 4`) or show a tie note?
 - **Q9. Open Floor tap speed (Bug 3):** For tapped movement keys on Floor 60, do you prefer a longer tap impulse (e.g. ~80-100px per tap) or grid-step movement?
 - **Q11. Untimed step ownership in multiplayer:** Untimed steps that one click advances for everyone (Briefing 'Open the floor', post-trial 'All-hands' which pays trial costs, Start Level): who owns these in multiplayer, host or actor?
 
 ### Answered
+- **Q2. Empty Split Brief Lock In (Bug 1) — ANSWERED:** Require at least 1 task on the board (1 or 2 tasks may lock in; 0 tasks rejected in `SplitBriefTrial.lockIn` and `#splitLockBtn` disabled when empty) (see Step 10).
 - **Q10. When the Levels 5-6 vote closes — ANSWERED:** Untimed, as in `CLAUDE.md`. Closes when every active voter has cast a ballot (checked on `castVote` and `Game.tick()`, closing at once if 0 active voters exist; prior ballots from now-idle voters stay) (see Step 7).
 - **Q3. Reception `WATCHER` anomaly — ANSWERED:** `WATCHER` counts once, from the `ATTEMPT 02` badge printed at Reception check-in. Any second trigger is a bug (see Step 9).
 - **Q4. Multiplayer early phase close — ANSWERED:** Timed steps (`SOP`, `Glitch Report`, `Stats Update`, `Graduation`) close only when their timer runs out. One player's click never closes a timed step for others. Only Levels 5-6 writing and Split Brief close early (see Step 5).

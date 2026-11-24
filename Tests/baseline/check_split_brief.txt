@@ -61,5 +61,8 @@ PASS  Tasks keep sorted A-D ids after shuffle
 PASS  Shuffled postTwistAnswer scores 5 under every map
 PASS  Save/load preserves letterMap, cardOrder, tasks, and postTwistAnswer
 PASS  Bot notes use shuffled task letters  -> {"A":"D","B":"B","C":"A","D":"C"}
+-- 9. Empty board Lock In check (Step 10)
+PASS  Empty board lockIn is rejected by SplitBriefTrial and Game and stays unlocked
+PASS  Lock in succeeds with 1 task or 2 tasks
 
-55 passed, 0 failed.
+57 passed, 0 failed.

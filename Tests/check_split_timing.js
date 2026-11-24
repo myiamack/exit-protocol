@@ -61,8 +61,11 @@ console.log("-- 2. Early close when all teams lock in at 30s (twist fires first)
 {
   const { g, T, teams, trial } = setupSplitBriefGame(202);
   T.now += 30000; // 30s
+  const wrongTask = trial.tasks.find(x => !trial.postTwistAnswer.includes(x.id)).id;
   trial.setBoard(teams[0].members[0], ["D", "B"]);
   trial.setBoard(teams[1].members[0], ["B", "D"]);
+  trial.setBoard(teams[2].members[0], [wrongTask]); // Step 10: lockIn now needs at least 1 task; wrong task keeps score 0
+  trial.setBoard(teams[3].members[0], [wrongTask]); // Step 10: lockIn now needs at least 1 task; wrong task keeps score 0
   for (let i = 0; i < 3; i++) {
     const r = trial.lockIn(teams[i].members[0]);
     expect("Partial lock-in (" + (i + 1) + "/4) keeps trial open", r.ok && !trial.twistFired && !g.didRun("runTrial"));

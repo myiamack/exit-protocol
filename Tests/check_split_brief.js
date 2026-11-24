@@ -131,6 +131,8 @@ console.log("-- 2. Team notes");
   );
 
   // Notes allowed even after Lock In
+  const wrongNoteTask = trial.tasks.find(x => !trial.postTwistAnswer.includes(x.id)).id;
+  trial.setBoard(p1, [wrongNoteTask]); // Step 10: lockIn now needs at least 1 task; wrong task keeps score 0
   const lockedRes = trial.lockIn(p1);
   const afterLockNote = trial.postNote(p1, "Note after lock in");
   expect("Notes are still allowed after team Lock In", lockedRes.ok && afterLockNote.ok && trial.notesLeft(p1) === 2);
@@ -201,6 +203,8 @@ console.log("-- 4. Ghosted Teammate twist");
   for (let s = 1; s <= 30; s++) {
     const tr = new SplitBriefTrial(Rng.seeded(s), Scenarios.MEDLINE_SPRINT_1);
     tr.deal([t0, t1]);
+    const wrongTwistTask = tr.tasks.find(x => !tr.postTwistAnswer.includes(x.id)).id;
+    tr.setBoard(t0.members[2], [wrongTwistTask]); // Step 10: lockIn now needs at least 1 task; wrong task keeps score 0
     tr.lockIn(t0.members[2]);
     tr.fireTwist();
     const h0 = t0.members.filter(p => tr.twistFor(p) !== null);
@@ -551,6 +555,46 @@ console.log("-- 8. Per-game label and card order shuffle");
       notesText.includes("(" + lm.C + ")") &&
       notesText.includes("(" + lm.A + ")"),
     JSON.stringify(lm)
+  );
+}
+
+console.log("-- 9. Empty board Lock In check (Step 10)");
+{
+  const teams = [makeTeam(0, 4, { humans: 1 }), makeTeam(1, 4, { humans: 1 })];
+  const g = new Game({ teams, rng: Rng.seeded(950) });
+  g.start();
+  g.startNextRound(); // L1 briefing
+  g.advance();        // L1 openFloor
+  g.advance();        // L1 sop
+  g.closeSop();
+  g.endTrial();
+  g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+  g.computeEarnings(); g.placeAllRemaining(); g.finishRound();
+  g.startNextRound(); // L2 briefing
+  g.advance();        // L2 openFloor
+  g.advance();        // L2 splitBrief
+  const sb = g.splitBrief();
+  const h0 = teams[0].members[0];
+  const h1 = teams[1].members[0];
+
+  const rEmptyTrial = sb.lockIn(h0);
+  const rEmptyGame = g.splitBriefLockIn(h0);
+  const unlockedAfterEmpty = !sb.isLocked(teams[0]);
+
+  const tasks = sb.tasks.map(t => t.id);
+  g.splitBriefSetBoard(h0, [tasks[0]]);
+  const rOne = g.splitBriefLockIn(h0);
+
+  g.splitBriefSetBoard(h1, [tasks[0], tasks[1]]);
+  const rTwo = g.splitBriefLockIn(h1);
+
+  expect(
+    "Empty board lockIn is rejected by SplitBriefTrial and Game and stays unlocked",
+    !rEmptyTrial.ok && !!rEmptyTrial.reason && !rEmptyGame.ok && !!rEmptyGame.reason && unlockedAfterEmpty
+  );
+  expect(
+    "Lock in succeeds with 1 task or 2 tasks",
+    rOne.ok && sb.isLocked(teams[0]) && rTwo.ok && sb.isLocked(teams[1])
   );
 }
 

@@ -143,6 +143,7 @@ class SopTrial extends Trial {
     const endlessOut = built.length > 0 && !built.includes(endless);
     return { right, endlessOut, score: right + (endlessOut ? 1 : 0) };
   }
+  static canSubmit(built) { return Array.isArray(built) && built.length > 0; }
 
   setScore(team, score) {
     if (this.ranking) throw new Error("The trial already ran.");
@@ -385,7 +386,8 @@ class SplitBriefTrial extends Trial {
     const why = (this.ranking ? "The trial is closed." : null) ||
       (!team ? "Player is not in this trial." : null) ||
       this.#activeWhy(player, "lock in") ||
-      (this.#lockOrder.has(team) ? "Your team already locked in." : null);
+      (this.#lockOrder.has(team) ? "Your team already locked in." : null) ||
+      (!this.boardFor(team).length ? "Pick at least 1 task before locking in." : null);
     if (why) return { ok: false, reason: why };
     this.#lockCounter += 1;
     this.#lockOrder.set(team, this.#lockCounter);
@@ -803,9 +805,9 @@ class MirrorTrial extends Trial {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     return why ? { ok: false, reason: why } : this.#setup.soundHeld(playerId, opts);
   }
-  soundFeedback(playerId) {
+  soundFeedback(playerId, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
-    return why ? { ok: false, reason: why } : this.#setup.soundFeedback(playerId);
+    return why ? { ok: false, reason: why } : this.#setup.soundFeedback(playerId, opts);
   }
   micTap(playerId, micNumber, opts) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
@@ -870,7 +872,7 @@ class MirrorTrial extends Trial {
   wrapUp(playerId, opts = {}) {
     const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
     if (why) return { ok: false, reason: why };
-    const res = this.#setup.wrapUp(playerId);
+    const res = this.#setup.wrapUp(playerId, opts);
     if (res.ok && !this.#botOnlyTeams.has(res.teamId)) {
       let sec = null;
       if (typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)) {

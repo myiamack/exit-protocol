@@ -523,10 +523,26 @@ class SetupCrew {
     if (next) this.#enterStep(ts, next, stepNow);
   }
 
-  #checkTurn(playerOrId, expectedStep) {
+  #inactivePlayerWhy(playerOrId, opts) {
+    if (opts && opts.isStuck) return "Stuck players cannot act.";
+    if (opts && opts.isIdle) return "Idle players cannot act.";
+    if (opts && opts.isInactive) return "Inactive players cannot act.";
+    if (playerOrId && typeof playerOrId === "object") {
+      if (typeof playerOrId.isStuck === "function" && playerOrId.isStuck()) return "Stuck players cannot act.";
+      if (playerOrId.idle) return "Idle players cannot act.";
+      if (typeof playerOrId.isActive === "function" && !playerOrId.isActive()) return "Inactive players cannot act.";
+    }
+    return null;
+  }
+
+  #checkTurn(playerOrId, expectedStep, opts = {}) {
     if (!this.#started) return { ok: false, reason: "Setup has not started." };
     const entry = this.#lookupPlayer(playerOrId);
     if (!entry) return { ok: false, reason: "Player is not on the Setup Crew." };
+    if (!entry.isBot) {
+      const inactiveWhy = this.#inactivePlayerWhy(playerOrId, opts);
+      if (inactiveWhy) return { ok: false, reason: inactiveWhy };
+    }
     const ts = this.#teams.get(entry.teamId);
     if (ts.wrappedUp) return { ok: false, reason: "Setup is already wrapped up." };
     const curStep = this.#currentStep(ts);
@@ -620,8 +636,9 @@ class SetupCrew {
   }
 
   /* Step 1 (cables): record a matched cable connection reported by the screen. */
-  cableHit(playerOrId, port, { elapsedSeconds = null, now = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "cables");
+  cableHit(playerOrId, port, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "cables", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     if (!MirrorData.ports.includes(port)) return { ok: false, reason: "Unknown cable port." };
@@ -647,8 +664,8 @@ class SetupCrew {
   }
 
   /* Step 1 (cables): record a wrong cable click (spark) costing 3 attention. */
-  cableMiss(playerOrId, port = null, { elapsedSeconds = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "cables");
+  cableMiss(playerOrId, port = null, opts = {}) {
+    const chk = this.#checkTurn(playerOrId, "cables", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     if (port !== null && port !== undefined) {
@@ -677,8 +694,9 @@ class SetupCrew {
   }
 
   /* Step 2 (sound): apply a mixer gain button (-10, +5, +10); feedback at 100 resets to 45 (-4 attention). */
-  soundAdjust(playerOrId, delta, { elapsedSeconds = null, now = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "sound");
+  soundAdjust(playerOrId, delta, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "sound", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     const S = MirrorData.sound;
@@ -735,8 +753,9 @@ class SetupCrew {
   }
 
   /* Step 2 (sound): record that sound held steady in the green zone for 3 seconds. */
-  soundHeld(playerOrId, { elapsedSeconds = null, now = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "sound");
+  soundHeld(playerOrId, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "sound", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     ts.sound.locked = true;
@@ -761,8 +780,8 @@ class SetupCrew {
   }
 
   /* Step 2 (sound): record feedback overshoot costing 4 attention. */
-  soundFeedback(playerOrId) {
-    const chk = this.#checkTurn(playerOrId, "sound");
+  soundFeedback(playerOrId, opts = {}) {
+    const chk = this.#checkTurn(playerOrId, "sound", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     ts.sound.feedbacks += 1;
@@ -844,8 +863,9 @@ class SetupCrew {
   }
 
   /* Step 3 (mic): record a mic tap against the seeded sequence across rounds of lengths 3, 4, 5. */
-  micTap(playerOrId, micNumber, { elapsedSeconds = null, now = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "mic");
+  micTap(playerOrId, micNumber, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "mic", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     if (!Number.isInteger(micNumber) || micNumber < 1 || micNumber > MirrorData.mic.count) {
@@ -951,8 +971,9 @@ class SetupCrew {
   }
 
   /* Step 4 (deck): record a file click by index or name. Wrong file costs 6 attention. */
-  pickFile(playerOrId, fileIndexOrName, { elapsedSeconds = null, now = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "deck");
+  pickFile(playerOrId, fileIndexOrName, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "deck", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     let idx = -1;
@@ -1031,8 +1052,9 @@ class SetupCrew {
   }
 
   /* Step 5 (qa): record a multiple-choice answer. Right restores up to 5 penalty points; wrong costs 5. */
-  answerQa(playerOrId, answerIndex, { elapsedSeconds = null, now = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "qa");
+  answerQa(playerOrId, answerIndex, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "qa", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     const itemIndex = ts.qa.order[ts.qa.index];
@@ -1085,8 +1107,9 @@ class SetupCrew {
   }
 
   /* Step 5 (qa): record a question timeout costing 5 attention. */
-  timeoutQa(playerOrId, { elapsedSeconds = null, now = null } = {}) {
-    const chk = this.#checkTurn(playerOrId, "qa");
+  timeoutQa(playerOrId, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "qa", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     const itemIndex = ts.qa.order[ts.qa.index];
@@ -1123,8 +1146,8 @@ class SetupCrew {
   }
 
   /* Last Setup slot wraps up the presentation after Q&A completes. */
-  wrapUp(playerOrId) {
-    const chk = this.#checkTurn(playerOrId, "wrapUp");
+  wrapUp(playerOrId, opts = {}) {
+    const chk = this.#checkTurn(playerOrId, "wrapUp", opts);
     if (!chk.ok) return chk;
     const { ts, entry } = chk;
     ts.wrappedUp = true;

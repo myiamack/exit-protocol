@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const EP = require("../rules/index.js");
-const { Bots, MirrorData, MirrorParts, Player, Rng, Round, Team, Trial } = EP;
+const { Bots, Game, MirrorData, MirrorParts, Player, Rng, Round, Team, Trial } = EP;
 const { SetupCrew } = MirrorParts;
 const { MirrorTrial } = Trial;
 
@@ -809,6 +809,117 @@ console.log("-- 10. SetupCrew deadlines (Q&A timeout, deck reshuffle, mic flash 
       stQa1.qa.timeouts === 1 && stQa1.qa.index === 1 &&
       oldReloadQaDue === qaDue0 + MirrorData.qa.countdownTicks * tickMs &&
       scOldReload.teamState(tm).qa.itemDeadlineAt === oldReloadQaDue
+  );
+}
+
+console.log("-- 11. Idle human Setup actions rejected while bot auto-pilot runs (Step 10)");
+{
+  const makeGameAtShowtime = seed => {
+    const clock = { now: 10000 };
+    const t0 = makeTeam(0, 4, { humans: 2, prefix: "IdleSetup_" });
+    const t1 = makeTeam(1, 4, { humans: 0, prefix: "BotOpp_" });
+    const g = new Game({ teams: [t0, t1], rng: Rng.seeded(seed), clock: () => clock.now, hooks: Bots.hooks });
+    g.start();
+    g.startNextRound(); g.advance(); g.advance(); g.closeSop();
+    g.endTrial(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+    g.computeEarnings(); g.placeAllRemaining(); g.finishRound();
+    g.startNextRound(); g.advance(); g.advance(); g.closeSplitBrief();
+    g.endTrial(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+    g.computeEarnings(); g.placeAllRemaining(); g.finishRound();
+    g.startNextRound(); g.advance(); g.advance();
+    for (const p of t0.active()) g.mirrorConnect(p);
+    for (const p of t1.active()) g.mirrorConnect(p);
+    clock.now += 1000;
+    g.tick(clock.now);
+    return { g, clock, t0, t1, tr: g.round.trial };
+  };
+
+  let ctx = null;
+  for (let s = 1; s <= 60; s++) {
+    const probe = makeGameAtShowtime(s);
+    const slots = probe.tr.setupSlots(probe.t0);
+    if (slots.length === 2) {
+      const p0 = probe.t0.members.find(m => m.id === slots[0].playerId);
+      const p1 = probe.t0.members.find(m => m.id === slots[1].playerId);
+      if (p0 && p1 && !p0.isBot && !p1.isBot) { ctx = probe; break; }
+    }
+  }
+
+  const { g, clock, t0, tr } = ctx;
+  const slots = tr.setupSlots(t0);
+  const p0 = t0.members.find(m => m.id === slots[0].playerId);
+  const p1 = t0.members.find(m => m.id === slots[1].playerId);
+
+  const checkIdleNoEffect = (label, player, fn) => {
+    const penBefore = tr.setupPenalties(t0);
+    const attBefore = g.mirrorAttention(t0, clock.now);
+    player.idle = true;
+    const res = fn();
+    player.idle = false;
+    const penAfter = tr.setupPenalties(t0);
+    const attAfter = g.mirrorAttention(t0, clock.now);
+    return { label, ok: res && res.ok === false && !!res.reason && penAfter === penBefore && attAfter === attBefore };
+  };
+
+  const results = [];
+  results.push(checkIdleNoEffect("cableHit", p0, () => g.mirrorCableHit(p0, "HDMI")));
+  results.push(checkIdleNoEffect("cableMiss", p0, () => g.mirrorCableMiss(p0, "HDMI")));
+  for (const port of MirrorData.ports) g.mirrorCableHit(p0, port);
+
+  results.push(checkIdleNoEffect("soundAdjust", p0, () => g.mirrorSoundAdjust(p0, 10)));
+  results.push(checkIdleNoEffect("soundFeedback", p0, () => g.mirrorSoundFeedback(p0)));
+  results.push(checkIdleNoEffect("soundHeld", p0, () => g.mirrorSoundHeld(p0)));
+  g.mirrorSoundHeld(p0);
+
+  const vMic = g.mirrorSetupView(p0, clock.now);
+  if (vMic && vMic.mic.flashing && vMic.mic.hideAt !== null) {
+    clock.now = vMic.mic.hideAt;
+    g.tick(clock.now);
+  }
+  results.push(checkIdleNoEffect("micTap", p0, () => g.mirrorMicTap(p0, tr.micSequenceFor(t0)[0])));
+  for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    const sv = g.mirrorSetupView(p0, clock.now);
+    if (sv && sv.mic.flashing && sv.mic.hideAt !== null && clock.now < sv.mic.hideAt) {
+      clock.now = sv.mic.hideAt;
+      g.tick(clock.now);
+    }
+    for (const n of tr.micSequenceFor(t0)) g.mirrorMicTap(p0, n);
+  }
+
+  const wrongFile = MirrorData.files.find(f => !f.correct).name;
+  results.push(checkIdleNoEffect("pickFile", p1, () => g.mirrorPickFile(p1, wrongFile)));
+  g.mirrorPickFile(p1, MirrorData.files.find(f => f.correct).name);
+
+  results.push(checkIdleNoEffect("answerQa", p1, () => g.mirrorAnswerQa(p1, 0)));
+  results.push(checkIdleNoEffect("timeoutQa", p1, () => g.mirrorTimeoutQa(p1)));
+  for (let i = 0; i < MirrorData.qaItems.length; i++) {
+    g.mirrorAnswerQa(p1, tr.currentQaFor(t0).correctIndex);
+  }
+
+  results.push(checkIdleNoEffect("wrapUp", p1, () => g.mirrorWrapUp(p1)));
+
+  // Direct SetupCrew rejects idle Player object with no penalty
+  const scDirect = new SetupCrew(Rng.seeded(1501), [makeTeam(2, 1, { humans: 1, prefix: "DirIdle_" })]);
+  const dirPid = scDirect.slotsFor(2)[0].playerId;
+  const dirPlayer = new Player({ id: dirPid, name: "DirIdle", type: "coop", spend: Bots.typicalSpend("coop") });
+  dirPlayer.idle = true;
+  const dirIdleRes = scDirect.cableMiss(dirPlayer, "HDMI");
+  const dirNoPen = scDirect.penaltiesFor(2) === 0;
+
+  // Bot auto-pilot still wraps up for idle p1
+  p0.idle = true;
+  p1.idle = true;
+  for (let s = 0; s < 10 && !g.didRun("runTrial"); s++) {
+    clock.now += 1000;
+    g.tick(clock.now);
+  }
+
+  const allRejected = results.every(r => r.ok);
+  const failedNames = results.filter(r => !r.ok).map(r => r.label).join(",");
+  expect(
+    "Idle human Setup actions are rejected with no penalty and no attention change, while bot auto-pilot still wraps up",
+    allRejected && !dirIdleRes.ok && dirNoPen && tr.isSetupWrappedUp(t0) && g.didRun("runTrial"),
+    failedNames || "all 10 rejected + autoPilot wrapped"
   );
 }
 

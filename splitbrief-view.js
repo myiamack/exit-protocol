@@ -85,7 +85,7 @@
       ? `<div class="locked" id="splitLockedMsg"><span><b>Board locked in.</b> Final for the whole team. Waiting for the timer or other teams.</span></div>`
       : state.confirmLock && !view.twistFired
         ? `<div class="panel sb-confirm" id="splitLockConfirm"><p><b>Wait:</b> "We locked our plan in early. Then the client changed everything." Once you Lock In, your board is final for the whole team even if new information arrives. Lock in anyway?</p><div class="row"><button type="button" class="btn red" id="splitLockYes">Confirm Lock In</button><button type="button" class="btn soft" id="splitLockNo">Cancel</button></div></div>`
-        : `<div class="row"><button type="button" class="btn green" id="splitLockBtn" ${!canAct ? "disabled" : ""}>Lock In</button><span class="hint">${canAct ? "Any active teammate can edit until Lock In." : "Inactive players cannot edit or lock in."}</span></div>`;
+        : `<div class="row"><button type="button" class="btn green" id="splitLockBtn" ${!canAct || !board.length ? "disabled" : ""}>Lock In</button><span class="hint">${canAct ? "Any active teammate can edit until Lock In." : "Inactive players cannot edit or lock in."}</span></div>`;
 
     const html = `${hdr}
 <div class="panel"><div class="row" style="justify-content:space-between"><span><b>${esc(view.scenarioTitle)}</b> · Time remaining</span><span class="counter" id="splitTmr">${fmt(G.secondsLeft() || 0)}</span></div></div>
@@ -93,7 +93,7 @@
   <div class="panel"><span class="label">My private brief cards (only you)</span><div class="sb-cards" id="splitCards">${renderCardsHTML(cards, twistCard)}</div></div>
   <div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Team notes (${esc(MYTEAM.name)})</span><span class="counter" id="splitNotesLeft">notes left: ${left}/${SBT.MAX_NOTES}</span></div><div class="sb-feed" id="splitNotesFeed">${renderNotesHTML(notes)}</div><div class="sb-noteform"><label class="label" for="splitNoteIn">Post a note (max ${SBT.MAX_NOTE_CHARS} chars)</label><div class="row"><input type="text" id="splitNoteIn" maxlength="${SBT.MAX_NOTE_CHARS}" placeholder="Share what your cards say..." value="${esc(state.noteDraft)}" ${!canPost ? "disabled" : ""} style="flex:1;min-width:160px"><button type="button" class="btn blue sm" id="splitPostNote" ${!canPost || !state.noteDraft.trim() ? "disabled" : ""}>Post</button></div></div></div>
 </div>
-<div class="panel" id="splitBoard"><span class="label">Shared team board · Pick ${SBT.MAX_BOARD_TASKS} tasks in order</span>
+<div class="panel" id="splitBoard"><span class="label" id="splitBoardHead" tabindex="-1">Shared team board · Pick ${SBT.MAX_BOARD_TASKS} tasks in order</span>
   <div class="cols">
     <div><span class="label">Available tasks</span><div class="sb-tasks">${tasksHTML}</div></div>
     <div><span class="label">Team plan (1st, 2nd)</span><div class="sb-slots">${slotsHTML}</div></div>
@@ -126,7 +126,7 @@
         return false;
       };
       if (f.kind === "post") {
-        if (!pick(["#splitNoteIn", "#splitLockBtn", "[data-sb-add]:not(:disabled)", "[data-sb-rem]:not(:disabled)"])) return;
+        pick(["#splitNoteIn", "[data-sb-add]:not(:disabled)", "#splitBoardHead"]);
         return;
       }
       if (f.kind === "add") {
@@ -241,6 +241,7 @@
       if (lockBtn) lockBtn.onclick = () => {
         G.activity(ME);
         const cur = G.splitBriefView(ME);
+        if (cur && !cur.board.length) { doLockIn(); return; }
         if (cur && !cur.twistFired) { state.confirmLock = true; opts.onRender(); return; }
         doLockIn();
       };

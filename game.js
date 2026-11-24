@@ -520,7 +520,7 @@ ${sabotageAlertHTML()}
 <div><span class="label">Team SOP</span><div class="built">${built.map((t,i)=>`<button class="scard ${trialDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${locked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
 ${trialDone()?trialResultHTML(EP.Trial.SopTrial.MAX_SCORE,rank,`${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${rs.sopTimedOut?", time ran out":""}. Your team's ${AN[rs.attr]} can move the score a little.`)
 :submitted?`<p class="hint" id="sopWait">SOP saved. Waiting for the trial timer to finish.</p>`
-:`<div class="row"><button class="btn green" id="check" ${built.length?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`;
+:`<div class="row"><button class="btn green" id="check" ${G.canSubmitSop(ME)?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`;
   const bind=()=>{
     const b=()=>G.sopBoard(MYTEAM);   /* any teammate edits the shared board in Game */
     $$("[data-pile]").forEach(btn=>sopPress(btn,()=>{const t=sopPile()[+btn.dataset.pile];if(G.setSopBoard(ME,[...b(),t]).ok)render()}));
@@ -801,10 +801,10 @@ const on=(sel,fn)=>{const e=$(sel);if(e)e.onclick=fn};
 function bind(){
   if(S.step===0){
     on("#theL",()=>{if(G&&ME){G.recordAnomaly(ME,"L");S.pendingL=false}else{S.pendingL=true}render()});
-    $("#signForm").onsubmit=e=>{e.preventDefault();const em=$("#em").value.trim(),jc=$("#jc").value.trim().toUpperCase();S.email=em;S.code=jc;
-      if(!/^[^@\s]+@icstars\.org$/i.test(em)){$("#signErr").textContent="Use your i.c.stars email (ends in @icstars.org). This game is for the i.c.stars community only.";return}
-      if(jc!=="CYCLE60"){$("#signErr").textContent="That join code doesn't match an open game. Check with your host.";return}
-      S.name=savedName(em)||S.name;go(1)};
+    $("#signForm").onsubmit=e=>{e.preventDefault();const emChk=EP.Game.checkEmail($("#em").value),jcChk=EP.Game.checkJoinCode($("#jc").value);S.email=emChk.value;S.code=jcChk.value;
+      if(!emChk.ok){$("#signErr").textContent=emChk.reason;return}
+      if(!jcChk.ok){$("#signErr").textContent=jcChk.reason;return}
+      S.name=savedName(emChk.value)||S.name;go(1)};
   }
   if(S.step===1){
     on("#play",()=>go(2));on("#wardrobe",()=>go(2));

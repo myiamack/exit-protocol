@@ -36,7 +36,7 @@ classDiagram
     +startNextRound(), advance(), finishRound(), jumpToLevel(targetLevel)
     +activity(), checkAttendance(), pollAttendance()
     +sabotage(), gift(), answerGift(), switchTeam()
-    +setSopBoard(), submitSop(), closeSop(), splitBrief(), closeSplitBrief()
+    +setSopBoard(), canSubmitSop(p), submitSop(), closeSop(), splitBrief(), closeSplitBrief()
     +splitBriefPostNote(), splitBriefSetBoard(), splitBriefLockIn(), splitBriefView()
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
     +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDancePress(), mirrorDanceHit()..mirrorDanceStray()
@@ -48,6 +48,7 @@ classDiagram
     +recordAnomaly(p, id), anomaliesFor(p)
     +board() public view
     +results() endings
+    +checkEmail(email)$, checkJoinCode(code, expected)$
     +toJSON(), fromJSON()$
   }
 
@@ -299,7 +300,7 @@ classDiagram
     Level 1
     +scores  per team, 0 to 7
     +int MAX_SCORE = 7$, STEPS$, ENDLESS$
-    +score(built, steps, endless)$
+    +score(built, steps, endless)$, canSubmit(built)$
     +setScore(team, score), scoreSop(...)
     +sopBoard(round, team), setSopBoard(...), closeSop(round, teams)
     +rank(round, teams) board score plus influence
@@ -443,5 +444,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 9, from commit `1eba203`).
+Made from the rules code on branch `screen-state-cleanup` (Step 10, from commit `e94c01b`).
 Update this diagram whenever a class in `rules/` changes.

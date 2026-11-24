@@ -5112,6 +5112,108 @@ async function step9AnomaliesCases() {
   check("HUD and Glitch Report anomaly counts match G.anomaliesFor(ME).length (including LOOP)", !!res && res.sopAndReportOk);
 }
 
+/* Step 10: empty Split Brief Lock In, Bug 1 focus fix, idle Setup gating, sign-in helpers, and SOP empty submit. */
+async function step10RuleChecksCases() {
+  const gameSrc = fs.readFileSync(path.join(repo, "game.js"), "utf8");
+  const noInlineSignIn = !/\/\^\[@\s\]\+@icstars\\\.org\//.test(gameSrc) && !/jc\s*!==\s*"CYCLE60"/.test(gameSrc);
+
+  const authCheck = w.eval(`(() => {
+    const e1 = EP.Game.checkEmail("  Alex@icstars.org  ");
+    const e2 = EP.Game.checkEmail("USER@ICSTARS.ORG");
+    const e3 = EP.Game.checkEmail("alex@gmail.com");
+    const e4 = EP.Game.checkEmail("bad email@icstars.org");
+    const e5 = EP.Game.checkEmail("   ");
+    const c1 = EP.Game.checkJoinCode(" cycle60 ");
+    const c2 = EP.Game.checkJoinCode("CYCLE60");
+    const c3 = EP.Game.checkJoinCode("wrong");
+    const c4 = EP.Game.checkJoinCode("  team9 ", "TEAM9");
+    const c5 = EP.Game.checkJoinCode("CYCLE60", "TEAM9");
+    return e1.ok && e1.value === "Alex@icstars.org" &&
+      e2.ok && e2.value === "USER@ICSTARS.ORG" &&
+      !e3.ok && !!e3.reason && !e4.ok && !e5.ok &&
+      c1.ok && c1.value === "CYCLE60" && c2.ok &&
+      !c3.ok && !!c3.reason && c4.ok && c4.value === "TEAM9" && !c5.ok;
+  })()`);
+
+  let sopRes = null;
+  let sbRes = null;
+  try {
+    // 1. Level 1 SOP: Submit disabled on empty board, Game.submitSop rejects [], closeSop scores 0 with endlessOut false
+    w.eval('devJump(1);'); await sleep(20);
+    next(); await sleep(10); // -> Open Floor
+    finishTimedStep("openFloor"); await sleep(20); // -> Level 1 SOP Trial
+    const sopEmptyDisabled = !!$("#check") && $("#check").disabled === true;
+    const sopRejects = w.eval(`(() => {
+      const rArr = G.submitSop(ME, []);
+      const rCur = G.submitSop(ME);
+      return !rArr.ok && !!rArr.reason && !rCur.ok && !!rCur.reason && !G.canSubmitSop(ME);
+    })()`);
+    $("[data-pile]").click(); await sleep(10);
+    const sopOneEnabled = !!$("#check") && $("#check").disabled === false && w.eval("G.canSubmitSop(ME)") === true;
+    $("[data-built]").click(); await sleep(10);
+    const sopClearedDisabled = !!$("#check") && $("#check").disabled === true;
+    const closeEmptyOk = w.eval(`(() => {
+      G.closeSop();
+      const rs = G.roundSummary(ME);
+      return rs && rs.sopResult && rs.sopResult.score === 0 && rs.sopResult.endlessOut === false;
+    })()`);
+    sopRes = sopEmptyDisabled && sopRejects && sopOneEnabled && sopClearedDisabled && closeEmptyOk;
+
+    // 2. Level 2 Split Brief: #splitLockBtn disabled on empty board, 1 task enables it, Bug 1 3rd note focus fix
+    w.eval('devJump(2);'); await sleep(20);
+    next(); await sleep(10); // -> Open Floor
+    finishTimedStep("openFloor"); await sleep(20); // -> Level 2 Split Brief Trial
+    const sbEmptyDisabled = !!$("#splitLockBtn") && $("#splitLockBtn").disabled === true;
+    const sbEmptyRejected = w.eval('(() => { const r = G.splitBriefLockIn(ME); return !r.ok && !!r.reason && !G.splitBriefView(ME).locked; })()');
+
+    // Post 3 notes with empty board -> focus must not land on #splitLockBtn (goes to [data-sb-add])
+    for (let i = 0; i < 3; i++) {
+      $("#splitNoteIn").value = "Note " + (i + 1);
+      $("#splitNoteIn").dispatchEvent(new w.Event("input", { bubbles: true }));
+      $("#splitPostNote").click(); await sleep(10);
+    }
+    const focusEmpty3rd = w.eval(`({
+      noteDisabled: document.querySelector("#splitNoteIn").disabled,
+      activeId: document.activeElement ? document.activeElement.id : "",
+      isAddBtn: !!(document.activeElement && document.activeElement.hasAttribute("data-sb-add")),
+      noConfirm: !document.querySelector("#splitLockConfirm"),
+    })`);
+
+    // Add 1 task -> #splitLockBtn enabled; remove -> disabled again; fill 2 tasks -> disabled Add controls
+    $('[data-sb-add="A"]').click(); await sleep(10);
+    const sbOneEnabled = !!$("#splitLockBtn") && $("#splitLockBtn").disabled === false;
+    $('[data-sb-rem="0"]').click(); await sleep(10);
+    const sbRemovedDisabled = !!$("#splitLockBtn") && $("#splitLockBtn").disabled === true;
+
+    // Fresh Split Brief with 2 tasks already on board -> post 3rd note -> focus moves to #splitBoardHead (not #splitLockBtn)
+    w.eval('devJump(2);'); await sleep(20);
+    next(); await sleep(10);
+    finishTimedStep("openFloor"); await sleep(20);
+    $('[data-sb-add="A"]').click(); await sleep(5);
+    $('[data-sb-add="B"]').click(); await sleep(5);
+    for (let i = 0; i < 3; i++) {
+      $("#splitNoteIn").value = "Full " + (i + 1);
+      $("#splitNoteIn").dispatchEvent(new w.Event("input", { bubbles: true }));
+      $("#splitPostNote").click(); await sleep(10);
+    }
+    const focusFull3rd = w.eval(`({
+      noteDisabled: document.querySelector("#splitNoteIn").disabled,
+      activeId: document.activeElement ? document.activeElement.id : "",
+      noConfirm: !document.querySelector("#splitLockConfirm"),
+    })`);
+
+    sbRes = sbEmptyDisabled && sbEmptyRejected && sbOneEnabled && sbRemovedDisabled &&
+      focusEmpty3rd.noteDisabled && focusEmpty3rd.activeId !== "splitLockBtn" && focusEmpty3rd.isAddBtn && focusEmpty3rd.noConfirm &&
+      focusFull3rd.noteDisabled && focusFull3rd.activeId === "splitBoardHead" && focusFull3rd.activeId !== "splitLockBtn" && focusFull3rd.noConfirm;
+  } finally {
+    w.eval('elevTimers.forEach(clearTimeout); elevTimers = []; endSession(); S = fresh(); render();');
+  }
+
+  check("Game.checkEmail and Game.checkJoinCode match sign-in rules and game.js keeps no inline copy", noInlineSignIn && authCheck);
+  check("SOP Submit stays disabled on empty board, Game.submitSop rejects [], and closeSop still scores 0", !!sopRes);
+  check("#splitLockBtn disables on empty board and 3rd note never focuses #splitLockBtn", !!sbRes);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -5173,6 +5275,8 @@ w.addEventListener("load", async () => {
     await step8PlayerReadsCases();
     log("run 22: Step 9 anomalies saved on Player via Game");
     await step9AnomaliesCases();
+    log("run 23: Step 10 rule checks in rules (V-14, V-21, V-34)");
+    await step10RuleChecksCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");
