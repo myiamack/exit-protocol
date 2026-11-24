@@ -39,33 +39,34 @@
     if (state.twistDismissed == null) state.twistDismissed = false;
 
     const SBT = EP.Trial.SplitBriefTrial;
-    const trial = G.round.trial;
-    const done = G.didRun("runTrial");
+    const view = G.splitBriefView(ME);
     const hdr = opts.header ? opts.header() : `<div><span class="chip r">The Trial · Level ${G.level}</span><h2 style="margin-top:8px">Split Brief</h2></div>`;
+    if (!view) return { html: hdr, bind: null, tick: null, waitHint: "Wait for the Split Brief timer to finish" };
+    const done = view.done;
 
     if (done) {
-      const rank = trial.ranking || [];
-      const mine = rank.find(x => x.team === MYTEAM);
+      const rank = view.ranking || [];
+      const mine = rank.find(x => x.isMine);
+      const won = mine ? mine.won : MYTEAM.won;
       const maxScore = SBT.MAX_SCORE;
       const shown = x => Math.min(maxScore, Math.max(0, Math.round(x)));
-      const board = trial.boardFor(MYTEAM);
-      const rawScore = SBT.score(board, trial.postTwistAnswer);
-      const keyStr = trial.postTwistAnswer.join(" then ");
+      const rawScore = view.boardScore;
+      const keyStr = (view.postTwistAnswer || []).join(" then ");
       const hint = opts.costHint ? `<span class="hint">${opts.costHint()}</span>` : "";
-      const html = `${hdr}<div class="result"><b style="color:${MYTEAM.won ? "var(--ok)" : "var(--bad)"}">Team ${MYTEAM.won ? "WIN" : "LOSS"}. Score ${shown(mine ? mine.score : 0)} of ${maxScore}.</b><span class="hint">Board score: ${rawScore} of ${maxScore} (post-twist key: ${esc(keyStr)}). Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>Result</th></tr></thead><tbody>${rank.map(r => `<tr><td class="n">${r.place}</td><td>${esc(r.team.name)}${r.team === MYTEAM ? " (you)" : ""}</td><td class="n">${shown(r.score)} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`).join("")}</tbody></table>${hint}</div>`;
+      const html = `${hdr}<div class="result"><b style="color:${won ? "var(--ok)" : "var(--bad)"}">Team ${won ? "WIN" : "LOSS"}. Score ${shown(mine ? mine.score : 0)} of ${maxScore}.</b><span class="hint">Board score: ${rawScore} of ${maxScore} (post-twist key: ${esc(keyStr)}). Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>Result</th></tr></thead><tbody>${rank.map(r => `<tr><td class="n">${r.place}</td><td>${esc(r.teamName)}${r.isMine ? " (you)" : ""}</td><td class="n">${shown(r.score)} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`).join("")}</tbody></table>${hint}</div>`;
       return { html, bind: null, tick: null, waitHint: "Wait for the Split Brief trial to finish" };
     }
 
-    const cards = trial.cardsFor(ME);
-    const twistCard = trial.twistFired ? trial.twistFor(ME) : null;
-    if (trial.twistFired && state.confirmLock) state.confirmLock = false;
-    const notes = trial.notesFor(MYTEAM);
-    const left = trial.notesLeft(ME);
-    const board = trial.boardFor(MYTEAM);
-    const locked = trial.isLocked(MYTEAM);
+    const cards = view.cards;
+    const twistCard = view.twistCard;
+    if (view.twistFired && state.confirmLock) state.confirmLock = false;
+    const notes = view.notes;
+    const left = view.notesLeft;
+    const board = view.board;
+    const locked = view.locked;
     const canAct = ME.isActive();
     const canPost = canAct && left > 0;
-    const tasks = trial.tasks;
+    const tasks = view.tasks;
     const taskById = id => tasks.find(t => t.id === id);
 
     const tasksHTML = tasks.map(t => {
@@ -82,12 +83,12 @@
 
     const lockHTML = locked
       ? `<div class="locked" id="splitLockedMsg"><span><b>Board locked in.</b> Final for the whole team. Waiting for the timer or other teams.</span></div>`
-      : state.confirmLock && !trial.twistFired
+      : state.confirmLock && !view.twistFired
         ? `<div class="panel sb-confirm" id="splitLockConfirm"><p><b>Wait:</b> "We locked our plan in early. Then the client changed everything." Once you Lock In, your board is final for the whole team even if new information arrives. Lock in anyway?</p><div class="row"><button type="button" class="btn red" id="splitLockYes">Confirm Lock In</button><button type="button" class="btn soft" id="splitLockNo">Cancel</button></div></div>`
         : `<div class="row"><button type="button" class="btn green" id="splitLockBtn" ${!canAct ? "disabled" : ""}>Lock In</button><span class="hint">${canAct ? "Any active teammate can edit until Lock In." : "Inactive players cannot edit or lock in."}</span></div>`;
 
     const html = `${hdr}
-<div class="panel"><div class="row" style="justify-content:space-between"><span><b>${esc(trial.scenario.title)}</b> · Time remaining</span><span class="counter" id="splitTmr">${fmt(G.secondsLeft() || 0)}</span></div></div>
+<div class="panel"><div class="row" style="justify-content:space-between"><span><b>${esc(view.scenarioTitle)}</b> · Time remaining</span><span class="counter" id="splitTmr">${fmt(G.secondsLeft() || 0)}</span></div></div>
 <div class="cols">
   <div class="panel"><span class="label">My private brief cards (only you)</span><div class="sb-cards" id="splitCards">${renderCardsHTML(cards, twistCard)}</div></div>
   <div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Team notes (${esc(MYTEAM.name)})</span><span class="counter" id="splitNotesLeft">notes left: ${left}/${SBT.MAX_NOTES}</span></div><div class="sb-feed" id="splitNotesFeed">${renderNotesHTML(notes)}</div><div class="sb-noteform"><label class="label" for="splitNoteIn">Post a note (max ${SBT.MAX_NOTE_CHARS} chars)</label><div class="row"><input type="text" id="splitNoteIn" maxlength="${SBT.MAX_NOTE_CHARS}" placeholder="Share what your cards say..." value="${esc(state.noteDraft)}" ${!canPost ? "disabled" : ""} style="flex:1;min-width:160px"><button type="button" class="btn blue sm" id="splitPostNote" ${!canPost || !state.noteDraft.trim() ? "disabled" : ""}>Post</button></div></div></div>
@@ -160,7 +161,7 @@
       const submitNote = () => {
         if (!noteIn || noteIn.disabled) return;
         G.activity(ME);
-        const r = trial.postNote(ME, noteIn.value);
+        const r = G.splitBriefPostNote(ME, noteIn.value);
         if (!r.ok) { state.msg = r.reason; state.sbFocus = { kind: "post" }; opts.onRender(); return; }
         state.noteDraft = "";
         state.msg = "";
@@ -183,7 +184,8 @@
         btn.onclick = () => {
           G.activity(ME);
           const id = btn.dataset.sbAdd;
-          const r = trial.setBoard(ME, [...trial.boardFor(MYTEAM), id]);
+          const cur = G.splitBriefView(ME);
+          const r = G.splitBriefSetBoard(ME, [...(cur ? cur.board : []), id]);
           state.msg = r.ok ? "" : r.reason;
           state.sbFocus = { kind: "add", id };
           opts.onRender();
@@ -192,10 +194,11 @@
       rootEl.querySelectorAll("[data-sb-up]").forEach(btn => {
         btn.onclick = () => {
           G.activity(ME);
-          const i = +btn.dataset.sbUp, b = trial.boardFor(MYTEAM);
+          const cur = G.splitBriefView(ME);
+          const i = +btn.dataset.sbUp, b = cur ? cur.board.slice() : [];
           const moved = i > 0 && i < b.length;
           if (moved) [b[i - 1], b[i]] = [b[i], b[i - 1]];
-          const r = trial.setBoard(ME, b);
+          const r = G.splitBriefSetBoard(ME, b);
           state.msg = r.ok ? "" : r.reason;
           state.sbFocus = { kind: "up", index: moved && r.ok ? i - 1 : i };
           opts.onRender();
@@ -204,10 +207,11 @@
       rootEl.querySelectorAll("[data-sb-down]").forEach(btn => {
         btn.onclick = () => {
           G.activity(ME);
-          const i = +btn.dataset.sbDown, b = trial.boardFor(MYTEAM);
+          const cur = G.splitBriefView(ME);
+          const i = +btn.dataset.sbDown, b = cur ? cur.board.slice() : [];
           const moved = i >= 0 && i < b.length - 1;
           if (moved) [b[i], b[i + 1]] = [b[i + 1], b[i]];
-          const r = trial.setBoard(ME, b);
+          const r = G.splitBriefSetBoard(ME, b);
           state.msg = r.ok ? "" : r.reason;
           state.sbFocus = { kind: "down", index: moved && r.ok ? i + 1 : i };
           opts.onRender();
@@ -216,9 +220,10 @@
       rootEl.querySelectorAll("[data-sb-rem]").forEach(btn => {
         btn.onclick = () => {
           G.activity(ME);
-          const i = +btn.dataset.sbRem, b = trial.boardFor(MYTEAM);
+          const cur = G.splitBriefView(ME);
+          const i = +btn.dataset.sbRem, b = cur ? cur.board.slice() : [];
           b.splice(i, 1);
-          const r = trial.setBoard(ME, b);
+          const r = G.splitBriefSetBoard(ME, b);
           state.msg = r.ok ? "" : r.reason;
           state.sbFocus = { kind: "rem", index: i };
           opts.onRender();
@@ -227,7 +232,7 @@
 
       const doLockIn = () => {
         G.activity(ME);
-        const r = trial.lockIn(ME);
+        const r = G.splitBriefLockIn(ME);
         state.confirmLock = false;
         state.msg = r.ok ? "" : r.reason;
         opts.onRender();
@@ -235,7 +240,8 @@
       const lockBtn = rootEl.querySelector("#splitLockBtn");
       if (lockBtn) lockBtn.onclick = () => {
         G.activity(ME);
-        if (!trial.twistFired) { state.confirmLock = true; opts.onRender(); return; }
+        const cur = G.splitBriefView(ME);
+        if (cur && !cur.twistFired) { state.confirmLock = true; opts.onRender(); return; }
         doLockIn();
       };
       const lockYes = rootEl.querySelector("#splitLockYes");
@@ -254,7 +260,9 @@
       const st = mountedRoot.querySelector("#splitTmr");
       if (st) { st.textContent = txt; st.classList.toggle("low", !!low); }
 
-      const curNotes = trial.notesFor(MYTEAM);
+      const cur = G.splitBriefView(ME);
+      if (!cur) return;
+      const curNotes = cur.notes;
       if (curNotes.length !== lastNoteCount) {
         lastNoteCount = curNotes.length;
         const feed = mountedRoot.querySelector("#splitNotesFeed");
@@ -264,17 +272,17 @@
         }
       }
 
-      if (trial.twistFired) {
+      if (cur.twistFired) {
         if (state.confirmLock) {
           state.confirmLock = false;
           opts.onRender();
           return;
         }
-        const tc = trial.twistFor(ME);
+        const tc = cur.twistCard;
         if (tc && !lastTwistShown && !state.twistDismissed) {
           lastTwistShown = true;
           const cardsEl = mountedRoot.querySelector("#splitCards");
-          if (cardsEl) cardsEl.innerHTML = renderCardsHTML(trial.cardsFor(ME), tc);
+          if (cardsEl) cardsEl.innerHTML = renderCardsHTML(cur.cards, tc);
           const host = mountedRoot.querySelector("#splitTwistHost");
           if (host) {
             host.innerHTML = renderTwistPopupHTML(tc);

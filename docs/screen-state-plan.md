@@ -15,7 +15,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 3b:** Level 3 Setup deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold) owned by `SetupCrew` and checked in `Game.tick` (`V-27, V-29, V-30, V-31`)
 - [x] **Step 4:** Level 3 Dance Crew note chart, tempo seed, and miss/idle gating into `DanceCrew` / `MirrorTrial` (`V-35, V-36, V-37`)
 - [x] **Step 5:** Lock screen navigation to `Game.step`, move bot gift answers into hooks, and stop clicks from closing timed steps early (`V-03, V-04, V-05`)
-- [ ] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
+- [x] **Step 6:** Route Split Brief actions and player-scoped reads through `Game` (`V-20, V-23`)
 - [ ] **Step 7 (BLOCKED):** Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` (`V-24, V-25, V-26, V-40, V-41, V-42`) — blocked until Ben decides when the Levels 5-6 vote closes (Q10)
 - [ ] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
 - [ ] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
@@ -98,11 +98,12 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - **Done notes:** Added `Game.submitSop(p, built)`, `Game.skipAccusation(p)`, and `Bots.hooks.onGift(game, gift)` (answering bot-receiver gifts via `game.rng` while leaving gifts to humans `pending`); locked `canBack()` on `S.step >= 5` and replaced early-close clicks on Open Floor, SOP, Glitch Report, Stats Update, and Graduation in `game.js` with waiting states while leaving untimed buttons (`Start Level`, Briefing, L4 AutoTrial, `All-hands ▶`, L5-6 vote, Intermission) intact. Updated old `Tests/check_screens.js` helpers to advance timed steps on the fake clock via `finishTimedStep()` and refreshed `check_steps.txt` and `check_save.txt` baselines (new Step 5 assertions; `5987` saves from `onGift`), building on prerequisite Mirror catch-up fixes in commits `4fd2dab` (`_advanceMirrorShowtime` attention check order) and `9fa7c16` (`DanceCrew.nextDeadline` `includeSpawns` option passed from `MirrorTrial.nextShowtimeEventAt`).
 - **Checks:** `npm run build`, `npm test` (explain any baseline diff if bot games change before saving a new baseline), `npm run test:screens`.
 
-#### Step 6: Route Split Brief actions and player-scoped reads through `Game`
+#### Step 6: Route Split Brief actions and player-scoped reads through `Game` — DONE
 - **Violations covered:** `V-20, V-23`
-- **Files touched:** `rules/Game.js`, `rules/rules.bundle.js`, `splitbrief-view.js`, `Tests/check_steps.js`, `Tests/check_screens.js`, `docs/class-diagram.md`
+- **Files touched:** `rules/Game.js`, `rules/rules.bundle.js`, `splitbrief-view.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** Existing `Game` (`rules/Game.js`) delegating to `SplitBriefTrial` (`rules/Trial.js`). Add thin one-line pass-throughs on `Game`: `splitBriefPostNote(p, text)`, `splitBriefSetBoard(p, taskIds)`, `splitBriefLockIn(p)`, and player-scoped read `splitBriefView(p)` (returning only `p`'s cards, `p`'s twist card if holder, team notes, team board, lock status, tasks, and result when closed). Update `splitbrief-view.js` to call only `Game` methods and never touch `G.round.trial`.
 - **QA bugs fixed:** Prerequisite for **Bug 1** and **Bug 7**; enforces Base44 player-scoped privacy (`CLAUDE.md`).
+- **Done notes:** Added `splitBriefPostNote(p, text)`, `splitBriefSetBoard(p, taskIds)`, `splitBriefLockIn(p)`, and read-only `splitBriefView(p)` to `Game` (`rules/Game.js`), enforcing the Level 2 Split Brief trial step on action pass-throughs and returning only `p`'s own cards (without `botNote`), `p`'s twist card when `p` is the holder, `p`'s team notes/board/lock status, public tasks/title/`twistFired`, and post-close answer/score/ranking only after the trial closes. Updated `splitbrief-view.js` to use only these `Game` methods with zero `G.round.trial` or direct `trial.*` calls, keeping screen rendering and behavior identical.
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
 #### Step 7: Remove render-time mutations and direct `Vote`/`Bots` calls from `judged-view.js` and `pages/vote-test.js` — BLOCKED

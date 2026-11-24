@@ -4680,6 +4680,109 @@ async function step5CleanupCases() {
   check("Graduation Lock In saves final points and waits for timer", res.gradWaitOk);
 }
 
+/* Step 6: Split Brief pass-throughs, player-scoped view privacy, and no G.round.trial in splitbrief-view.js. */
+async function step6SplitBriefCleanupCases() {
+  const res = w.eval(`(() => {
+    const { Bots, Game, Rng, Team } = EP;
+    const mkPlayers = () => Array.from({ length: 8 }, (_, i) => {
+      const p = Bots.makePlayer(950 + i, "SB" + i, "coop");
+      p.isBot = false;
+      return p;
+    });
+    const ps = mkPlayers();
+    const teams = [0, 1].map(i => new Team({ id: "sbT" + i, name: "SB Team " + i, members: ps.slice(i * 4, i * 4 + 4) }));
+    const clock = { now: 1000000 };
+    const g = new Game({ teams, rng: Rng.seeded(606), clock: () => clock.now });
+    const [p0, p1] = teams[0].members;
+    const q0 = teams[1].members[0];
+
+    const rejectedOutside = expectNullView => {
+      const r1 = g.splitBriefPostNote(p0, "Note");
+      const r2 = g.splitBriefSetBoard(p0, ["A"]);
+      const r3 = g.splitBriefLockIn(p0);
+      const v = g.splitBriefView(p0);
+      return r1.ok === false && !!r1.reason &&
+        r2.ok === false && !!r2.reason &&
+        r3.ok === false && !!r3.reason &&
+        (!expectNullView || v === null);
+    };
+
+    const rejectIntermission = rejectedOutside(true);
+    g.startNextRound(); // Level 1 briefing
+    g.advance();        // Level 1 openFloor
+    g.advance();        // Level 1 trial (SOP)
+    const rejectLevel1Sop = rejectedOutside(true);
+    g.closeSop();
+    g.endTrial();       // glitchReport
+    g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+    g.computeEarnings(); g.placeAllRemaining(); g.finishRound();
+
+    g.startNextRound(); // Level 2 briefing
+    const rejectBriefing = rejectedOutside(false);
+    g.advance();        // Level 2 openFloor
+    const rejectOpenFloor = rejectedOutside(false);
+    g.advance();        // Level 2 trial (SplitBrief)
+    g.start();
+
+    const noteOk = g.splitBriefPostNote(p0, "Team0 secret");
+    const noteOtherOk = g.splitBriefPostNote(q0, "Team1 secret");
+    const board0Ok = g.splitBriefSetBoard(p0, ["D", "B"]);
+    const board1Ok = g.splitBriefSetBoard(q0, ["A", "C"]);
+    const lock1Ok = g.splitBriefLockIn(q0);
+
+    clock.now += 95000;
+    g.tick(clock.now);
+
+    const v0 = g.splitBriefView(p0);
+    const v1 = g.splitBriefView(p1);
+    const v0Ids = new Set(v0.cards.map(c => c.id));
+    const v1Ids = new Set(v1.cards.map(c => c.id));
+    const cardsDisjoint = v0.cards.length > 0 && v1.cards.length > 0 &&
+      v0.cards.every(c => !v1Ids.has(c.id)) &&
+      v1.cards.every(c => !v0Ids.has(c.id)) &&
+      v0.cards.every(c => !("botNote" in c));
+
+    const t0Views = teams[0].members.map(m => g.splitBriefView(m));
+    const twistHoldersT0 = t0Views.filter(v => v && v.twistCard !== null);
+    const v0Json = JSON.stringify(v0);
+    const hidesOtherTeam = JSON.stringify(v0.board) === '["D","B"]' &&
+      v0.locked === false &&
+      v0.notes.some(n => n.text === "Team0 secret") &&
+      !v0Json.includes("Team1 secret") &&
+      !v0Json.includes('["A","C"]');
+    const preCloseHidden = v0.done === false &&
+      v0.postTwistAnswer === null &&
+      v0.boardScore === null &&
+      v0.ranking === null &&
+      twistHoldersT0.length === 1;
+
+    g.closeSplitBrief();
+    const vClosed = g.splitBriefView(p0);
+    const postCloseShown = vClosed.done === true &&
+      Array.isArray(vClosed.postTwistAnswer) && vClosed.postTwistAnswer.length === 2 &&
+      typeof vClosed.boardScore === "number" &&
+      Array.isArray(vClosed.ranking) &&
+      vClosed.ranking.length === 2 &&
+      vClosed.ranking.every(r => typeof r.place === "number" && typeof r.teamName === "string" && typeof r.isMine === "boolean" && typeof r.score === "number" && typeof r.won === "boolean" && !("team" in r));
+
+    g.endTrial(); // -> Level 2 glitchReport
+    const rejectAfterClose = rejectedOutside(false);
+
+    return {
+      rejectOutsideOk: rejectIntermission && rejectLevel1Sop && rejectBriefing && rejectOpenFloor && rejectAfterClose,
+      actionsOk: noteOk.ok && noteOk.notesLeft === 2 && noteOtherOk.ok && board0Ok.ok && board1Ok.ok && lock1Ok.ok && lock1Ok.lockOrder === 1,
+      privacyOk: cardsDisjoint && hidesOtherTeam && preCloseHidden && postCloseShown,
+    };
+  })()`);
+
+  const sbSrc = fs.readFileSync(path.join(repo, "splitbrief-view.js"), "utf8");
+  const noDirectTrial = !sbSrc.includes("G.round.trial") && !/\btrial\.(postNote|setBoard|lockIn)\b/.test(sbSrc);
+
+  check("Game Split Brief pass-throughs reject calls outside Split Brief trial step", res.rejectOutsideOk && res.actionsOk);
+  check("Game.splitBriefView(p) hides other players' cards, other teams' notes/boards, and pre-close answers", res.privacyOk);
+  check("splitbrief-view.js contains no G.round.trial or direct trial calls", noDirectTrial);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -4733,6 +4836,8 @@ w.addEventListener("load", async () => {
     await mirrorStep4DanceCases();
     log("run 18: Step 5 Back lock, onGift hook, and timed steps wait for timer");
     await step5CleanupCases();
+    log("run 19: Step 6 Split Brief Game pass-throughs and player-scoped view");
+    await step6SplitBriefCleanupCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

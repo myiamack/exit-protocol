@@ -37,6 +37,7 @@ classDiagram
     +activity(), checkAttendance(), pollAttendance()
     +sabotage(), gift(), answerGift(), switchTeam()
     +setSopBoard(), submitSop(), closeSop(), splitBrief(), closeSplitBrief()
+    +splitBriefPostNote(), splitBriefSetBoard(), splitBriefLockIn(), splitBriefView()
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
     +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDancePress(), mirrorDanceHit()..mirrorDanceStray()
     +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorSetupView(), mirrorDanceTeam(), mirrorDanceView()
@@ -437,5 +438,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 5, from commit `9fa7c16`).
+Made from the rules code on branch `screen-state-cleanup` (Step 6, from commit `0570e3a`).
 Update this diagram whenever a class in `rules/` changes.

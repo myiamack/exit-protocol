@@ -627,6 +627,56 @@ class Game {
     this.refreshTimer();
     return ranking;
   }
+  _splitBriefWhy() {
+    return this.wrongStep("trial") || (!(this.round.trial instanceof Trial.SplitBriefTrial) ? "This level has no Split Brief." : null);
+  }
+  splitBriefPostNote(p, text) {
+    const why = this._splitBriefWhy();
+    return why ? { ok: false, reason: why } : this.round.trial.postNote(p, text);
+  }
+  splitBriefSetBoard(p, taskIds) {
+    const why = this._splitBriefWhy();
+    return why ? { ok: false, reason: why } : this.round.trial.setBoard(p, taskIds);
+  }
+  splitBriefLockIn(p) {
+    const why = this._splitBriefWhy();
+    return why ? { ok: false, reason: why } : this.round.trial.lockIn(p);
+  }
+  splitBriefView(p) {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.SplitBriefTrial)) return null;
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const closed = this.didRun("runTrial") || !!t.ranking;
+    const board = t.boardFor(team);
+    const tc = t.twistFor(pl);
+    return {
+      done: closed,
+      scenarioTitle: t.scenario.title,
+      tasks: t.tasks,
+      cards: t.cardsFor(pl).map(({ id, title, text }) => ({ id, title, text })),
+      twistFired: t.twistFired,
+      twistCard: tc ? { id: tc.id, title: tc.title, text: tc.text } : null,
+      notes: t.notesFor(team),
+      notesLeft: t.notesLeft(pl),
+      board,
+      locked: t.isLocked(team),
+      postTwistAnswer: closed ? t.postTwistAnswer : null,
+      boardScore: closed ? Trial.SplitBriefTrial.score(board, t.postTwistAnswer) : null,
+      ranking: closed
+        ? (t.ranking || []).map(r => ({
+            place: r.place,
+            teamId: r.team.id,
+            teamName: r.team.name,
+            isMine: r.team === team,
+            base: r.base,
+            score: r.score,
+            won: r.won,
+          }))
+        : null,
+    };
+  }
   _mirrorWhy() {
     return this.wrongStep("trial") || (!(this.round.trial instanceof Trial.MirrorTrial) ? "This level has no Mirror trial." : null);
   }
