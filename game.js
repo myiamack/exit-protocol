@@ -491,8 +491,6 @@ ${worldHTML("lobby")}
   <div class="panel"><span class="label">Secret path · ${t.path} <span class="tag s">${t.n}</span></span><p>${t.pathDesc}</p><span class="hint">Progress ${ME.pathProgress} / ${t.goal}. Only you can see this.</span></div>
   ${G&&G.level===7?`<div class="panel"><span class="label">Graduation check</span>${gradChecks()}</div>`:""}
 </div>`};
-/* Trial scores on screen: whole numbers, 0 to max. The rules keep the exact value for ranking. */
-const shownScore=(x,max=EP.Trial.MAX_BASE)=>Math.min(max,Math.max(0,Math.round(x)));
 function gradChecks(){const c=ME.gradChecks(),GT=EP.Player.GRAD_TOTAL,GM=EP.Player.GRAD_MIN;
   return `<div class="check"><span class="${c.totalOk?"y":"x"}">${c.totalOk?"✓":"✗"}</span><span>Total points ${c.total} (need ${GT}+)</span></div><div class="check"><span class="${c.lowestOk?"y":"x"}">${c.lowestOk?"✓":"✗"}</span><span>Lowest attribute ${c.lowest} (need ${GM}+)</span></div><div class="check"><span class="${c.glitchesOk?"y":"x"}">${c.glitchesOk?"✓":"✗"}</span><span>Glitches ${c.glitches} (stuck at ${EP.Player.STUCK_AT})</span></div>`}
 
@@ -506,19 +504,19 @@ V[6]=()=>`<div class="row" style="justify-content:space-between"><div><span clas
 ${worldHTML("floor")}`;
 
 function sabotageAlertHTML(){const rs=R(),hit=rs.drainOn;return hit?`<div class="toast"><b>&gt; ALERT:</b> someone on your team sabotaged you. ${AN[rs.attr]} −${hit}. Remember this at the all-hands.</div>`:""}
-function trialResultHTML(maxScore,rank,note){
-  const rs=R(),mine=rank.find(x=>x.isMine);
-  return `<div class="result"><b style="color:${rs.teamWon?"var(--ok)":"var(--bad)"}">Team ${rs.teamWon?"WIN":"LOSS"}. Score ${shownScore(mine?mine.score:0,maxScore)} of ${maxScore}.</b>${note?`<span class="hint">${note}</span>`:""}<span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.teamName)} (${shownScore(x.score,maxScore)})`).join(" · ")}. Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${rs.cost} ${AN[rs.attr]}. Press <b>All-hands</b> for the meeting.</span></div>`;
+function trialResultHTML(tv,note){
+  const rs=R(),rank=tv?tv.ranking:[],maxScore=tv?tv.maxScore:EP.Trial.MAX_BASE,won=tv?tv.teamWon:rs.teamWon,myScore=tv?tv.shownScore:0,winners=tv?tv.winnersCount:EP.Trial.winners(rank.length);
+  return `<div class="result"><b style="color:${won?"var(--ok)":"var(--bad)"}">Team ${won?"WIN":"LOSS"}. Score ${myScore} of ${maxScore}.</b>${note?`<span class="hint">${note}</span>`:""}<span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.teamName)} (${x.shownScore})`).join(" · ")}. Top ${winners} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${rs.cost} ${AN[rs.attr]}. Press <b>All-hands</b> for the meeting.</span></div>`;
 }
 function trialSopScreen(){
   if(!S.sop.pile.length)S.sop.pile=shuffle([...SOP,DECOY]);
-  const rs=R(),s=S.sop,built=G.sopBoard(MYTEAM),submitted=s.submitted||rs.sopSubmitted,locked=trialDone()||submitted,res=rs.sopResult||{right:0,endlessOut:false},rank=rs.ranking||[];
+  const rs=R(),s=S.sop,built=G.sopBoard(MYTEAM),submitted=s.submitted||rs.sopSubmitted,locked=trialDone()||submitted,res=rs.sopResult||{right:0,endlessOut:false},tv=G.trialResultView(MYTEAM);
   const html=`<div><span class="chip r">The Trial · ${AN[rs.attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
 ${sabotageAlertHTML()}
 <p class="hint">Tap the steps in order. Leave out anything that doesn't belong. Tap a placed step to send it back. Score: 1 point per step in the right place, +1 for leaving out the step that doesn't belong (0 to 7). The top half of teams win.</p>
 <div class="sop"><div><span class="label">Available steps</span><div class="pile">${sopPile().map((t,i)=>`<button class="scard" data-pile="${i}" ${locked?"disabled":""}><span class="num">·</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">All steps placed.</span>'}</div></div>
-<div><span class="label">Team SOP</span><div class="built">${built.map((t,i)=>`<button class="scard ${trialDone()?(SOP[i]===t?"right":"wrong"):""}" data-built="${i}" ${locked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
-${trialDone()?trialResultHTML(EP.Trial.SopTrial.MAX_SCORE,rank,`${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${rs.sopTimedOut?", time ran out":""}. Your team's ${AN[rs.attr]} can move the score a little.`)
+<div><span class="label">Team SOP</span><div class="built">${built.map((t,i)=>`<button class="scard ${trialDone()&&tv?(tv.sopStepCorrect[i]?"right":"wrong"):""}" data-built="${i}" ${locked?"disabled":""}><span class="num">${i+1}.</span><span>${esc(t)}</span></button>`).join("")||'<span class="hint">Nothing yet.</span>'}</div></div></div>
+${trialDone()?trialResultHTML(tv,`${res.right} of 6 steps in place${!built.length?", no steps placed":res.endlessOut?", extra step left out":", extra step included"}${rs.sopTimedOut?", time ran out":""}. Your team's ${AN[rs.attr]} can move the score a little.`)
 :submitted?`<p class="hint" id="sopWait">SOP saved. Waiting for the trial timer to finish.</p>`
 :`<div class="row"><button class="btn green" id="check" ${G.canSubmitSop(ME)?"":"disabled"}>Submit SOP</button><button class="btn soft" id="reset">Start over</button></div>`}`;
   const bind=()=>{
@@ -539,11 +537,11 @@ function trialSplitBriefScreen(){
   return {html:view.html,bind:view.bind?()=>view.bind(document):null,tick:view.tick||null,waitHint:view.waitHint};
 }
 function trialAutoScreen(){
-  const rank=R().ranking||[];
+  const tv=G.trialResultView(MYTEAM);
   const html=`<div><span class="chip r">The Trial · ${AN[R().attr]}</span><h2 style="margin-top:8px">${esc(R().name)}: ${esc(R().trialName)}</h2></div>
 ${sabotageAlertHTML()}
-${trialDone()?trialResultHTML(EP.Trial.MAX_BASE,rank,"AutoTrial placeholder: random 0 to 7 score plus light stat influence.")
-:`<div class="panel"><span class="label">Placeholder trial</span><p>For now, ${esc(R().trialName)} ranks teams in random order (0 to 7) plus light ${AN[R().attr]} influence. Top half win.</p><div class="row"><button class="btn green" id="runAuto">Run trial</button></div></div>`}`;
+${trialDone()?trialResultHTML(tv,"AutoTrial placeholder: random 0 to 7 score.")
+:`<div class="panel"><span class="label">Placeholder trial</span><p>For now, ${esc(R().trialName)} ranks teams in random order (0 to 7). Top half win.</p><div class="row"><button class="btn green" id="runAuto">Run trial</button></div></div>`}`;
   const bind=()=>{on("#runAuto",()=>{if(!trialDone()){G.runTrial();render()}})};
   return {html,bind,waitHint:"Run the trial first"};
 }
@@ -594,7 +592,7 @@ ${accDone()&&ME.sabotagesThisRound?`<div class="toast">${ME.caughtThisRound?`<b>
 <div class="panel"><span class="label">Accusation · one per player · teammates only</span>
 ${accDone()||a.done?`<p>${a.result===true?`<b style="color:var(--ok)">Correct.</b> ${esc(a.target)} sabotaged this round. You get +1 point at Stats Update.${T().ct.pathCounts(EP.CharacterType.PATH_EVENTS.correctAccusation)?` ${T().path} complete.`:""}`:a.result===false?`<b style="color:var(--bad)">Wrong.</b> ${esc(a.target)} didn't sabotage this round. ${a.safe?`Your Focus kept it from costing you anything.`:`You lost 1 point from your highest attribute.`}`:"You skipped your accusation."}</p>${!accDone()?`<p class="hint" id="accWait">Choice saved. Waiting for the Glitch Report timer to finish.</p>`:""}`
 :ME.isStuck()?`<p>You are Stuck and cannot accuse.</p><div class="row"><button class="btn soft sm" id="skipAcc">Skip</button></div>`
-:`<p><b>Suspect a teammate? Accuse or Skip.</b></p><div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Correct: +1 point. Wrong: you lose 1 point from your highest attribute.</span><span class="hint">The Glitch Report ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.glitchReport} seconds. No answer counts as Skip.</span>`}</div>
+:`<p><b>Suspect a teammate? Accuse or Skip.</b></p><div class="row"><select id="accSel" style="max-width:240px" aria-label="Accuse a teammate"><option value="">Choose a teammate…</option>${MYTEAM.mates(ME).map(q=>`<option>${esc(q.name)}</option>`).join("")}</select><button class="btn red sm" id="accuse">Accuse</button><button class="btn soft sm" id="skipAcc">Skip</button></div><span class="hint">Correct: +1 point. Wrong: you lose 1 point from your highest attribute. Tie order for highest stat: ${esc(G.statTieOrderLabel())}.</span><span class="hint">The Glitch Report ends on its own in ${EP.Game.AUTO_ADVANCE_SECONDS.glitchReport} seconds. No answer counts as Skip.</span>`}</div>
 ${accDone()?`<div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Gift window</span>${gwClosed()?flag(status()):`<span class="row" style="gap:8px"><span class="counter" id="gwTmr">${fmt(G?G.secondsLeft()||0:0)}</span><span class="hearts">${Array.from({length:EP.Hearts.CAP},(_,i)=>HEART(i<ME.hearts.count)).join("")}</span></span>`}</div>
   ${incomingGifts()}
   ${!gwClosed()?giftRoster():""}
@@ -614,7 +612,7 @@ function gwClosedText(){
   if(ME.isGlitchingAny())return `<b style="color:var(--pink)">You are Glitching.</b> ${n}`;
   return "Window closed. No glitch for you this round."}
 /* Gift buttons for every teammate (Open Floor and gift window). Stuck players are spectators. */
-const GIFT_RULE="They choose Accept or Decline. Accepted points go to their glitching attribute if they are Glitching, otherwise to their lowest attribute with room. You don't pick the attribute. If they decline, or don't answer before this step ends, your hearts come back.";
+const GIFT_RULE="They choose Accept or Decline. Accepted points go to their glitching attribute if they are Glitching, otherwise to their lowest attribute with room. You don't pick the attribute. If they decline, or don't answer before this step ends, your hearts come back. Tie order for lowest stat: "+EP.Game.statTieOrderLabel()+".";
 function giftRoster(){const go=G.giftOptions(ME);return `<p class="hint">${GIFT_RULE}</p><div class="roster">${(go?go.targets:[]).map(q=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===q.name).av,{head:true,label:q.name})}${esc(q.name)}</span><span class="row" style="gap:6px">${flag(q.status)}${!q.isStuck?q.amounts.map(a=>`<button class="btn green sm" data-gift="${esc(q.name)}" data-pts="${a.pts}" ${a.reason?`disabled title="${esc(a.reason)}"`:""}>Gift ${a.pts} (${a.cost} heart${a.cost>1?"s":""})</button>`).join(""):""}</span></div>`).join("")}</div>`}
 const plural=(n,w)=>`${n} ${w}${n===1?"":"s"}`;
 function giftMsg(g){
@@ -641,14 +639,14 @@ function nextLevelCard(level,detail){
 }
 function finalResultsScreen(){
   const res=G.results(),mine=res.find(r=>r.player===ME),t=T();
-  const teams=[...G.teams].sort((a,b)=>b.trialWins-a.trialWins);
+  const standings=G.teamStandings();
   return `<div><span class="chip ${mine.wins?"g":"r"}">Game over · Performance Review</span><h2 style="margin-top:8px">${mine.wins?"You exited Floor 60":"Contract renewed"}</h2><p class="hint" style="margin-top:6px">Result: <b>${esc(mine.ending)}</b></p></div>
   <div class="cols">
     <div class="panel"><span class="label">Your outcome</span><p><b>${esc(mine.ending)}</b></p><span class="hint">Hearts: ${ME.hearts.count}/${EP.Hearts.CAP} · Glitches: ${ME.glitches}/${EP.Player.STUCK_AT}</span>${flag(status())}${gradChecks()}</div>
     <div class="panel"><span class="label">Your 5 attributes</span>${A.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}/${maxOf(a.k)}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
     <div class="panel"><span class="label">Secret path · ${t.path}</span><span>${ME.pathDone?"Complete. This counts as a win.":`Progress ${ME.pathProgress} / ${t.goal}`}</span></div>
   </div>
-  <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${teams.map((tm,i)=>`<tr><td class="n">${i+1}</td><td>${esc(tm.name)}${tm===MYTEAM?" (you)":""}</td><td class="n">${tm.trialWins} / 6</td></tr>`).join("")}</tbody></table></div>
+  <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${standings.map(s=>`<tr><td class="n">${s.place}</td><td>${esc(s.team.name)}${s.team===MYTEAM?" (you)":""}</td><td class="n">${s.wins} / 6</td></tr>`).join("")}</tbody></table><span class="hint">Tied teams share a place.</span></div>
   <div class="panel tw"><span class="label">Cohort endings</span><table class="levels"><thead><tr><th>Intern</th><th>Team</th><th>Outcome</th></tr></thead><tbody>${res.map(r=>`<tr><td>${esc(r.player.name)}${r.player===ME?" (you)":""}</td><td>${esc(G.teamOf(r.player).name)}</td><td>${esc(r.ending)}</td></tr>`).join("")}</tbody></table></div>
   <div class="row"><button class="btn blue" id="replay">Play again</button><button class="btn soft" id="restart">Back to sign-in</button></div>`;
 }
@@ -672,7 +670,7 @@ function milestoneCompleteScreen({title,levelCount,locked,nextDetail}){
     <div class="panel"><span class="label">Your 5 attributes</span>${A.map(a=>`<div class="row" style="justify-content:space-between"><span>${a.n}</span><b>${ME.attrs[a.k]}</b></div>`).join("")}<span class="hint">Total: ${ME.total()}</span></div>
   </div>
   <div class="panel"><span class="label">Your team</span><p><b>${esc(MYTEAM.name)}</b> · ${MYTEAM.trialWins} / ${levelCount} trial wins</p></div>
-  <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${standings.map(s=>`<tr><td class="n">${s.place}</td><td>${esc(s.team.name)}${s.team===MYTEAM?" (you)":""}</td><td class="n">${s.wins} / ${levelCount}</td></tr>`).join("")}</tbody></table></div>
+  <div class="panel tw"><span class="label">Team standings</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Trial wins</th></tr></thead><tbody>${standings.map(s=>`<tr><td class="n">${s.place}</td><td>${esc(s.team.name)}${s.team===MYTEAM?" (you)":""}</td><td class="n">${s.wins} / ${levelCount}</td></tr>`).join("")}</tbody></table><span class="hint">Tied teams share a place.</span></div>
   ${nextCard}`;
 }
 const END_SCREENS={

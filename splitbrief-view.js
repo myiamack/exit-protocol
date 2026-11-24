@@ -48,12 +48,13 @@
       const rank = view.ranking || [];
       const mine = rank.find(x => x.isMine);
       const won = mine ? mine.won : MYTEAM.won;
-      const maxScore = SBT.MAX_SCORE;
-      const shown = x => Math.min(maxScore, Math.max(0, Math.round(x)));
+      const maxScore = view.maxScore != null ? view.maxScore : SBT.MAX_SCORE;
+      const myShown = view.shownScore != null ? view.shownScore : (mine ? mine.shownScore : 0);
+      const winnersCount = view.winnersCount != null ? view.winnersCount : EP.Trial.winners(rank.length);
       const rawScore = view.boardScore;
       const keyStr = (view.postTwistAnswer || []).join(" then ");
       const hint = opts.costHint ? `<span class="hint">${opts.costHint()}</span>` : "";
-      const html = `${hdr}<div class="result"><b style="color:${won ? "var(--ok)" : "var(--bad)"}">Team ${won ? "WIN" : "LOSS"}. Score ${shown(mine ? mine.score : 0)} of ${maxScore}.</b><span class="hint">Board score: ${rawScore} of ${maxScore} (post-twist key: ${esc(keyStr)}). Top ${EP.Trial.winners(rank.length)} of ${rank.length} teams win.</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>Result</th></tr></thead><tbody>${rank.map(r => `<tr><td class="n">${r.place}</td><td>${esc(r.teamName)}${r.isMine ? " (you)" : ""}</td><td class="n">${shown(r.score)} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`).join("")}</tbody></table>${hint}</div>`;
+      const html = `${hdr}<div class="result"><b style="color:${won ? "var(--ok)" : "var(--bad)"}">Team ${won ? "WIN" : "LOSS"}. Score ${myShown} of ${maxScore}.</b><span class="hint">Board score: ${rawScore} of ${maxScore} (post-twist key: ${esc(keyStr)}). Top ${winnersCount} of ${rank.length} teams win.</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>Result</th></tr></thead><tbody>${rank.map(r => `<tr><td class="n">${r.place}</td><td>${esc(r.teamName)}${r.isMine ? " (you)" : ""}</td><td class="n">${r.shownScore} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`).join("")}</tbody></table>${hint}</div>`;
       return { html, bind: null, tick: null, waitHint: "Wait for the Split Brief trial to finish" };
     }
 

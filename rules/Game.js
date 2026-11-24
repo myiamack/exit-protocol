@@ -19,6 +19,7 @@
    optional actions (gifts, answering gifts, accusations, sabotage, votes); the rule classes refuse them.
    Trial costs are paid as normal. Their points are placed when the timer ends, like anyone else's. */
 import { Attendance } from "./Attendance.js";
+import { Attributes } from "./Attributes.js";
 import { Economy } from "./Economy.js";
 import { Gift } from "./Gift.js";
 import { Player } from "./Player.js";
@@ -31,6 +32,7 @@ import { Trial } from "./Trial.js";
 
 // Part 6: a team with this many active players or fewer gets the quiet heart buff at round start.
 const QUIET_HEART_TEAM_MAX = 3;
+const roundDisplayScore = (x, max) => Math.min(max, Math.max(0, Math.round(x)));
 
 const STEP_NAME = { openFloor: "Open Floor", trial: "Trial", glitchReport: "Glitch Report",
                     giftWindow: "Gift window", lockIn: "Lock-in", statsUpdate: "Stats Update",
@@ -669,6 +671,20 @@ class Game {
     const closed = this.didRun("runTrial") || !!t.ranking;
     const board = t.boardFor(team);
     const tc = t.twistFor(pl);
+    const maxScore = Trial.SplitBriefTrial.MAX_SCORE;
+    const ranking = closed
+      ? (t.ranking || []).map(r => ({
+          place: r.place,
+          teamId: r.team.id,
+          teamName: r.team.name,
+          isMine: r.team === team,
+          base: r.base,
+          score: r.score,
+          shownScore: roundDisplayScore(r.score, maxScore),
+          won: r.won,
+        }))
+      : null;
+    const mine = ranking ? ranking.find(r => r.isMine) : null;
     return {
       done: closed,
       scenarioTitle: t.scenario.title,
@@ -680,19 +696,12 @@ class Game {
       notesLeft: t.notesLeft(pl),
       board,
       locked: t.isLocked(team),
+      maxScore,
       postTwistAnswer: closed ? t.postTwistAnswer : null,
       boardScore: closed ? Trial.SplitBriefTrial.score(board, t.postTwistAnswer) : null,
-      ranking: closed
-        ? (t.ranking || []).map(r => ({
-            place: r.place,
-            teamId: r.team.id,
-            teamName: r.team.name,
-            isMine: r.team === team,
-            base: r.base,
-            score: r.score,
-            won: r.won,
-          }))
-        : null,
+      shownScore: mine ? mine.shownScore : null,
+      winnersCount: ranking ? Trial.winners(ranking.length) : 0,
+      ranking,
     };
   }
   _mirrorWhy() {
@@ -1004,8 +1013,49 @@ class Game {
   mirrorDanceTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceTeamState(teamOrId) : null; }
   mirrorDanceView(playerOrId, now = this.now()) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceViewFor(playerOrId, now) : null; }
   trialRanking() { return (this.round && this.round.trial && this.round.trial.ranking) || []; }
+  trialResultView(teamOrId) {
+    const team = this.teams.includes(teamOrId)
+      ? teamOrId
+      : this.teams.find(x => x.id === (teamOrId && typeof teamOrId === "object" ? teamOrId.id : teamOrId)) || null;
+    const trial = this.round && this.round.trial;
+    if (!trial || !team) return null;
+    const done = this.didRun("runTrial") || !!trial.ranking;
+    const isSop = trial instanceof Trial.SopTrial;
+    const isSplit = trial instanceof Trial.SplitBriefTrial;
+    const maxScore = isSop ? Trial.SopTrial.MAX_SCORE : isSplit ? Trial.SplitBriefTrial.MAX_SCORE : Trial.MAX_BASE;
+    const ranking = done
+      ? (trial.ranking || []).map(r => ({
+          place: r.place,
+          teamId: r.team.id,
+          teamName: r.team.name,
+          isMine: r.team === team,
+          shownScore: roundDisplayScore(r.score, maxScore),
+          won: r.won,
+        }))
+      : [];
+    const mine = ranking.find(x => x.isMine) || null;
+    const sopStepCorrect = isSop && done ? this.sopBoard(team).map((step, i) => Trial.SopTrial.STEPS[i] === step) : [];
+    return {
+      done,
+      kind: trial.kind,
+      maxScore,
+      teamWon: mine ? mine.won : !!team.won,
+      shownScore: mine ? mine.shownScore : 0,
+      winnersCount: Trial.winners(ranking.length),
+      ranking,
+      sopStepCorrect,
+    };
+  }
   teamTrialResults(teamOrId) { const t = typeof teamOrId === "object" && teamOrId ? teamOrId : this.teams.find(x => x.id === teamOrId); return t ? { ...t.trialResults } : {}; }
-  teamStandings() { return [...this.teams].sort((a, b) => b.trialWins - a.trialWins).map((team, i) => ({ place: i + 1, team, wins: team.trialWins })); }
+  teamStandings() {
+    const sorted = [...this.teams].sort((a, b) => b.trialWins - a.trialWins);
+    let place = 1;
+    return sorted.map((team, i) => {
+      if (i > 0 && team.trialWins < sorted[i - 1].trialWins) place = i + 1;
+      return { place, team, wins: team.trialWins };
+    });
+  }
+  statTieOrderLabel() { return Game.statTieOrderLabel(); }
   mirrorCheckAttention(teamOrId, now = this.now()) {
     return this._mirrorCall(t => {
       const res = t.checkAttention(teamOrId, this.mirrorShowtimeSecondsLeft(now));
@@ -1575,6 +1625,9 @@ class Game {
   }
 
   static get POINTS() { return Economy.POINTS; }
+  static statTieOrderLabel() {
+    return Attributes.TIE_ORDER.map(k => Attributes.ABILITY[k].name).join(", ");
+  }
   static checkEmail(email) {
     const value = String(email == null ? "" : email).trim();
     if (!/^[^@\s]+@icstars\.org$/i.test(value)) {

@@ -5214,6 +5214,170 @@ async function step10RuleChecksCases() {
   check("#splitLockBtn disables on empty board and 3rd note never focuses #splitLockBtn", !!sbRes);
 }
 
+/* Step 11: scoring/ranking moved to Game, shared standings places, and stat tie-order hints (Bug 7). */
+async function step11ScoringAndStandingsCases() {
+  const gameSrc = fs.readFileSync(path.join(repo, "game.js"), "utf8");
+  const sbSrc = fs.readFileSync(path.join(repo, "splitbrief-view.js"), "utf8");
+  const cleanTextRe = /tie rule|bonus|influence|exact/i;
+
+  const gameResultSlice = [
+    gameSrc.match(/function trialResultHTML[\s\S]*?\n\}/)?.[0] || "",
+    gameSrc.match(/function trialSopScreen[\s\S]*?\n\}/)?.[0] || "",
+    gameSrc.match(/function trialAutoScreen[\s\S]*?\n\}/)?.[0] || "",
+    gameSrc.match(/function finalResultsScreen[\s\S]*?\n\}/)?.[0] || "",
+    gameSrc.match(/function milestoneCompleteScreen[\s\S]*?\n\}/)?.[0] || "",
+  ].join("\n");
+  const noScoreMathInResults =
+    !/const\s+shownScore\b/.test(gameSrc) &&
+    !/SOP\[i\]\s*===\s*t/.test(gameSrc) &&
+    !/Math\.round|\.sort\(/.test(gameResultSlice) &&
+    !/Math\.round|\.sort\(|SBT\.score/.test(sbSrc);
+
+  let tieLabelOk = false;
+  let sharedPlacesOk = false;
+  let hintsOk = false;
+  let sopAndAutoOk = false;
+  let splitResultOk = false;
+  let standingsScreensOk = false;
+  let noLeakWordsOk = true;
+
+  try {
+    // 1. Level 1 SOP result view + Glitch Report & Gift Window stat tie-order hints
+    w.eval('devJump(1);'); await sleep(20);
+    next(); await sleep(10); // -> Open Floor
+    finishTimedStep("openFloor"); await sleep(20); // -> SOP Trial
+    w.eval(`(() => {
+      const steps = EP.Trial.SopTrial.STEPS;
+      G.setSopBoard(ME, [steps[0], steps[2]]);
+      G.closeSop();
+      render();
+    })()`);
+    await sleep(15);
+    const sopCheck = w.eval(`(() => {
+      const tv = G.trialResultView(MYTEAM);
+      const cards = [...document.querySelectorAll(".built .scard")];
+      return {
+        ok: !!tv && tv.done && typeof tv.shownScore === "number" &&
+          JSON.stringify(tv.sopStepCorrect) === "[true,false]" &&
+          cards.length === 2 && cards[0].classList.contains("right") && cards[1].classList.contains("wrong"),
+        text: document.querySelector("#stage").textContent,
+      };
+    })()`);
+    if (cleanTextRe.test(sopCheck.text)) noLeakWordsOk = false;
+
+    next(); await sleep(15); // -> Glitch Report
+    const tieLabel = w.eval('({ inst: G.statTieOrderLabel(), stat: EP.Game.statTieOrderLabel() })');
+    const expectedOrder = "Focus, Collaboration, Initiative, Grit, Composure";
+    tieLabelOk = tieLabel.inst === expectedOrder && tieLabel.stat === expectedOrder;
+    const accText = $("#stage").textContent;
+    if (cleanTextRe.test(accText)) noLeakWordsOk = false;
+
+    finishTimedStep("glitchReport"); await sleep(20); // -> Gift Window
+    const gwText = $("#stage").textContent;
+    if (cleanTextRe.test(gwText)) noLeakWordsOk = false;
+    hintsOk = accText.includes("Tie order for highest stat: " + expectedOrder + ".") &&
+      gwText.includes("Tie order for lowest stat: " + expectedOrder + ".");
+
+    // 2. Level 2 Split Brief result view + Sprint 1 Complete shared places
+    w.eval('devJump(2);'); await sleep(20);
+    next(); await sleep(10); // -> Open Floor
+    finishTimedStep("openFloor"); await sleep(20); // -> Split Brief
+    w.eval('G.closeSplitBrief(); render();'); await sleep(15);
+    const sbCheck = w.eval('({ sb: G.splitBriefView(ME), text: document.querySelector("#stage").textContent })');
+    splitResultOk = !!sbCheck.sb && sbCheck.sb.done && typeof sbCheck.sb.shownScore === "number" &&
+      sbCheck.text.includes("Score " + sbCheck.sb.shownScore + " of " + sbCheck.sb.maxScore);
+    if (cleanTextRe.test(sbCheck.text)) noLeakWordsOk = false;
+
+    const tieCheck = w.eval(`(() => {
+      G.teams[0].trialWins = 1;
+      G.teams[1].trialWins = 2;
+      G.teams[2].trialWins = 2;
+      G.teams[3].trialWins = 0;
+      const st = G.teamStandings();
+      return {
+        places: st.map(s => s.place),
+        ids: st.map(s => s.team.id),
+        wins: st.map(s => s.wins),
+      };
+    })()`);
+    sharedPlacesOk = JSON.stringify(tieCheck.places) === "[1,1,3,4]" &&
+      JSON.stringify(tieCheck.ids) === "[1,2,0,3]" &&
+      JSON.stringify(tieCheck.wins) === "[2,2,1,0]";
+
+    // Finish L2 to reach Sprint 1 Complete with tied wins [1, 2, 2, 0]
+    w.eval(`(() => {
+      G.endTrial(); G.endGlitchReport(); G.advance(); G.advance(); G.lockIn(); G.advance();
+      G.computeEarnings(); G.placeAllRemaining(); G.finishRound();
+      G.teams[0].trialWins = 1; G.teams[1].trialWins = 2; G.teams[2].trialWins = 2; G.teams[3].trialWins = 0;
+      S.step = 9; render();
+    })()`);
+    await sleep(15);
+    const s1Places = $$("#stage table.levels tbody tr").map(tr => tr.children[0].textContent.trim());
+    const s1Text = $("#stage").textContent;
+    if (cleanTextRe.test(s1Text)) noLeakWordsOk = false;
+
+    // 3. Level 3 Presentation Day Complete shared places
+    w.eval('devJump(3);'); await sleep(20);
+    next(); await sleep(10); // -> Open Floor
+    finishTimedStep("openFloor"); await sleep(20); // -> Mirror Lobby
+    w.eval(`(() => {
+      G.closeMirrorLobby();
+      if (!G.didRun("runTrial")) G.closeMirror({ showtimeSecondsLeft: 0 });
+      G.endTrial(); G.endGlitchReport(); G.advance(); G.advance(); G.lockIn(); G.advance();
+      G.computeEarnings(); G.placeAllRemaining(); G.finishRound();
+      G.teams[0].trialWins = 1; G.teams[1].trialWins = 2; G.teams[2].trialWins = 2; G.teams[3].trialWins = 0;
+      S.step = 9; render();
+    })()`);
+    await sleep(15);
+    const pdcPlaces = $$("#stage table.levels tbody tr").map(tr => tr.children[0].textContent.trim());
+    const pdcText = $("#stage").textContent;
+    if (cleanTextRe.test(pdcText)) noLeakWordsOk = false;
+
+    // 4. Level 4 AutoTrial pre-run and result view
+    w.eval('devJump(4);'); await sleep(20);
+    next(); await sleep(10); // -> Open Floor
+    finishTimedStep("openFloor"); await sleep(20); // -> AutoTrial
+    const autoPreText = $("#stage").textContent;
+    if (cleanTextRe.test(autoPreText)) noLeakWordsOk = false;
+    $("#runAuto").click(); await sleep(15);
+    const autoRes = w.eval('({ tv: G.trialResultView(MYTEAM), text: document.querySelector("#stage").textContent })');
+    if (cleanTextRe.test(autoRes.text)) noLeakWordsOk = false;
+    sopAndAutoOk = sopCheck.ok && !!autoRes.tv && autoRes.tv.done &&
+      autoRes.text.includes("Score " + autoRes.tv.shownScore + " of " + autoRes.tv.maxScore);
+
+    // 5. Level 7 Final Results shared places + tie note
+    w.eval(`(() => {
+      devJump(7);
+      G.advance();
+      G.teams[0].trialWins = 1; G.teams[1].trialWins = 2; G.teams[2].trialWins = 2; G.teams[3].trialWins = 0;
+      G.placeAllRemaining();
+      G.results();
+      S.step = 9; render();
+    })()`);
+    await sleep(15);
+    const finalPlaces = $$("#stage table.levels tbody tr")[0] ?
+      [...$$("#stage .panel.tw")[0].querySelectorAll("tbody tr")].map(tr => tr.children[0].textContent.trim()) : [];
+    const finalText = $("#stage").textContent;
+    if (cleanTextRe.test(finalText)) noLeakWordsOk = false;
+
+    standingsScreensOk =
+      s1Text.includes("Sprint 1 Complete") && s1Text.includes("Tied teams share a place.") &&
+      JSON.stringify(s1Places) === '["1","1","3","4"]' &&
+      pdcText.includes("Presentation Day Complete") && pdcText.includes("Tied teams share a place.") &&
+      JSON.stringify(pdcPlaces) === '["1","1","3","4"]' &&
+      finalText.includes("Team standings") && finalText.includes("Tied teams share a place.") &&
+      JSON.stringify(finalPlaces) === '["1","1","3","4"]';
+  } finally {
+    w.eval('elevTimers.forEach(clearTimeout); elevTimers = []; endSession(); S = fresh(); render();');
+  }
+
+  check("G.teamStandings() returns shared place numbers (1, 1, 3, 4) preserving order inside ties", sharedPlacesOk);
+  check("Sprint 1 Complete, Presentation Day Complete, and Final Results show shared places and 'Tied teams share a place.'", standingsScreensOk);
+  check("Gift and Accusation hints show stat tie order from Game.statTieOrderLabel()", tieLabelOk && hintsOk);
+  check("G.trialResultView and G.splitBriefView supply rounded scores/SOP flags with no Math.round or sort( in result code", noScoreMathInResults && sopAndAutoOk && splitResultOk);
+  check("Step 11 screen text contains no 'tie rule', 'bonus', 'influence', or 'exact'", noLeakWordsOk);
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -5277,6 +5441,8 @@ w.addEventListener("load", async () => {
     await step9AnomaliesCases();
     log("run 23: Step 10 rule checks in rules (V-14, V-21, V-34)");
     await step10RuleChecksCases();
+    log("run 24: Step 11 scoring, shared standings places, and stat tie-order hints");
+    await step11ScoringAndStandingsCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

@@ -20,7 +20,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 8:** Draft-aware player reads and remove stale round copies (`S.pay`, `S.acc`, `S.gw`, `S.sop.inTime`, `S.prog`) (`V-07, V-08, V-09, V-16, V-39`)
 - [x] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
 - [x] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
-- [ ] **Step 11:** Remove scoring, ranking, and tie-break math from screen code (`V-12, V-13, V-22`)
+- [x] **Step 11:** Remove scoring, ranking, and tie-break math from screen code (`V-12, V-13, V-22`)
 - [ ] **Step 12:** Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap (`V-10, V-15, V-17`)
 - [ ] **Step 13:** Add automated guard test `Tests/check_screen_rules.js` (using `// cosmetic-ok` markers)
 
@@ -156,14 +156,15 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - **Done notes:** Added non-empty board requirement in `SplitBriefTrial.lockIn(player)` with `splitBriefLockIn(p)` returning the rejection, disabled `#splitLockBtn` on empty boards in `splitbrief-view.js`, and updated `restoreFocus` for `post` to pick `#splitNoteIn`, first enabled `[data-sb-add]`, or `#splitBoardHead` (`tabindex="-1"`). Added idle/inactive human rejection in `SetupCrew.#checkTurn` and `Game._mirrorCall` / `_mirrorSetupOpts` for all 10 human Setup actions while keeping `Bots.mirror` auto-pilot and Step 3b deadline gating intact. Added `Game.checkEmail`, `Game.checkJoinCode`, `SopTrial.canSubmit`, and `Game.canSubmitSop` / empty-board rejection in `Game.submitSop`, wiring `game.js` to call them with zero `Rng` draws. Updated empty-board `lockIn` test setups in `Tests/check_split_timing.js`, `Tests/check_split_brief.js`, and `Tests/check_save.js` with 1 wrong task (0 score, 0 extra draws) so existing baselines stayed identical apart from the new assertions in `check_split_brief` and `check_mirror_setup`.
 - **Checks:** `npm run build`, `npm test` (only `check_split_brief` and `check_mirror_setup` assertion additions; all other baselines unchanged), `npm run test:screens`.
 
-#### Step 11: Remove scoring, ranking, and tie-break math from screen code
+#### Step 11: Remove scoring, ranking, and tie-break math from screen code — DONE
 - **Violations covered:** `V-12, V-13, V-22`
-- **Files touched:** `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `splitbrief-view.js`, `judged-view.js`, `Tests/check_screens.js`
-- **Where logic moves:** Existing `Trial` subclasses (`rules/Trial.js`), `Attributes` (`rules/Attributes.js`), and `Game` (`rules/Game.js`).
-  - Expose precomputed display score (`shownScore`), per-step SOP correctness flags, Split Brief raw board score, and a `tieRule` text property from `Trial` / `Game` (`G.trialResultView(team)`), plus `Attributes.TIE_ORDER` formatted label from `Game`.
-  - Replace `finalResultsScreen()`'s manual team sort in `game.js:614` with `G.teamStandings()`.
-  - Display the rules-supplied tie-break text on Split Brief results (`splitbrief-view.js:55`), SOP/Auto results (`game.js:483`), Vote results (`judged-view.js:38`), Gift/Accusation hints (`game.js:568, 588`), and Team Standings (`game.js:621, 645`).
-- **QA bugs fixed:** **Bug 7** (tie order explained on screen from rules).
+- **Files touched:** `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `splitbrief-view.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
+- **Where logic moves:** Existing `Game` (`rules/Game.js`) reading `Attributes.TIE_ORDER` / `Attributes.ABILITY` (`rules/Attributes.js`).
+  - Added read-only `G.trialResultView(team)` returning rounded display scores (`shownScore`), `winnersCount`, `maxScore`, and SOP per-step correctness flags (`sopStepCorrect`), and extended `G.splitBriefView(p)` with `maxScore`, `shownScore`, `winnersCount`, and per-row `shownScore`. Removed `shownScore`, `SOP[i]===t`, and `shown()` from `game.js` and `splitbrief-view.js`.
+  - Updated `G.teamStandings()` to assign shared place numbers on `trialWins` ties (`1, 1, 3, 4`) while keeping order inside ties; updated `finalResultsScreen()` to use `G.teamStandings()` and added `"Tied teams share a place."` under the standings table on Sprint 1 Complete, Presentation Day Complete, and Final Results.
+  - Added `Game.statTieOrderLabel()` (static and instance) reading `Attributes.TIE_ORDER` and `Attributes.ABILITY` display names for the Gift (`GIFT_RULE`) and Accusation hints in `game.js`.
+- **QA bugs fixed:** **Bug 7** (standings shared place numbers and stat tie order in Gift/Accusation hints).
+- **Done notes:** Bug 7 closed for standings (shared place numbers) and stat tie order (Gift and Accusation hints). Trial-result tie order and influence math are hidden by Ben's decision.
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
 ---
@@ -202,11 +203,11 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 
 ### Still Open
 - **Q1. Open Floor position:** Is player `(x, y)` / room position on Floor 60 game state (shared on Base44 so players see teammates move, and saved on reload) or local UI state only?
-- **Q7. Team standings ties (Bug 7):** On `Sprint 1 Complete`, `Presentation Day Complete`, and `Final Results`, should teams tied on `trialWins` share the same place number (e.g. `1, 1, 3, 4`) or show a tie note?
 - **Q9. Open Floor tap speed (Bug 3):** For tapped movement keys on Floor 60, do you prefer a longer tap impulse (e.g. ~80-100px per tap) or grid-step movement?
 - **Q11. Untimed step ownership in multiplayer:** Untimed steps that one click advances for everyone (Briefing 'Open the floor', post-trial 'All-hands' which pays trial costs, Start Level): who owns these in multiplayer, host or actor?
 
 ### Answered
+- **Q7. Team standings ties (Bug 7) — ANSWERED:** Tied teams on `trialWins` share a place number (`1, 1, 3, 4`) with order inside a tie unchanged, and Sprint 1 Complete, Presentation Day Complete, and Final Results show `"Tied teams share a place."` under the standings table (see Step 11).
 - **Q2. Empty Split Brief Lock In (Bug 1) — ANSWERED:** Require at least 1 task on the board (1 or 2 tasks may lock in; 0 tasks rejected in `SplitBriefTrial.lockIn` and `#splitLockBtn` disabled when empty) (see Step 10).
 - **Q10. When the Levels 5-6 vote closes — ANSWERED:** Untimed, as in `CLAUDE.md`. Closes when every active voter has cast a ballot (checked on `castVote` and `Game.tick()`, closing at once if 0 active voters exist; prior ballots from now-idle voters stay) (see Step 7).
 - **Q3. Reception `WATCHER` anomaly — ANSWERED:** `WATCHER` counts once, from the `ATTEMPT 02` badge printed at Reception check-in. Any second trigger is a bug (see Step 9).

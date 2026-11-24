@@ -41,7 +41,7 @@ classDiagram
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
     +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDancePress(), mirrorDanceHit()..mirrorDanceStray()
     +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorSetupView(), mirrorDanceTeam(), mirrorDanceView()
-    +startWriting(), submit(), closeWriting(), startVote(), castVote(), judgedView(), runTrial(), trialRanking(), teamTrialResults(), teamStandings()
+    +startWriting(), submit(), closeWriting(), startVote(), castVote(), judgedView(), runTrial(), trialRanking(), trialResultView(), teamTrialResults(), teamStandings(), statTieOrderLabel(), statTieOrderLabel()$
     +payTrialCosts(), accuse(), skipAccusation(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
     +playerState(p, draft), roundSummary(p), sabotageOptions(p), giftOptions(p), answerGiftByIndex(p, index, accept)
@@ -426,6 +426,7 @@ classDiagram
 
   Game ..> Trial : forRound, delegates trial calls
   Game ..> Round : delegates round actions
+  Game ..> Attributes : reads TIE_ORDER and ABILITY
   Bots ..> Sabotage : cost
   Bots ..> Gift : cost, pending
   Bots ..> Trial : SplitBriefTrial, MirrorTrial, JudgedTrial
@@ -444,5 +445,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 10, from commit `e94c01b`).
+Made from the rules code on branch `screen-state-cleanup` (Step 11, from commit `3b69abf`).
 Update this diagram whenever a class in `rules/` changes.
