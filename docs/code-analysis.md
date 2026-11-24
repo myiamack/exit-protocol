@@ -1,623 +1,395 @@
-# Exit_ProtocoL Whole-Game Code Analysis (Read-Only)
+# Exit_ProtocoL Code Analysis (Step 14)
 
-Branch: `level3-mirror` (read-only audit; no code, test, data, or other doc files modified).
-Scope: `rules/`, all 11 screen files (`game.js`, `mirror-view.js`, `mirror-dance-view.js`, `splitbrief-view.js`, `judged-view.js`, `world-map.js`, `pixel-art.js`, `board.js`, `attendance-view.js`, `fullscreen-view.js`, `pages/vote-test.js`), and `Tests/`.
+- **Commit audited:** `86342f7` (`Add automated screen-rule guard test (Step 13)`) on branch `screen-state-cleanup`
+- **Role:** Read-only code audit. No source, test, baseline, Git setting, or remote was modified.
+
+## Test Results
+
+| Command | Result | Expected | Failures |
+|---|---|---|---|
+| `npm test` | **17 of 17 PASS** | 17 of 17 | 0 |
+| `npm run test:screens` | **229 of 229 PASS** (`no console errors -> none`) | 229 of 229 | 0 |
+| `node Tests/check_screen_rules.js` | **31 of 31 PASS** | 31 of 31 | 0 |
 
 ---
 
-## A. Screen code that runs the game on its own clock (HIGHEST PRIORITY)
+## Hannah Readiness Verdict
 
-Note on bug numbers: Only Bug `54` (cable belt shuffle) is explicitly mapped in the task prompt (Section F). The external bug tracker definitions for IDs `4`, `5`, `17`, `51`, `52`, and `53` are not stored in this repository, so Step 10 findings whose exact tracker number cannot be confirmed from the repo are marked `UNCONFIRMED` rather than guessed, and findings not covered in Step 10 are marked `new`.
+**One-line verdict:** Not quite ready for an unblocked start; fix 3 small prep items first (shared-file boundaries, the `rules/` guard test, and `judgedView` hidden-math cleanup) before Hannah cuts commits on `levels-4-6`.
 
-### Gameplay-affecting screen clocks, step advancers, penalties, and `Math.random()`
+### Must-Fix List Before Hannah Starts
 
-| File:lines | What it does | Why it breaks sync or save/load | Which rules class should own it | Related bug number |
-|---|---|---|---|---|
-| `mirror-dance-view.js:355-397`, `mirror-dance-view.js:477-491`, `mirror-dance-view.js:468-470` | Runs a `requestAnimationFrame` clock (`ds.tick += dtMs / 250`) spawning arrow notes and automatically calling `G.mirrorDanceMiss(ME)` (`375`) for every unhit note (`-2` penalty, resets combo, can trigger 0% attention failure at `381-385`). Keeps charging misses while `ME.idle === true` and while the Progress Board (`.board-ov`) blocks arrow keys (`469`). | Runs on client browser `rAF` instead of server/game clock. Closing the tab, lagging, or clicking Back stops misses completely (exploit); keeping the tab open while idle or viewing the Board piles up `-2` penalties alongside bot boosts; reloading resets `ds.tick`, `ds.notes`, and `ds.spawnedCount` (resets tempo ramp `6 -> 5 -> 4` back to `6`). | `DanceCrew` (`rules/MirrorParts.js`, via `MirrorTrial` in `rules/Trial.js`) | UNCONFIRMED (Step 10 #1; candidate from 4, 5, 17, 51, 52, 53; tracker not in repo) |
-| `mirror-dance-view.js:51-60`, `mirror-dance-view.js:62-98`, `mirror-dance-view.js:399-453` | `nextArrowDir` rolls `Math.random()` (`53`) to pick arrow directions; `initDanceState`/`spawnNoteOn` schedules notes locally; `handleInput` judges `perfect`/`good`/`stray` against the unsaved client note clock and calls `G.mirrorDanceHit`/`G.mirrorDanceStray`. | Non-seeded randomness cannot reproduce from `G.rng`; reloading generates a different note chart; client is authoritative over hit/stray scoring. | `DanceCrew` (`rules/MirrorParts.js`, via `MirrorTrial`) | UNCONFIRMED (Step 10 #4; candidate from 4, 5, 17, 51, 52, 53; tracker not in repo) |
-| `mirror-view.js:544-555`, `mirror-view.js:1223-1248` | Runs a screen-side 29-tick (7.25s) countdown (`ms.qa.tick`, `ms.qa.deadline`) for each Rapid-fire Q&A question. At 0, calls `G.mirrorTimeoutQa(ME)` (`1238`), charging `-5` attention and advancing `qa.index` (or advancing the setup step to `wrapUp`). | Unsaved in `Game.toJSON()`. Reloading or waking a Base44 actor resets the 7.25s question timer to full (infinite time exploit); clicking Back freezes `ms.qa.tick` indefinitely; a closed browser tab never times out; an idle human's open tab still fires `-5` timeouts. | `SetupCrew` (`rules/MirrorParts.js`, via `MirrorTrial` and `Game`/`Timer` deadline) | UNCONFIRMED (Step 10 #2; candidate from 4, 5, 17, 51, 52, 53; tracker not in repo) |
-| `mirror-view.js:29-36`, `mirror-view.js:1128-1164`, `mirror-view.js:894-943` | `shuffleArr` calls `Math.random()` (`32`) to shuffle the cable spawn bag (`1137`, `1144`). `tick` runs an unsaved local belt clock (`ms.cables.tick`, `belt`, `bag`, `nextSpawn`) and `[data-cable-port]` click handler judges cable hit vs spark (`-3` penalty) locally (`907-940`). | Uses `Math.random()` instead of `G.rng` (breaks seed reproducibility and can delay a needed port). Unsaved belt resets to tick 0 on reload or Back; client decides hit vs spark locally. | `SetupCrew` (`rules/MirrorParts.js`, via `MirrorTrial`) | 54 |
-| `mirror-view.js:1165-1209`, `mirror-view.js:945-969` | Runs Sound Check simulation on the client 250ms tick with 4 `Math.random()` calls (`1170`, `1173`, `1174`, `1178`: spike schedule, +8..+17 boost, jitter). Passively triggers `G.mirrorSoundFeedback(ME)` (`-4` penalty, `1181`) without user input when a crowd spike hits 100, and runs a 12-tick (3.0s) local hold timer that advances the setup step via `G.mirrorSoundHeld(ME)` (`1192`). | Unsaved `ms.sound` (`level`, `holdTicks`, `spikeAt`) resets to 45 and 0s on reload or Back; `Math.random()` breaks seed determinism; passive feedback charges `-4` even if `ME` is idle; closed tab freezes spikes and never advances. | `SetupCrew` (`rules/MirrorParts.js`, via `MirrorTrial`) | UNCONFIRMED for `Math.random()` (Step 10 #4; candidate from 4, 5, 17, 51-53) and new for screen hold timer and passive feedback penalty |
-| `mirror-view.js:512-530`, `mirror-view.js:976`, `mirror-view.js:1210-1215` | Runs a screen-side tick timer (`ms.mic.tick`, `ms.mic.hideAt`) controlling how long the Mic Check memory sequence flashes before hiding behind `?` and enabling taps (`976`). | Unsaved in `Game.toJSON()`. Reloading or navigating Back and returning clears `ms.mic.flashKey`, re-flashing the secret sequence for free whenever `st.mic.index === 0`. | `SetupCrew` (`rules/MirrorParts.js`, via `MirrorTrial` using deadline timestamps) | new |
-| `mirror-view.js:532-542`, `mirror-view.js:1027`, `mirror-view.js:1215-1222` | Runs a screen-side tick timer (`ms.deck.tick`, `ms.deck.shuffleAt`: every 8 ticks / 2.0s, or 2 ticks / 0.5s spite reshuffle after wrong file at `1027`) that calls `G.mirrorReshuffleDeck(MYTEAM)` (`1219`). | Calling `G.mirrorReshuffleDeck` from a client timer consumes `G.rng` draws on the client's local tick schedule rather than server time, desyncing RNG across sleep/reload or multiple clients; navigating Back freezes reshuffles; reloading resets the 2s timer. | `SetupCrew` (`rules/MirrorParts.js`, via `MirrorTrial` and `Game`/`Timer` deadline) | new |
-| `mirror-view.js:155-156`, `mirror-view.js:351-369`, `mirror-view.js:401-417` | Rolls `Math.random()` (`155-156`) for lobby signal cursor initial `pos` and `dir`; sweeps cursor on local 250ms tick (`404-406`) and locally decides `hit = inBand(...)` (`351`) before calling `G.mirrorConnect` or `G.mirrorMiss`. | `Math.random()` breaks seed reproducibility; reload randomizes cursor position/direction; client decides connect vs miss without rules verifying cursor timing. | `MirrorLobby` (`rules/MirrorParts.js`, via `MirrorTrial`) | UNCONFIRMED (Step 10 #4 for `155-156`; candidate from 4, 5, 17, 51-53; tracker not in repo) |
-| `game.js:296`, `game.js:756`, `game.js:871` | `canBack()` returns `true` during `S.step === 7` (`trial`), so clicking `#navBack` leaves Trial to Open Floor (`V[6]`), causing `render()` (`756`) to tear down `currentTrialView`. | Stops Dance Crew `rAF` (0 misses while away) and freezes Setup Crew Q&A countdown, sound spikes, and deck reshuffles while `G.step === "trial"` keeps running in the background. | `Game` / screen nav guard (`game.js` should disable Back during active trial; rules must own trial clocks) | UNCONFIRMED (Step 10 #2; candidate from 4, 5, 17, 51, 52, 53; tracker not in repo) |
-| `game.js:251-258`, `game.js:327-330`, `game.js:518`, `game.js:810-811`, `game.js:831-862` | Single-player UI buttons directly advance/close steps for the entire game: `startLevel` (`251`, `G.closeTimer`/`startNextRound`), `goForward` (`327`, `G.advance`), `applyOpenFloorEnd` (`845`, `G.closeTimer`), `checkSop` (`848`, `G.closeTimer`), `#runAuto` (`518`, `G.runTrial`), `payCost` (`854`, `G.endTrial`), `endAccusations` (`860`, `G.closeTimer`), `lockPoints` (`835, 840`, `G.closeTimer`/`placeAllRemaining`/`finishRound`/`results`), `startNextLevel` (`255`, `G.startNextRound`). | Any single human clicking Next/Submit/Lock In immediately closes Open Floor, SOP, Glitch Report, Stats Update, or Graduation for every other player in multiplayer, auto-placing their points or skipping their accusations/edits. | `Game` (`rules/Game.js`: timer deadlines, host-only controls, or all-active-ready gates) | new (or UNCONFIRMED if tracked under 4, 5, 17) |
-| `game.js:293` | Client-side `setInterval(..., 250)` calls `G.tick()` to expire step timers and run `onTick` bot hooks. | A closed or throttled browser tab never ticks `Game`; multiple clients ticking independently would race on Base44. Base44 actor scheduled wakes must drive `G.tick()`. | `Game` + `Timer` (`rules/Game.js`, `rules/Timer.js`, driven by Base44 actor wake) | new |
-| `game.js:742`, `game.js:747-748`, `game.js:801` | Elevator and spawn cutscene `setTimeout`s (`742`: 1800ms, `747-748`: 500ms + 90ms steps + 700ms) gate `S.arrived = true`, which finally triggers `G.start()` at `801` (starting the first 90s Intermission timer). | Each player finishes the intro cutscene at a different wall-clock time (or skips it), so a client cutscene cannot own when the game clock starts in multiplayer. | `Game` (`rules/Game.js`, started by host or 120s lobby timer on Base44) | new |
-| `attendance-view.js:15`, `attendance-view.js:34`, `attendance-view.js:67`, `attendance-view.js:73` | Runs a client-side `setInterval(api.tick, 1000)` (`73`) passing client `Date.now()` into `G.checkAttendance(Date.now())` (`34`) and `G.activity(l.ME, Date.now())` (`15`). | A closed tab never runs `checkAttendance()`, so disconnected players never go idle or take attendance glitches; trusting client `Date.now()` allows clock skew or spoofing. | `Attendance` + `Game` (`rules/Attendance.js`, `rules/Game.js`, running on Base44 server clock) | new |
-| `judged-view.js:26-27`, `judged-view.js:73`, `judged-view.js:113` | Mutates game state during screen render (`26`: calls `G.startWriting()` and `EP.Bots.submit(G)`; `27`: calls `G.startVote()`), and `#castVote` (`113`) calls `EP.Bots.vote(G, v, G.rng); G.runTrial()`, ending the Level 5-6 trial on one player's vote. | Render-time mutations consume `G.rng` and race across clients; first human voter immediately closes the vote and ranks all teams before other humans can vote. | `Game` + `JudgedTrial` (`rules/Game.js`, `rules/Trial.js`, `rules/bots.js` hooks) | new |
-| `game.js:264`, `game.js:486`, `game.js:499` | `shuffle()` uses `Math.random()` (`264`) to shuffle the Level 1 SOP step pile on initial render (`486`) and on "Start over" (`499`). Also `S.sop.inTime` (`216, 287, 493`) is unsaved screen state. | Not seeded from `G.rng` (display order only, does not change SOP score, but resets on reload and differs across replays of the same seed). | `SopTrial` (`rules/Trial.js`) if seeded order is wanted, or keep display-only | UNCONFIRMED (candidate from 4, 5, 17, 51-53 for `Math.random()` in screens; tracker not in repo) |
-| `pages/vote-test.js:39-40`, `pages/vote-test.js:43-83`, `pages/vote-test.js:120-122`, `pages/vote-test.js:145` | Standalone Level 5-6 test page runs its own 1000ms `setInterval` (`75-80`) calling `G.tick()` and auto-transitioning `toVote()` (`G.startVote()`), directly mutates `ME.earned` and calls `ME.placePoints()` (`39-40`), and drives bot rounds directly. | Test harness only (not loaded by `index.html`), but bypasses `Game` timers and `Economy` encapsulation. | `Game` (`rules/Game.js`, e.g. `jumpToLevel(5)`) | new (test page only) |
+1. Update `CLAUDE.md` lines 13-17 so the shared-file boundaries match the real touchpoints Levels 4-6 need (`index.html`, `styles.css`, `rules/bots.js`, `tools/baseline.js`, `docs/class-diagram.md`, `Tests/check_save.js`, `Tests/check_screens.js`, `rules/Game.js` trial hooks, and `game.js` `TIMER_LABELS`/copy/Level 4 unlock).
+2. Add a small automated guard test in `Tests/` (registered as `NO_SNAPSHOT` in `tools/baseline.js`) that scans all `rules/*.js` files (except `rules.bundle.js`) for `Math.random`, `Date.now`, `new Date`, `document`, `window`, `setTimeout`, `setInterval`, and multi-line `import`/`export` statements.
+3. Strip `total`, exact `score`, and `firsts` from `Game.judgedView` (`rules/Game.js:1213-1215`) and `judged-view.js:35-39` (finding **A-09**) so Levels 5-6 work does not lock in hidden-math leaks.
 
-### Cosmetic-only screen timers and `Math.random()` (audited; do not affect rules, sync, or save/load)
+---
 
-| File:lines | What it does | Impact note |
+## Findings Table
+
+Risk key: **High** breaks multiplayer or save/load. **Medium** is a visible bug or weakens the `Game` front desk. **Low** is cleanup only.
+
+| ID | Area | File and line | What | Risk | One-line fix |
+|---|---:|---|---|---|---|
+| A-01 | 1 | `rules/Game.js:624, 631, 1477`; `rules/Trial.js:198-207`; `game.js:517` | `submitSop()` writes one round-wide `"submitSop"` flag, so one team submitting clears `sopTimedOut` for every team and locks other teams' SOP buttons, while `SopTrial.setSopBoard` still allows post-submit edits. | High | Track SOP submission per team (`submitSop:<teamId>`), block edits in `setSopBoard` after submit, and compute `sopTimedOut` per team. |
+| A-02 | 1 | `mirror-view.js:115, 591-601, 887-936, 1122-1150`; `rules/MirrorParts.js:639-694` | **V-32 partially remains:** Level 3 Cables belt clock (`ms.cables`) runs unsaved on `game.js`'s 250ms client interval, calls mutating `G.mirrorNextCable`/`G.mirrorReturnCable` from the screen tick, and judges hit vs spark (`-3`) locally; reload drops belt cables and resets belt time. | High | Move Cables belt schedule, expiry, and hit-window validation into `SetupCrew` on `Game`'s clock, expose read-only belt state in `mirrorSetupView`, and judge hits inside `cableHit`. |
+| A-03 | 1 | `mirror-view.js:145-152, 343-361, 394-409`; `rules/MirrorParts.js:86-125` | **V-33 partially remains:** Level 3 Lobby signal cursor (`ms.pos`, `ms.dir`) sweeps unsaved on the client 250ms tick and judges `inBand` locally before calling `G.mirrorConnect`/`G.mirrorMiss`; reload resets cursor position and rules never verify band timing. | High | Derive Lobby cursor position from `MirrorLobby` plus elapsed lobby time on `Game`'s clock and validate `inBand` inside one `Game.mirrorLobbyTap(player)` method. |
+| A-04 | 1 | `game.js:38, 212, 430, 494, 620`; `world-map.js:91, 124, 129` | Roster and avatar code hardcode solo `TEAM` (`Juno`, `Dex`, `Mara`) and `"Team Kestrel"`; unguarded `TEAM.find(x => x.n === q.name).av` calls (`game.js:620`, `world-map.js:124`) throw `TypeError` for non-solo player names or after `switchTeam()`; player avatar `S.av` is not saved in `Game.toJSON()`. | High | Store cosmetic avatar data on `Player` (saved in `toJSON`/`fromJSON`), expose public team/avatar views from `Game`, and add safe fallbacks in roster/map rendering. |
+| A-05 | 1 | `game.js:255-261, 354-358, 549, 873-876`; `rules/Game.js:214, 336, 372, 1222, 1235` | Single-player one-click controls (`startLevel`, Briefing `G.advance()`, AutoTrial `G.runTrial()`, All-hands `G.endTrial()`, `startNextLevel`) start or advance phases for the whole game on one player's click with no host or actor authority check. | High | Gate engine/phase-advancing calls to host or server-actor authority and replace `startLevel` clock start with Host Start or the 120s lobby timer. |
+| A-06 | 2 | `rules/Game.js:134-166, 188-213, 263-282`; `rules/Trial.js:289, 866-892`; `rules/Attendance.js:64-85` | `Game` exposes only `this.timer.deadline` (the 12 step timers) and no unified next-wake timestamp covering `SplitBriefTrial.twistDeadline` (90s), `MirrorTrial.nextShowtimeEventAt` (Setup/Dance deadlines), or per-human `Attendance` popup/miss deadlines; a sleeping Base44 actor waking only on `G.timer.deadline` misses mid-step events. | High | Add `Game.nextWakeAt()` returning the earliest pending timestamp across `Timer`, `SplitBriefTrial.twistDeadline`, `MirrorTrial.nextShowtimeEventAt`, and active `Attendance` deadlines. |
+| A-07 | 3 | `rules/Game.js:1548-1558`; `rules/Gift.js:37-38` | `giftOptions(p).sent` leaks Independent type: automatic refusal records `cost: 0` (versus `1`-`3` for normal human declines) and exposes `cost: 0` in the payload while skipping `"pending"` immediately on send (`CLAUDE.md:63, 161`). | High | Omit `cost` on declined/refused `sent` gift entries (or report nominal `Gift.cost(pl, pts)`) and delay/mask Independent refusal in multiplayer to match a human decline. |
+| A-08 | 3 | `rules/Game.js:995, 1001, 1014, 1016, 1051-1058, 1625`; `rules/MirrorParts.js:64-75, 1604-1660, 2419, 2452-2455` | Mirror state getters called by screens (`mirrorLobbyTeam`, `mirrorSetupTeam`, `mirrorDanceTeam`, plus `isBot` on `mirrorDanceView`) leak hidden bot flags/schedules (`isBot`, `botConnectAt`, `botBoosts`, `nextBotBoostAt`) and Setup internals (`mic.sequence` while hidden, `sound.spikeAt`, `cables.bag`, `qa.order`); `trialRanking`, `teamStandings`, and `results` return live `Team`/`Player` objects. | High | Replace raw team/trial getters on the player screen surface with sanitized player-scoped views stripping `isBot`, bot schedules, hidden Setup fields, and live class instances. |
+| A-09 | 3 | `rules/Game.js:682-683, 1213-1215, 1484-1485`; `judged-view.js:35-39` | `judgedView(p)` exposes `total` (Initiative-weighted points leaking voters' hidden Initiative), exact `score`, and tie-break `firsts`, and `judged-view.js:39` renders `r.score.toFixed(3)` and `1st places` on player screens; `splitBriefView(p)` and `roundSummary(p)` also expose raw `base` and exact `score` (leaking hidden influence `score - base`). | High | Remove `base`, unrounded `score`, `total`, and `firsts` from player-scoped views (`judgedView`, `splitBriefView`, `roundSummary`) and display rounded scores only in `judged-view.js`. |
+| A-10 | 1 | `rules/Trial.js:198-207`; `rules/Game.js:602-606, 966-978, 1067-1074` | Missing active/actor checks in rules: `SopTrial.setSopBoard` and `Game.mirrorMiss` do not reject `idle` players (`CLAUDE.md:139, 157`), and team-scoped Mirror mutators (`mirrorNextCable`, `mirrorReturnCable`, `mirrorReshuffleDeck`, `mirrorNextSoundSpike`, `mirrorNextSoundJitter`, `mirrorFinishTeam`) accept any `teamOrId` without checking an authorized active actor. | High | Reject `p.idle` in `SopTrial.setSopBoard` and `Game.mirrorMiss`, and require an authorized active player (or internal-only path) on all Mirror mutators. |
+| A-11 | 1 | `game.js:225, 275, 325, 820, 839, 843`; `rules/Player.js:38-64` | `game.js` targets players by display name (`MATE(n) = G.players.find(p => p.name === n)`), while `rules/Player.js` enforces neither display-name format (`cleanName` 2-16 chars is screen-only) nor uniqueness, misrouting gifts, sabotage, and accusations if two players share a name. | High | Pass player `id` (not display name) in `data-gift`, `data-sab`, and `#accSel` actions, and enforce display-name format and uniqueness in `rules/Player.js` and `Game`. |
+| A-12 | 1 | `game.js:216, 516-517, 529, 870, 872` | `S.sop.submitted` duplicates `rs.sopSubmitted` in screen state, and `S.sop.pile` mutates on card removal so tile order diverges from `G.sopOrder()` on reload. | Medium | Delete `S.sop.submitted` and compute the available SOP pile directly from `G.sopOrder()` minus `G.sopBoard(MYTEAM)`. |
+| A-13 | 1 | `game.js:224, 399-400, 494-504, 595-617, 638, 645-716, 866`; `judged-view.js:26`; `mirror-view.js:17, 179`; `pages/vote-test.js:74, 92, 95, 118` | Screens read live `ME.*`, `MYTEAM.*`, `G.players`, `G.teams`, and `G.round.name` directly instead of player-scoped `Game` views; `HUD`, `gradChecks()`, and `status()` on `V[9]` also ignore `ME.draft` until Lock In. | Medium | Route screen reads through `Game.playerState(ME)` and `judgedView` (adding `roundName` and draft-aware `gradChecks`) and drop direct `ME`/`MYTEAM`/`G.round` property reads. |
+| A-14 | 2 | `rules/MirrorParts.js:433-487, 1222-1223, 1416-1525` | `SetupCrew` arms `sound.nextTickAt`/`spikeAt`, `mic.hideAt`, `deck.nextReshuffleAt`, and `qa.itemDeadlineAt` without tracking idle windows, so a human returning from idle mid-step fires all accumulated catch-up ticks in one burst. | Medium | Track `wasIdle` in `SetupCrew` (like `DanceCrew.#resumeChartFromIdle`) and re-anchor active step deadlines to `now` when a human resumes. |
+| A-15 | 3 | `mirror-view.js:86-90, 213, 225, 244, 284`; `splitbrief-view.js:57`; `pages/vote-test.js:87, 102` | Hidden math visible on player screens (`CLAUDE.md:138`): `mirror-view.js` displays 1-decimal exact `attention%` (Mirror's tie-break metric) for all teams and uninfluenced `r.base`, `splitbrief-view.js:57` shows raw `Board score` next to rounded `Score` (revealing influence delta), and `pages/vote-test.js` shows `Vote points` and the vote formula. | Medium | Render `mirror-view.js` results via `G.trialResultView`, hide or round opponent attention decimals, and remove raw `Board score` beside influenced `Score` on player screens. |
+| A-16 | 4 | `rules/Attributes.js:5, 66-74`; `rules/PlayerStatus.js:5`; `rules/Wallet.js:5`; `rules/Economy.js:79-94` | `KEYS` in `rules/` still uses the old attribute order (`focus, initiative, collab, composure, grit`) instead of `CLAUDE.md:113` (`Focus, Collaboration, Initiative, Grit, Composure`), causing `abilityLines()` on `V[9]` and `Economy.allocate` ties to follow the old order. | Medium | Order `abilityLines()` by `Attributes.TIE_ORDER` and align `KEYS` with `CLAUDE.md:113` (updating balance snapshots if `allocate` tie order changes). |
+| A-17 | 4 | `game.js:224, 507`; `world-map.js:121-130` | `CLAUDE.md:143` includes team switching during Open Floor (`Game.switchTeam` exists at `rules/Game.js:561-575`), but `game.js` and `world-map.js` have no team-switch UI and `game.js` caches `MYTEAM` without refreshing on team switch. | Medium | Add an Open Floor team-switch UI calling `G.switchTeam()` and read the player's current team dynamically via `G.teamOf(ME)` / `playerState`. |
+| A-18 | 4 | `mirror-dance-view.js:68`; `rules/MirrorParts.js:2395`; `mirror-view.js:596`; `styles.css:409-413, 449` | Level 3 Step 10 #3 hit-frame visual mismatch remains: `leftPct = (1 - progress) * 100` places exact-hit time (`progress = 1`) at `left: 0%` (clipped by `.lane`) instead of centered in `.hitframe`, so notes visually inside `.hitframe` at `22%` score as stray (`-1`). | Medium | Map `progress = 1` to the visual center of `.hitframe` / `.hitframe.plug` so rendered note and cable positions match the hit windows. |
+| A-19 | 4 | `mirror-view.js:305, 449, 810` | Level 3 Step 10 #5 bug remains: a player excluded from Mirror at lobby start for being `idle` clears `ME.idle` on any click/move and then sees contradictory `"You are Active and not in the lobby or crews."` / `"You are Active and watching Presentation Day."`. | Medium | Show a neutral message (`"You were not active when Presentation Day started, so you are watching this trial."`) whenever `!myRec` / `!myRole`. |
+| A-20 | 4 | `rules/bots.js:279-287` | Level 3 Step 10 #6 bug remains: mid-lobby idle humans auto-connect immediately at `elapsed = 0s` instead of following the `3-15s` bot connect schedule (`CLAUDE.md:186`). | Medium | Assign idle humans a seeded `3-15s` auto-pilot connect time in `MirrorLobby` / `Bots.mirror` instead of connecting at `0s`. |
+| A-21 | 4 | `mirror-view.js:114`; `mirror-dance-view.js:51-63, 126` | `resetShowtimeState` clears obsolete `m.dance = null` instead of `m.danceUI = null`, leaving stale Dance Crew UI diff state (`lastMateBoosts`, `lastMisses`, `camMsg`) if showtime resets on the same `trialKey`. | Medium | Change `m.dance = null` to `m.danceUI = null` in `mirror-view.js:114`. |
+| A-22 | 4 | `splitbrief-view.js:81, 95, 172-181, 297`; `world-map.js:136, 156-163, 195`; `styles.css:31, 352` | All 4 pure UI bugs remain open: Bug 2 (no `N / 80` char counter on `#splitNoteIn`), Bug 3 (slow Open Floor tap step `TAP_MS = 110` plus `performance.now()` vs `rAF` `t`), Bug 8 (`.sb-slot` button `.row` wraps unevenly), Bug 9 (`waitHint` still says wait for timer after Lock In). | Medium | Fix Bugs 2, 3, 8, and 9 in pure UI commits (counter on `#splitNoteIn`, align `TAP_MS`/clock per Q9, `flex-wrap: nowrap` on `.sb-slot .row`, locked-specific `waitHint`). |
+| A-23 | 5 | `rules/Game.js:92`; `rules/Trial.js:20`; `rules/Vote.js:11`; `rules/bots.js:76`; `rules/Player.js:109` | Step 13 `rules/` scan gap: 4 constructors still default to `rng = Math.random` (creating unsaveable objects if `rng` is omitted), and `Player.markActive(now = Date.now())` defaults directly to `Date.now()`, bypassing `Game`'s injected clock. | Medium | Default omitted RNGs to `Rng.seeded(Rng.randomSeed())` (or require `rng`), require `now` in `Player.markActive`, and add a `rules/` guard test. |
+| A-24 | 6 | `CLAUDE.md:13-17`; `index.html:34-44`; `styles.css`; `rules/bots.js`; `rules/Game.js`; `game.js:339, 358, 683` | Hannah's shared-file boundaries in `CLAUDE.md:13-17` do not match the real code: they omit `index.html`, `styles.css`, `rules/bots.js`, `docs/class-diagram.md`, `tools/baseline.js`, `Tests/check_save.js`, and `Tests/check_screens.js`, and understate `rules/Game.js` (9 trial touchpoints) and `game.js` (copy tables plus 3 Level 4 locks). | Medium | Update `CLAUDE.md:13-17` to list every real shared touchpoint and add the automated `rules/` guard test before `levels-4-6` begins. |
+| A-25 | 7 | `Tests/check_save.js:77-95, 115-149`; `Tests/check_steps.js`; `Tests/check_screens.js` | Critical multiplayer and save/load test gaps: zero multi-human same-team tests (SOP, Split Brief, Mirror Setup/Dance, human-to-human gifts); `check_save.js` calls direct `SplitBriefTrial` and legacy Mirror methods instead of `Game` player APIs; no tests for `pollAttendance` after actor sleep, privacy/hidden-math payloads, or Step 6-12 `Game` APIs inside `npm test`. | Medium | Add multi-human, privacy-payload, and actor-wake save/load tests in `Tests/check_save.js` and `Tests/check_steps.js`, driving real `Game` player methods. |
+| A-26 | 4 | `rules/Round.js:10`; `game.js:208, 485-488`; `pixel-art.js:127-141` | Minor copy/spec mismatches: `Round.LEVELS[1].trialName` is `"Prioritize against a timer"` instead of `"Split Brief"` (`CLAUDE.md:129`); `facLines(7, 3, "failed")` returns lobby+showtime lines combined; queued `CLAUDE.md:56-57` Points screen and drawback copy fixes remain pending. | Low | Align `Round.LEVELS[1].trialName`, handle `"failed"` in `facLines`, and apply the queued `CLAUDE.md:56-57` screen copy updates. |
+| A-27 | 1 | `game.js:211, 230, 409, 805` | Pre-session `ERROR` anomaly flag `S.pendingL` lives in memory only until `newSession()`, so reloading before character creation loses it and Base44 lobby join must forward it. | Low | Forward `pendingL` in the Base44 lobby character-creation payload so `"L"` transfers to `Player`. |
+| A-28 | 9 | `game.js:40-41, 786, 911`; `world-map.js:6, 198-199`; `index.html:26`; `styles.css:76, 111, 132, 276, 280-282, 438` | Dead screen code and leftover static-map code: unused `SOP`/`DECOY`, unused `GSPOTS`, unreachable `.gwalk`/`#whisper` click handler and DOM, and 6 unused CSS selectors. | Low | Delete the unused constants, dead `.gwalk`/`#whisper` leftovers, and unreferenced CSS selectors. |
+| A-29 | 9 | `rules/Attributes.js:7, 49-50`; `rules/Player.js:95-96, 113`; `rules/PlayerStatus.js:34-39`; `rules/Game.js:585-594, 971-972, 974-975, 978, 980, 983-985`; `rules/Trial.js:188-192, 1016, 1026`; `rules/mirrorData.js:65, 67, 159, 197, 200-201` | Dead or legacy-only rules code: zero-caller `highestKey`, `lowestKey`, `scoreSop`, `setupState`, `danceState`, `GIFT_TIE_ORDER`, 6 unused `mirrorData` fields, and 9 pre-Step-3b/4 `Game.mirror*` + `Player.flag()` wrappers kept only by old tests. | Low | Remove zero-caller helpers and migrate legacy tests off obsolete `Game.mirror*` and `Player.flag()` methods. |
+| A-30 | 9 | `rules/Game.js` (1,666 lines); `game.js` (924 lines) | `rules/Game.js` grew from 1,041 to 1,666 lines (+60%) mixing step orchestration with view projections, dev jump, and 30+ Mirror wrappers; `game.js` (924 lines) bundles copy tables, arrival cutscene, code rain, SOP, and end screens. | Low | Split `rules/Game.js` and `game.js` along the module boundaries listed in Area 9 after multiplayer blockers are cleared. |
+
+---
+
+## Totals
+
+### Totals by Risk
+
+| Risk | Count | Finding IDs |
+|---|---:|---|
+| High | **11** | A-01, A-02, A-03, A-04, A-05, A-06, A-07, A-08, A-09, A-10, A-11 |
+| Medium | **14** | A-12, A-13, A-14, A-15, A-16, A-17, A-18, A-19, A-20, A-21, A-22, A-23, A-24, A-25 |
+| Low | **5** | A-26, A-27, A-28, A-29, A-30 |
+| **Total** | **30** | |
+
+### Totals by Area
+
+| Area | Topic | High | Medium | Low | Total |
+|---:|---|---:|---:|---:|---:|
+| 1 | Screen State Rule | 7 | 2 | 1 | **10** |
+| 2 | Save Completeness for Base44 Actor | 1 | 1 | 0 | **2** |
+| 3 | Player Privacy & Hidden Math | 3 | 1 | 0 | **4** |
+| 4 | Code vs `CLAUDE.md` Final Rules | 0 | 7 | 1 | **8** |
+| 5 | `rules/` Scan (Step 13 Gap) | 0 | 1 | 0 | **1** |
+| 6 | Hannah Readiness (Levels 4-6) | 0 | 1 | 0 | **1** |
+| 7 | Test Gaps | 0 | 1 | 0 | **1** |
+| 8 | Carry-Forward Verdicts (a-p table below; issues cross-referenced above) | 0 | 0 | 0 | **0** |
+| 9 | Size and Dead Code | 0 | 0 | 3 | **3** |
+| **Total** | | **11** | **14** | **5** | **30** |
+
+---
+
+## Carry-Forward Verdicts (Area 8)
+
+| Item | Topic | Verdict | Reason |
+|---|---|---|---|
+| a | Base44 actor calls `G.tick()` and `G.pollAttendance()` on every wake; pages may run a `setInterval` calling only those two | **Risk** | The two-call wake contract is clean, but `Game` lacks `nextWakeAt()` for sub-step and Attendance deadlines (A-06) and `game.js`'s interval still mutates Mirror Cables via `drawTimer()` -> `mirror-view.js:1131, 1141` (A-02). |
+| b | Game clock starts on Start Level click; Host Start or lobby timer replaces it in multiplayer | **Must fix before multiplayer** | Solo `startLevel()` (`game.js:255`) starts the clock and closes/skips the 90s first Intermission on one client click; Base44 must replace it with Host Start or the 120s lobby timer (`CLAUDE.md:65`). |
+| c | New Level 3 randomness that must not shift `Game.rng` uses private `#seedRng` | **OK** | `#seedRng` derives deterministically from `Game.rng`, persists as one shared RNG across `MirrorTrial.toJSON`/`fromJSON`, and keeps Level 1-3 baselines intact. |
+| d | Timed steps close only when their timer runs out; bots act only through `Bots.hooks` | **OK** | Enforced across all gameplay timed steps and hooks in `index.html` (the first-intermission `startLevel` exception is tracked under item b). |
+| e | Step 8: `sopTimedOut` means "did anyone submit," not per player | **Must fix before multiplayer** | `round.completed.add("submitSop")` (`rules/Game.js:624`) is round-wide, so one team submitting clears `sopTimedOut` for every team and locks other teams' SOP UI (`game.js:517`, A-01). |
+| f | Step 9: `ERROR` anomaly uses screen flag `S.pendingL` until `ME` exists | **Risk** | Works in solo once `newSession()` runs, but reloading before character creation drops `S.pendingL` and multiplayer lobby creation must forward it to `Player` (A-27). |
+| g | Step 11: `judged-view.js` reads `G.round.name` directly | **Risk** | Weakens the `Game` front desk (`judged-view.js:26`, plus `pages/vote-test.js:74, 92, 95, 118`) and breaks on a thin Base44 client that only receives `judgedView(p)` (A-13). |
+| h | Step 12: `pages/vote-test.js` calls `EP.Bots.typicalSpend` and `EP.Bots.soloGame` for its own bootstrap | **OK** | Isolated to the standalone Levels 5-6 test page (`pages/vote-test.js:26-36`), explicitly allowlisted in `Tests/check_screen_rules.js`, and outside the multiplayer app. |
+| i | Step 12: SOP `pileSeed` is the `Rng` state at `SopTrial` creation | **OK** | `SopTrial.#pileSeed` snapshots `rng.getState()` with zero `Rng` draws, persists cleanly in `toJSON`/`fromJSON`, and never exposes the raw seed to player screens. |
+| j | Step 13: `pages/vote-test.js` writes `G.host = S.host` (allowed by name) | **OK** | Standalone test-page bootstrap (`pages/vote-test.js:39`), explicitly allowlisted in `Tests/check_screen_rules.js`; passing `host` into `Bots.soloGame` is optional cleanup. |
+| k | Step 13: `pages/vote-test.js` page clock reads `G.round` directly (allowed) | **OK** | Read-only null guard (`if (!G \|\| !G.round) return;`, `pages/vote-test.js:52`) inside the standalone test page, explicitly allowlisted by the guard. |
+| l | Step 13: `git add`, `git commit`, and `git push` exited 1 on first try then succeeded on retry | **Risk** | Confirmed: `core.autocrlf=true` causes `git add` CRLF warnings on `stderr` and `git push` always writes normal progress to `stderr`, which PowerShell 5.1 turns into `ErrorRecord`s under `Stop`/strict wrappers (plus possible transient `.git/index.lock` from VS Code). One-line fix: keep `$ErrorActionPreference = 'Continue'` and check `$LASTEXITCODE` (or pass `-q` / set `GIT_REDIRECT_STDERR='2>&1'` / use PowerShell 7). |
+| m | Dance notes still miss while Progress Board is open | **OK** | Rules clock must not pause for a local UI overlay in multiplayer (pausing would let players freeze showtime); adding a short hint when opening Board during Dance is optional UX polish. |
+| n | Open questions Q1 (Open Floor position), Q9 (tap speed), Q11 (one-click untimed buttons in multiplayer) | **Must fix before multiplayer** | Q11 blocks multiplayer until host/actor ownership is decided; Q1 affects Base44 actor state schema if shared; Q9 is pure UI (exact touched-code lists in Area 8 details below). |
+| o | Pure UI bugs still open: 2 (note counter), 3 (tap speed), 8 (button wrap), 9 (footer after Lock In) | **Risk** | All 4 confirmed still present and still pure UI (visible UX polish bugs; none affect multiplayer state or save/load; details in Area 8 below). |
+| p | Remotes: `origin` has two push URLs; `backup` points to `bcoppage-IC/Exit_ProtocoL` so pushing `backup` after `origin` does nothing | **OK** | Confirmed via `git remote -v`: `origin` pushes to both `myiamack/exit-protocol.git` and `bcoppage-IC/Exit_ProtocoL.git`, so a subsequent `git push backup` is a harmless no-op. |
+
+---
+
+## Detailed Audit Notes (Areas 1 to 9)
+
+### Area 1: Screen State Rule
+
+- **Base guard check:** `node Tests/check_screen_rules.js` passes **31 of 31** checks across all 11 screen files.
+- **What the guard cannot see:**
+  - **Category 4 (stale copies of game data in screen variables):**
+    - `mirror-view.js:115, 591-601, 1122-1150`: `ms.cables` (`tick`, `active`, `nextSpawn`) duplicates unsaved Cables belt state and calls mutating `G.mirrorNextCable` / `G.mirrorReturnCable` from the screen tick (**A-02**).
+    - `mirror-view.js:145-152, 394-409`: `ms.pos` and `ms.dir` sweep the Lobby signal cursor locally without saving to `Game` (**A-03**).
+    - `game.js:216, 516-517, 529, 870, 872`: `S.sop.submitted` duplicates `rs.sopSubmitted` and `S.sop.pile` mutates locally when removing placed steps (**A-12**).
+    - `game.js:38, 212, 224, 430, 494, 620` and `world-map.js:91, 124, 129`: `TEAM` (`Juno`, `Dex`, `Mara`), `"Team Kestrel"`, cached `MYTEAM`, and `S.av` are hardcoded or cached outside `Game` (**A-04**, **A-13**).
+    - `game.js:211, 230, 409, 805`: `S.pendingL` holds the pre-session `ERROR` anomaly in memory until `newSession()` (**A-27**).
+    - `game.js:399-400, 498-499, 690-716`: `HUD`, `gradChecks()`, and `status()` read committed `ME.attrs` without `ME.draft` while drafting points on `V[9]` (**A-13**).
+  - **Category 5 (rule checks only in screens, or missing in rules):**
+    - `rules/Game.js:624, 631, 1477` and `rules/Trial.js:198-207`: `SopTrial.setSopBoard` does not reject `p.idle` or edits after submission, and `submitSop()` stores one round-wide `"submitSop"` flag rather than per-team (**A-01**, **A-10**).
+    - `rules/Game.js:966-978, 1067-1074`: `mirrorMiss` does not reject `idle` players, and team-scoped Mirror mutators (`mirrorNextCable`, `mirrorReturnCable`, `mirrorReshuffleDeck`, `mirrorNextSoundSpike`, `mirrorNextSoundJitter`, `mirrorFinishTeam`) do not check an active actor (**A-10**).
+    - `game.js:275, 325, 820` and `rules/Player.js:38-64`: display-name rules (2-16 chars, `[A-Za-z0-9 ]`) exist only in `cleanName()` in `game.js`, and neither screen nor rules enforce unique display names while `MATE(n)` resolves targets by name (**A-11**).
+    - `game.js:255-261, 354-358, 549, 873-876`: one-click untimed/start controls have no host or actor gate (**A-05**).
+  - **Category 6 (scoring, ranking, or tie-break math in screens):**
+    - `mirror-view.js:887-936`: Cables hit-window check (`p.pos <= hitWin`) and hit-vs-spark judging run in screen code (**A-02**).
+    - `mirror-view.js:343-361`: Lobby `inBand` signal-grab judging runs in screen code (**A-03**).
+    - `mirror-view.js:284`: results table displays uninfluenced `r.base` and 1-decimal exact `attention` directly instead of calling `G.trialResultView` (**A-15**).
+    - `judged-view.js:35-39`: renders `r.total.toFixed(1)`, `r.score.toFixed(3)`, and `r.firsts` directly (**A-09**).
+- **Status of V-01 to V-42 from `docs/screen-state-audit.md`:**
+  - **Gone (39):** V-01, V-02, V-03 *(timed steps fixed; untimed clicks tracked in Q11 / A-05)*, V-04, V-05, V-06, V-07, V-08 *(remaining redundant `S.sop.submitted` and round-wide `submitSop` tracked in A-01 / A-12)*, V-09 *(Bug 6 `abilityLines` fixed; HUD/`gradChecks` draft note in A-13)*, V-10, V-11, V-12, V-13, V-14 *(email/joinCode/SOP fixed; display name still screen-only in A-11)*, V-15 *(isolated to `protoNameStore`)*, V-16 *(direct `G.round`/`Gift`/`Sabotage` removed; direct `ME`/`MYTEAM` reads noted in A-13)*, V-17 *(dev jump gated by `DEV_JUMP` + `Bots.devBuild`)*, V-18, V-19, V-20, V-21, V-22, V-23, V-24, V-25, V-27, V-28, V-29, V-30, V-31, V-34 *(Setup idle checks fixed; `SopTrial.setSopBoard` and `mirrorMiss`/team mutators noted in A-10)*, V-35, V-36, V-37, V-38, V-39, V-40, V-41, V-42.
+  - **Partially remaining (3):**
+    - **V-26** (`judged-view.js:26, 39`): reads `G.round.name` directly at line 26, and displays exact 3-decimal `score` and `1st places` at line 39 (A-09, A-13).
+    - **V-32** (`mirror-view.js:115, 591-601, 887-936, 1122-1150`): `Math.random()` removed from cable bag, but unsaved local belt clock (`ms.cables`), client-tick `G.mirrorNextCable`/`G.mirrorReturnCable` calls, and local hit-vs-spark judging remain (A-02).
+    - **V-33** (`mirror-view.js:145-152, 343-361, 394-409`): `Math.random()` removed from initial cursor, but unsaved 250ms cursor sweep (`ms.pos`, `ms.dir`) and local `inBand` hit judging remain (A-03).
+
+---
+
+### Area 2: Save Completeness for the Base44 Actor
+
+- **`Game.toJSON` / `fromJSON` across every round step and mid-trial (Levels 1-3):**
+  - **Round steps:** `intermission`, `briefing`, `openFloor`, `trial`, `glitchReport`, `giftWindow`, `lockIn`, `statsUpdate`, and `graduation` (including locked endings, `Player` private parts, `Hearts`, `Team`, `Round.completed`, `sabotages`, `accusations`, `gifts`, `trialPayments`, `earnings`, `prompts`, `submissions`, `Attendance` timestamps/settings, `Rng` state, and `Timer` deadline) round-trip cleanly in `rules/Game.js:1382-1423`.
+  - **Mid-trial Level 1 (`SopTrial`):** `#scores`, `#pileSeed`, `round.sopBoards`, `round.sopResults`, `round.sopTimedOut`, and `round.completed` save/restore cleanly. **Gap:** `"submitSop"` is stored once per round rather than per team (**A-01**).
+  - **Mid-trial Level 2 (`SplitBriefTrial`):** `scenarioId`, `taskOrder`, `cards`, `boards`, `notes`, `notesUsed`, `lockOrder`, `lockedAfterTwist`, `twistFired`, `twistDeadline`, `twistHolders`, and `ranking` save/restore cleanly, and `fromJSON` re-wires `onAllLocked` (`rules/Game.js:1419`).
+  - **Mid-trial Level 3 (`MirrorTrial`):** `phase`, `#seedRng`, `showtimeStartAt`, `MirrorLobby` (including `cursorPos`/`cursorDir`), `SetupCrew` (all 5 step states, `sound.nextTickAt`/`spikeAt`, `mic.hideAt`, `deck.nextReshuffleAt`, `qa.itemDeadlineAt`), `DanceCrew` (note chart, `spawnedCount`, `nextNoteTick`, `wasIdle`, `stumbleUntilTick`), `failedTeams`, `lockedAttention`, and `ranking` save/restore cleanly. **Gaps:** live Cables belt (`ms.cables`) and live Lobby cursor position (`ms.pos`/`ms.dir`) are lost on reload because they live in `mirror-view.js` (**A-02**, **A-03**); `SetupCrew` lacks idle-window re-anchoring on return (**A-14**).
+  - **Mid-trial Levels 5-6 (`JudgedTrial`):** `prompt`, `writing`, `submissions`, `vote` (`ballots`, `ranking`), and `ranking` save/restore cleanly.
+- **Game or session state stored outside `Game`:**
+  - `mirror-view.js`: `ms.cables` (`tick`, `active`, `nextSpawn`) and `ms.pos`/`ms.dir` (**A-02**, **A-03**).
+  - `game.js`: `S.av` (player look/avatar, **A-04**), `S.sop.submitted` and mutated `S.sop.pile` (**A-12**), `S.pendingL` before `newSession()` (**A-27**), `S.pos`/`S.wroom`/`S.room`/`S.visited` (Open Floor position, tracked in Q1), and prototype-only `NAMES`/`localStorage["ep.names"]` (`game.js:241-249`, replaced by Base44 login).
+  - `rules/Game.js`: `this.hooks` is intentionally not saved and must be re-passed to `fromJSON`. `Game.toJSON()` throws if `rng` is unseeded (`Math.random`, **A-23**).
+- **Scheduled-wake readiness of every deadline:**
+  - All 12 step timers live as epoch timestamps on `Game._timer` (`rules/Game.js:76-84`) and catch up in order when `G.tick(now)` runs.
+  - All Level 2 twist (`SplitBriefTrial.twistDeadline`), Level 3 Setup/Dance (`SetupCrew` deadlines, `DanceCrew` note misses), and `Attendance` (`lastActivity + idleMs`, `attendancePopupAt + popupMs`) deadlines live on `Game`'s injected clock (`this.now()`).
+  - **Missing actor interface (A-06):** `Game` exposes only `G.timer.deadline`, not a combined `nextWakeAt()` covering `twistDeadline`, `MirrorTrial.nextShowtimeEventAt`, and `Attendance` popup/miss times. A Base44 actor that sleeps after ~10s and schedules alarms only from `G.timer.deadline` will wake late for the 90s Split Brief twist, Mirror Setup/Dance events, and Attendance popups/misses.
+  - **Still on client timers:** Mirror Cables belt (`mirror-view.js:1122-1150`, **A-02**) and Lobby cursor sweep (`mirror-view.js:394-409`, **A-03**).
+
+---
+
+### Area 3: Player Privacy and Hidden Math
+
+#### Per-Method Review (all 10 player-scoped methods)
+
+| Method (`rules/Game.js`) | Verdict | Leaks or Hidden Math Found |
 |---|---|---|
-| `game.js:4-21` | Background canvas code-rain `requestAnimationFrame` loop and 6 `Math.random()` calls (`4, 5, 13, 15, 16, 18`). | Purely visual background. No rule or sync impact. |
-| `game.js:792` | Wardrobe `#rand` button uses `Math.random()` to pick cosmetic avatar parts (`S.av`) before `Game` starts. | Purely cosmetic pre-game UI. (Server lobby auto-finish per `CLAUDE.md:64` will need seeded `Rng` on Base44.) |
-| `game.js:765, 782, 869-870` | Visual-only `setTimeout`s: elevator doors CSS flag (1600ms), input focus delay (50ms), menu glitch cursor CSS class (220ms). | Purely visual/focus UX. No rule impact. |
-| `mirror-dance-view.js:331` | `hitTimer` 150ms `setTimeout` removing `.hit` highlight class from dance pad buttons. | Purely visual feedback. No rule impact. |
-| `world-map.js:172` | `initWorld()` `rAF` loop uses `Math.random()` every 2.8s to toggle wandering ghosts and pick random room spots. | Visual/flavor only (`CLAUDE.md:481`: ghosts give text hints only, no rule effect). |
-| `world-map.js:201-203` | Legacy `setInterval(ghostHop, 2600)` + `setTimeout` using `Math.random()` to hop `.gwalk` elements on the removed static office map, plus 6s whisper auto-hide timeout. | Dead timer (`world-map.js` no longer renders `.gwalk` elements); safe to remove, no rule impact. |
+| `playerState(p)` (`1426-1457`) | Clean for owner | Returns only `p`'s own stats, draft, hearts, glitches, status, earnings, path progress, graduation checks, and ability lines. Does not expose `type` key or other players' data. |
+| `roundSummary(p)` (`1458-1495`) | **Leak / Hidden Math** | Exposes `ranking[].base` and exact unrounded `ranking[].score` (`1484-1485`), revealing hidden influence (`score - base`) and exact scores (`CLAUDE.md:138`, **A-09**). Other fields (`trialPayment`, `drainOn`, `caughtOn`, `accusation`, `earnings`) are properly scoped to `p` and public caught notices. |
+| `splitBriefView(p)` (`666-707`) | **Leak / Hidden Math** | Cards and `twistCard` are strictly scoped to `pl`, and `notes` are scoped to `pl`'s team. However, `ranking[]` exposes raw `base` and exact unrounded `score` (`682-683`, **A-09**), and `splitbrief-view.js:57` renders raw `boardScore` right beside rounded `shownScore` (**A-15**). |
+| `judgedView(p)` (`1163-1220`) | **Leak / Hidden Math** | Other players' ballots are hidden (`myBallot` is owner-only), and submissions appear only after writing closes. However, `ranking[]` exposes `total` (Initiative-weighted vote points leaking voters' hidden Initiative), exact `score`, and tie-break `firsts` (`1213-1215`), and `judged-view.js:35-39` displays them (**A-09**). |
+| `mirrorSetupView(p)` (`1002-1013`) | Clean (scope note) | Properly hides `mic.sequence` when `!isFlashing`, `sound.spikeAt`, `cables.bag`, `qa.order`, and `botHiccups`. Note: accepts any `teamOrId` as well as a player, so the Base44 actor must pass only the requesting player's id. |
+| `mirrorDanceView(p)` (`1015`) | **Minor leak** | Returns `isBot: rec.isBot` (`rules/MirrorParts.js:2419`, **A-08**). Safe only if the actor passes the requesting human player's own id and strips `isBot`; never expose for another player. |
+| `giftOptions(p)` (`1524-1579`) | **Leak** | `targets` only exposes public `status`/`isStuck`, and `incoming` hides `"refused"` gifts. However, `sent[]` exposes `cost: g.cost` (`1553`), which is `0` on Independent auto-refusal vs `1`-`3` on a normal decline (`rules/Gift.js:37-38`), and skips `"pending"` immediately, revealing that the teammate is Independent (**A-07**). |
+| `sabotageOptions(p)` (`1496-1523`) | Clean | Exposes only `p`'s own `canRole`, `cost`, `blockedThisRound`, `caughtByTeam`, and teammates' public `status`/`isStuck` plus eligibility reason (never reveals targets' stats, Composure, or hearts). |
+| `anomaliesFor(p)` (`1600-1603`) | Clean | Returns a fresh array copy of `p`'s own found anomaly ids (`"L"`, `"id"`, `"loop"`). Never exposed on `board()`. |
+| `board()` (`1607-1613`) | Clean | Returns fresh plain objects containing only player `name`, `team`, `status` (priority `Stuck > Glitching > Idle > At risk > Active`), team `name`/`wins`, and past L5-6 `submissions` (`level`, `name`, `text`). Zero leaks of type, stats, hearts, gifts, Skim, or Cash Out. |
+
+#### Additional Privacy & Hidden-Math Surface Findings
+
+- **Raw Mirror getters and ranking methods called by screens (A-08):**
+  - `G.mirrorLobbyTeam(MYTEAM)` (`rules/Game.js:995`, `rules/MirrorParts.js:64-75`) leaks `isBot` and `botConnectAt` for teammates (violating hidden bots, `CLAUDE.md:65`).
+  - `G.mirrorSetupTeam(MYTEAM)` (`rules/Game.js:1001`, `rules/MirrorParts.js:1604-1660`) leaks `mic.sequence` even when hidden, `sound.spikeAt`/`spikeBoost`, `cables.bag`, `qa.order`, and `botHiccups`.
+  - `G.mirrorDanceTeam(MYTEAM)` (`rules/Game.js:1014`, `rules/MirrorParts.js:2452-2455`) leaks `isBot`, `botBoosts`, `nextBotBoostAt`, and full teammate charts.
+  - `G.trialRanking()` (`1016`), `G.teamStandings()` (`1051-1058`), and `G.results()` (`1625`) return live `Team`/`Player` class instances (and `botOnly` flags on Mirror rankings).
+- **Hidden math on player screens (`CLAUDE.md:138`, A-09, A-15):**
+  - `judged-view.js:35-39`: prints `r.score.toFixed(3)` and `1st places` (tie-break metric) on every player screen, plus `Vote points` when `showVotePoints: true` (`pages/vote-test.js:87, 102`).
+  - `mirror-view.js:86-90, 213, 225, 244, 284`: prints 1-decimal exact `attention%` (Mirror's tie-break metric) for all teams and renders uninfluenced `r.base` instead of rounded `r.score`.
+  - `splitbrief-view.js:57`: prints raw `Board score: X of 5` right under influenced `Score Y of 5`, exposing when light Collaboration influence shifted the score.
+  - Host-only `FAC_BY_LEVEL` lines (`game.js:172-204`, e.g., line 179 Split Brief tie rule and line 190 AutoTrial influence) are explicitly allowed by `CLAUDE.md:138`.
 
 ---
 
-## B. Whole-game map
+### Area 4: Code vs `CLAUDE.md` Final Rules
 
-Labels:
-- `RULE`: game logic, scoring, validation, state queries/mutations
-- `TIMER`: time-based logic, deadlines, ticks, countdowns, schedules
-- `PASS-THROUGH`: one-line (or thin front-desk) call delegating to another class
-- `COORDINATION`: moves the game between steps/phases, lifecycle, serialization, orchestration
-- `SCREEN`: drawing, DOM wiring, layout, input capture, display copy only
+Every mismatch found is listed neutrally with file and line; this report does not decide which side is right.
 
-### `rules/Game.js` (1,041 lines)
+| # | `CLAUDE.md` rule | Actual code (file and line) |
+|---|---|---|
+| 1 | `CLAUDE.md:113`: 5 attributes listed in order `Focus, Collaboration, Initiative, Grit, Composure`. | `rules/Attributes.js:5, 66-74`, `rules/PlayerStatus.js:5`, `rules/Wallet.js:5`, `rules/Economy.js:79-94`: `KEYS` is `["focus", "initiative", "collab", "composure", "grit"]`, so `abilityLines()` on `V[9]` and `Economy.allocate` ties use the old order (while `TIE_ORDER` at `Attributes.js:6` and `game.js:26` use the canonical order) (**A-16**). |
+| 2 | `CLAUDE.md:129`: Level 2 Trial name is `Split Brief`. | `rules/Round.js:10`: `LEVELS[1].trialName` is `"Prioritize against a timer"` (**A-26**). |
+| 3 | `CLAUDE.md:138`: Player screens show rounded scores only; no trial tie rules, exact scores, or influence bonus appear on any player screen. | `judged-view.js:39` shows `r.score.toFixed(3)` and `1st places`; `mirror-view.js:284` shows 1-decimal exact `attention%` and uninfluenced `r.base`; `splitbrief-view.js:57` shows raw `Board score` next to rounded `Score`; `pages/vote-test.js:87, 102` shows `Vote points` and the vote formula (**A-09**, **A-15**). |
+| 4 | `CLAUDE.md:139, 157`: Level 1 SOP shared team board edited by active teammates; idle players cannot take optional trial actions. | `rules/Trial.js:198-207`: `SopTrial.setSopBoard` blocks Stuck players only, not `idle` players, and does not block edits after `submitSop()`. `rules/Game.js:624, 631` tracks `"submitSop"` round-wide instead of per team (**A-01**, **A-10**). |
+| 5 | `CLAUDE.md:143`: Open Floor includes team switching (teams 3-5, blocked if player sabotaged this round). | `rules/Game.js:561-575` implements `switchTeam()`, but `game.js:507` and `world-map.js:121-130` expose no team-switch UI and `game.js:224` caches `MYTEAM` without updating on switch (**A-17**). |
+| 6 | `CLAUDE.md:157`: Idle players cannot act in optional trial interactions. | `rules/Game.js:966`: `mirrorMiss` does not reject `idle` players (unlike `mirrorConnect`? Note `MirrorLobby.connect` checks lobby membership, not live `p.idle`) (**A-10**). |
+| 7 | `CLAUDE.md:161`: Independent gift refusal displays identically to a normal decline and never reveals type. | `rules/Gift.js:37-38` sets `cost: 0` on Independent refusal and `rules/Game.js:1548-1558` sends `cost: 0` with immediate `"declined"` status in `giftOptions(p).sent` (**A-07**). |
+| 8 | `CLAUDE.md:186`: Idle humans in Level 3 Mirror follow bot auto-pilot timings from `rules/mirrorData.js` (3-15s lobby connect). | `rules/bots.js:279-287`: mid-lobby idle humans auto-connect at `elapsed = 0s` (`L3 Step 10 #6`, **A-20**). |
+| 9 | `CLAUDE.md:49, 182-186`: Rules own every deadline and outcome-affecting randomness in Level 3; `Game.toJSON`/`fromJSON` captures mid-trial state. | `mirror-view.js:115, 145-152, 343-361, 394-409, 591-601, 887-936, 1122-1150`: Lobby cursor sweep/judging and Cables belt clock/judging still run unsaved in `mirror-view.js` (**A-02**, **A-03**). |
+| 10 | `CLAUDE.md:56-57` (queued screen fixes): Points screen shows one number per stat with bonus applied; each type briefing shows its real drawback. | `game.js:485-488` still shows base spend + separate `final X`; `game.js:29-32` (`TYPE_TEXT`) and `pixel-art.js:127-141` (`DIALOGS`) still omit the real type drawbacks (queued, **A-26**). |
+| 11 | `CLAUDE.md:65`: Multiplayer lobby starts via Host Start or 120s timer from first join, with hidden bots (no bot tag/leak). | `game.js:255` starts the clock on `Start Level` click (`A-05`, item b); `mirrorLobbyTeam` / `mirrorDanceTeam` / `mirrorDanceView` expose `isBot` (**A-08**). |
+| 12 | `CLAUDE.md:184-186` / Level 3 visuals & host script: visual hit frame matches rhythm/cable hit windows; excluded idle players get coherent status; `facLines` handles Mirror phases cleanly. | `rules/MirrorParts.js:2395` + `mirror-dance-view.js:68` + `styles.css:409-413` place exact-hit time at `left: 0%` (**A-18**); `mirror-view.js:305, 449, 810` shows contradictory `"You are Active and not in the lobby..."` (**A-19**); `mirror-view.js:114` resets `m.dance` instead of `m.danceUI` (**A-21**); `game.js:208` returns lobby+showtime combined when `phase === "failed"` (**A-26**). |
 
-| File:lines | Label | Short description | Where it should live | Lines saved if moved (estimate) |
+---
+
+### Area 5: `rules/` Scan (Step 13 Gap)
+
+Scanned all 24 files in `rules/*.js` (excluding `rules/rules.bundle.js`) with case-sensitive `Select-String` for: `Math.random`, `Date.now`, `new Date`, `document`, `window`, `setTimeout`, `setInterval`.
+
+- Zero code hits for `new Date`, `document`, `window`, `setTimeout`, `setInterval`.
+- Comment-only mentions of `Math.random` at `rules/Rng.js:3`, `rules/Trial.js:134`, `rules/bots.js:18` (harmless documentation).
+
+| File and line | Pattern | Code | Verdict | One-line reason |
 |---|---|---|---|---|
-| `rules/Game.js:1-30` | COORDINATION | Header comments and ES module imports | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:31-42` | RULE | Core constants (`QUIET_HEART_TEAM_MAX`, `STEP_NAME`, `PAUSED_STEPS`) | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:43-53` | TIMER | Step timer constants (`AUTO_ADVANCE_SECONDS`, `GRADUATION_PLACE_SECONDS`, `STEP_SECONDS`) | `rules/Timer.js` | 11 |
-| `rules/Game.js:54-56` | COORDINATION | `REQUIRED` step completion gate table | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:57-82` | TIMER | `TIMER_SECONDS` master duration table and timer docs | `rules/Timer.js` | 26 |
-| `rules/Game.js:83-106` | COORDINATION | `Game` constructor initializing teams, players, rng, attendance, economy, timer | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:107-128` | TIMER | `_makeTimer(clock)` wiring timer callbacks (`onStart`, `onClose`) | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:129-133` | PASS-THROUGH | `timer`, `running`, `now()`, `start()` one-line `Timer` delegates | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:134-156` | TIMER | `timerName()` resolving active timer phase from step and trial state | Delegate trial sub-phases to `Trial.timerName()` | 10 |
-| `rules/Game.js:157-158` | PASS-THROUGH | `refreshTimer()`, `secondsLeft()` one-line `Timer` delegates | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:159-179` | TIMER | Split Brief twist deadline and `onAllLocked` glue (`_startSplitBrief`, `_wireSplitBrief`, `_checkTwist`) | `rules/Trial.js` (`SplitBriefTrial`) | 18 |
-| `rules/Game.js:180-188` | TIMER | `tick(now)` advancing timer, twist check, `onTick` hook, Mirror showtime check | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:189-190` | PASS-THROUGH | `closeTimer()`, `closeTimerAt()` one-line `Timer` delegates | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:191-206` | COORDINATION | `_closeTimerPhase(name)` switch dispatching expired timers to phase closers | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:207-211` | PASS-THROUGH | `placeAllRemaining()` delegate to `Economy` | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:212-231` | TIMER | Attendance pause/resume schedule (`attendancePausedFor`, `syncAttendance`) | `rules/Attendance.js` (keep thin call in `Game`) | 15 |
-| `rules/Game.js:232-234` | PASS-THROUGH | `activity(p, now)` one-line delegate to `Attendance` | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:235-281` | RULE | Attendance miss handling and Empathy (`checkAttendance`, `attendanceCanWait`, `attendanceMiss`, `empathy`) | `rules/Attendance.js` and `rules/Round.js` | 35 |
-| `rules/Game.js:282-338` | COORDINATION | Step enforcement and transitions (`teamOf`, `over`, `step`, `stepName`, `didRun`, `wrongStep`, `mustBe`, `once`, `advance`, `setTrialForTest`) | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:339-355` | COORDINATION | `startNextRound()` creating next `Round`/`Trial` and resetting round flags | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:356-499` | COORDINATION | `jumpToLevel(targetLevel)` dev fast-forward across all 7 levels (Bug 27) | Own file `rules/devJump.js` (or `rules/DevTools.js`) | 140 |
-| `rules/Game.js:500-517` | RULE | `quietHeartBuff()` small-team +1 heart rule (<=3 active players) | `rules/Round.js` or `rules/Economy.js` | 16 |
-| `rules/Game.js:518-524` | PASS-THROUGH | `sabotage(actor, target)` step guard + `Round.sabotage` delegate | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:525-543` | RULE | `switchTeam(p, to)` Open Floor team switching rules (size 3-5, sabotage lock) | `rules/Team.js` or `rules/Round.js` | 15 |
-| `rules/Game.js:544-590` | PASS-THROUGH | SOP and Split Brief front-desk guards/delegates (`sop`..`closeSplitBrief`) | Keep thin or generic trial action router | 20 |
-| `rules/Game.js:591-629` | TIMER | Mirror elapsed/seconds-left helpers (`_mirrorWhy`, `mirrorLobbyElapsed`, `mirrorShowtimeSecondsLeft`, `mirrorShowtimeElapsed`, `_mirrorElapsedOpts`, `_mirrorLeftOpts`) | `rules/Trial.js` (`MirrorTrial`) | 35 |
-| `rules/Game.js:630-686` | COORDINATION | Mirror showtime early-close and attention-fail coordinator (`_allHumanMirrorTeamsDone`, `_maybeCloseMirrorShowtime`, `_checkMirrorShowtime`, `_afterMirrorAction`, `_mirrorCall`) | `rules/Trial.js` (`MirrorTrial`) | 45 |
-| `rules/Game.js:687-715` | COORDINATION | Mirror phase lifecycle guards (`mirror`, `closeMirrorLobby`, `startMirrorShowtime`, `closeMirror`) | Keep thin wrapper in `Game`, move details to `MirrorTrial` | 10 |
-| `rules/Game.js:716-729` | COORDINATION | `mirrorConnect()` with all-connected early lobby close | `rules/Trial.js` (`MirrorTrial` callback) | 10 |
-| `rules/Game.js:730-760` | PASS-THROUGH | 26 one-line Mirror/Trial pass-throughs (`mirrorMiss`..`mirrorDanceStray`, `mirrorAttention`..`trialRanking`) | Generic `trialAction`/`trialQuery` or keep thin actor surface | 25 |
-| `rules/Game.js:761-762` | RULE | `teamTrialResults`, `teamStandings` standings projection | `rules/Team.js` | 2 |
-| `rules/Game.js:763-777` | COORDINATION | `mirrorCheckAttention`, `mirrorFinishTeam` wrappers with early close | `rules/Trial.js` (`MirrorTrial`) | 10 |
-| `rules/Game.js:778-822` | PASS-THROUGH | JudgedTrial and `runTrial` pass-throughs (`judged`, `setPrompt`..`runTrial`) | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:823-835` | COORDINATION | `payTrialCosts` and `endTrial` (pay costs + advance) | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:836-869` | PASS-THROUGH | Glitch Report and Gift pass-throughs (`accuse`..`answerGift`) | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:870-883` | RULE | `lockIn()` locking glitches and applying Empathy | `rules/Round.js` | 10 |
-| `rules/Game.js:884-893` | PASS-THROUGH | `closeGiftWindow()` delegate to `Round.closeGiftWindow` | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:894-940` | PASS-THROUGH | Stats Update / Economy pass-throughs (`computeEarnings`..`autoPlacePoints`) | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:941-959` | RULE | `finishRound()` verifying placement, heart refill, Grit bonus roll | `rules/Round.js` or `rules/Economy.js` | 12 |
-| `rules/Game.js:960-1005` | COORDINATION | `toJSON()` and `static fromJSON()` full save/restore | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:1006-1015` | RULE | `board()` read-only Progress Board privacy boundary | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:1016-1028` | RULE | `results()` Level 7 ending lock and attendance pause | Stays in `rules/Game.js` | 0 |
-| `rules/Game.js:1029-1041` | PASS-THROUGH | `static get POINTS()`, static constant exports, module export | Stays in `rules/Game.js` | 0 |
-
-### `rules/Trial.js` (1,296 lines)
-
-| File:lines | Label | Short description | Where it should live | Lines saved if moved (estimate) |
-|---|---|---|---|---|
-| `rules/Trial.js:1-17` | COORDINATION | Header comments and ES module imports | Stays in `rules/Trial.js` | 0 |
-| `rules/Trial.js:18-90` | RULE | `Trial` base class (`winners`, `run`, `runTrial`, `sortBy`, `influence`, `rankWithInfluence`, `randomBase`) | Stays in `rules/Trial.js` | 0 |
-| `rules/Trial.js:91-131` | COORDINATION | `Trial.forRound` factory and `toJSON`/`fromJSON` polymorphic dispatch | Stays in `rules/Trial.js` | 0 |
-| `rules/Trial.js:132-204` | RULE | `SopTrial` subclass (Level 1 SOP scoring, board validation, ranking, constants, JSON) | Optional split: `rules/SopTrial.js` | 70 |
-| `rules/Trial.js:205-209` | RULE | `AutoTrial` subclass (Level 4 placeholder random 0-7 + influence) | Stays in `rules/Trial.js` | 0 |
-| `rules/Trial.js:210-255` | RULE | `SplitBriefTrial` setup, fields, constructor, getters, scenario lookup | Optional split: `rules/SplitBriefTrial.js` | 46 |
-| `rules/Trial.js:256-257` | TIMER | `SplitBriefTrial.setTwistDeadline(at)` deadline setter | Optional split: `rules/SplitBriefTrial.js` | 2 |
-| `rules/Trial.js:258-470` | RULE | `SplitBriefTrial` deal, cards, notes, board, Lock In, twist, scoring, tie-break ranking | Optional split: `rules/SplitBriefTrial.js` | 213 |
-| `rules/Trial.js:471-513` | COORDINATION | `SplitBriefTrial.toJSON` / `fromJSON` serialization | Optional split: `rules/SplitBriefTrial.js` | 43 |
-| `rules/Trial.js:514-539` | COORDINATION | `MirrorTrial` private fields (`#lobby`, `#setup`, `#dance`) and constructor | Optional split: `rules/MirrorTrial.js` | 26 |
-| `rules/Trial.js:540-551` | RULE | `MirrorTrial.MAX_SCORE` and `score(attention)` (0..100 to 0..7) | Optional split: `rules/MirrorTrial.js` | 12 |
-| `rules/Trial.js:552-563` | PASS-THROUGH | `MirrorTrial` status getters (`kind`, `phase`, `lobbyStarted`..`setupCrewSize`) | Optional split: `rules/MirrorTrial.js` | 12 |
-| `rules/Trial.js:564-689` | RULE | `MirrorTrial` private guards, bot-only attention, attention lock, team result resolver | Optional split: `rules/MirrorTrial.js` | 126 |
-| `rules/Trial.js:690-703` | COORDINATION | `MirrorTrial.startLobby(teams)` phase transition and lobby start | Optional split: `rules/MirrorTrial.js` | 14 |
-| `rules/Trial.js:704-712` | PASS-THROUGH | 8 one-line `#lobby` pass-through methods (`connect`..`allConnected`) | Optional split: `rules/MirrorTrial.js` | 9 |
-| `rules/Trial.js:713-757` | COORDINATION | `MirrorTrial.closeDoors()` and `startShowtime()` (crew deal, part startup, bot rolls) | Optional split: `rules/MirrorTrial.js` | 45 |
-| `rules/Trial.js:758-793` | PASS-THROUGH | 9 guarded `#setup` pass-throughs (`cableHit`..`timeoutQa`) | Optional split: `rules/MirrorTrial.js` | 36 |
-| `rules/Trial.js:794-854` | COORDINATION | `wrapUp`, `completeBotSetupStep`, `advanceBotSetup` (delegate + lock team attention) | Optional split: `rules/MirrorTrial.js` | 61 |
-| `rules/Trial.js:855-875` | PASS-THROUGH | 5 guarded `#dance` pass-throughs (`danceHit`..`advanceBotDance`) | Optional split: `rules/MirrorTrial.js` | 21 |
-| `rules/Trial.js:876-905` | PASS-THROUGH | 24 one-line `#setup`/`#dance`/bot read pass-throughs (`setupSlots`..`botAttentionFor`) | Optional split: `rules/MirrorTrial.js` | 30 |
-| `rules/Trial.js:906-1053` | RULE | `MirrorTrial` attention formula, 0% fail lock, `finishTeam`, `closeMirror`, Focus-influence ranking | Optional split: `rules/MirrorTrial.js` | 148 |
-| `rules/Trial.js:1054-1083` | COORDINATION | Team failure and crew lookup helpers (`isTeamFailed`..`roleOf`) | Optional split: `rules/MirrorTrial.js` | 30 |
-| `rules/Trial.js:1084-1130` | COORDINATION | `MirrorTrial.toJSON` / `fromJSON` 3-part serialization | Optional split: `rules/MirrorTrial.js` | 47 |
-| `rules/Trial.js:1131-1158` | RULE | Level 5-6 `PROMPTS` fixed prompt bank | `rules/prompts.js` (data file) | 28 |
-| `rules/Trial.js:1159-1266` | RULE | `JudgedTrial` subclass (prompts, writing, submission checks, `startVote`, `rank`) | Optional split: `rules/JudgedTrial.js` | 108 |
-| `rules/Trial.js:1267-1274` | COORDINATION | `JudgedTrial.kind` and `toJSON` serialization | Optional split: `rules/JudgedTrial.js` | 8 |
-| `rules/Trial.js:1275-1296` | COORDINATION | Static constants (including timer constants on lines 1281-1285, 1288) and subclass exports | Stays in `rules/Trial.js` | 0 |
-
-### `rules/MirrorParts.js` (1,604 lines)
-
-| File:lines | Label | Short description | Where it should live | Lines saved if moved (estimate) |
-|---|---|---|---|---|
-| `rules/MirrorParts.js:1-7` | COORDINATION | Header, `MirrorData` import, `idOf` helper | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:8-139` | RULE | `MirrorLobby` core rules (constructor, active-player `start`, `connect`, `miss` speed-up, `closeDoors`) | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:140-231` | RULE | `MirrorLobby` state and bot-connect queries (`playerState`..`state`) | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:232-271` | COORDINATION | `MirrorLobby.toJSON` / `fromJSON` serialization | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:272-298` | RULE | `SetupCrew` fields, constructor, `crewSize`, `splitSteps` | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:299-310` | TIMER | `SetupCrew.botStepDuration` and `botMilestoneLabel` timing lookup | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:311-469` | RULE | `SetupCrew` turn guards, seeded content picks (`mic`, `deck`, `qa`), step advance, `start` | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:470-841` | RULE | `SetupCrew` 5 step action handlers (`cableHit`..`timeoutQa`) and `wrapUp` | Stays in `rules/MirrorParts.js` (also needs idle guard + deadlines) | 0 |
-| `rules/MirrorParts.js:842-949` | TIMER | `SetupCrew` timed bot/auto-pilot progression (`completeBotStep`, `advanceBotSetup`) | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:950-1030` | RULE | `SetupCrew` read-only queries (`slotsFor`..`currentQaFor`) | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1031-1039` | TIMER | `SetupCrew.botStepDueAt` milestone timestamp helper | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1040-1089` | RULE | `SetupCrew.teamState` and `state` snapshot builders | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1090-1199` | COORDINATION | `SetupCrew.toJSON` / `fromJSON` serialization | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1200-1223` | RULE | `DanceCrew` fields, constructor, `#lookupPlayer` | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1224-1230` | TIMER | `DanceCrew.#rollBotInterval()` (1.5-2.5s bot boost schedule) | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1231-1400` | RULE | `DanceCrew` init and hit/miss/stray handlers (`start`, `noteHit`, `noteMiss`, `strayPress`) | Stays in `rules/MirrorParts.js` (needs idle guard) | 0 |
-| `rules/MirrorParts.js:1401-1473` | TIMER | `DanceCrew` timed bot/auto-pilot boosts (`applyBotBoost`, `advanceBotDance`) | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1474-1518` | RULE | `DanceCrew` roster, boost, and average penalty queries | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1519-1537` | TIMER | `DanceCrew` bot schedule queries (`botNextBoostAt`, `botNextBoostsFor`) | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1538-1557` | RULE | `DanceCrew.teamState` and `state` snapshot builders | Stays in `rules/MirrorParts.js` | 0 |
-| `rules/MirrorParts.js:1558-1604` | COORDINATION | `DanceCrew.toJSON` / `fromJSON` and `MirrorParts` export | Stays in `rules/MirrorParts.js` | 0 |
-
-### Screen files (11 files, 3,844 lines)
-
-| File:lines | Label | Short description | Where it should live | Lines saved if moved (estimate) |
-|---|---|---|---|---|
-| `game.js:1-24` | SCREEN | Code-rain canvas background animation (`WORDS`, `sizeRain`, `rainFrame`, `staticRain`, `setRain`) | Stays in `game.js` | 0 |
-| `game.js:25-61` | SCREEN | Display tables (`A`, `AN`, `TYPE_TEXT`, `TYPES`, `ROUNDS`, `TEAM`, `OTHERS`, `CLUES`, `STEPS`, `FAC`, `MEMOS`) | Move static copy tables (`TYPE_TEXT`, `CLUES`, `FAC`, `MEMOS`) to data file | 30 |
-| `game.js:62-113` | SCREEN | `BRIEFINGS` per-level memo/workshop copy (Levels 1-7) | Move to data file (`data/level-copy.js`) | 52 |
-| `game.js:114-171` | SCREEN | `LEVEL_HINTS` ghost and High Tea hint table (Levels 1-7, Bug 19) | Move to data file (`data/hints.js`) | 58 |
-| `game.js:172-209` | SCREEN | `FAC_BY_LEVEL` host script copy and lookup helpers (`currentLevel`, `ghostHint`, `teaHint`, `facLines`) | Move `FAC_BY_LEVEL` to data file (keep helpers) | 33 |
-| `game.js:210-221` | SCREEN | UI state `fresh()` and `S` | Stays in `game.js` | 0 |
-| `game.js:222-260` | COORDINATION | Session setup, name persistence, and level transitions (`newSession`, `endSession`, `signOut`, `resetRoundUI`, `startLevel`, `startNextLevel`, `R`) | Actor owns session/level transitions (`startLevel`, `startNextLevel`); keep UI reset | 18 |
-| `game.js:261-275` | SCREEN | DOM/format helpers (`$`, `$$`, `esc`, `shuffle` [`Math.random()`], `T`, `fmt`, `cleanName`, `status`, `flag`, `HEART`) | Stays in `game.js` (remove `Math.random()` `shuffle` if SOP order moves) | 1 |
-| `game.js:276-294` | TIMER | `drawTimer`, `afterClose`, and 250ms `setInterval` driving `G.tick()` | Move `G.tick()` loop to Base44 actor wake; keep `drawTimer` | 10 |
-| `game.js:295-344` | COORDINATION | Navigation guards and forward dispatch (`canBack`, `fwd`, `goForward`, `milestoneTitle`, `updateNav`) | Move step-advancing logic to `Game`/actor; keep button labels | 20 |
-| `game.js:345-373` | SCREEN | Top bar, banner, HUD, step bar (`chrome`), and `go(n)` | Stays in `game.js` | 0 |
-| `game.js:374-479` | SCREEN | Views `V[0]` to `V[6]` (sign-in, menu, badge, packet, wardrobe, work style, arrival/lobby, briefing, open floor) | Stays in `game.js` | 0 |
-| `game.js:480-554` | SCREEN | `V[7]` trial wrappers (`trialSopScreen`, `trialSplitBriefScreen`, `trialAutoScreen`, `trialMirrorScreen`, `trialJudgedScreen`, `TRIAL_SCREENS`) | Optional: extract `sop-view.js` | 20 |
-| `game.js:555-606` | SCREEN | `V[8]` Glitch Report, Accusation, Gift Window UI and bindings (line 596 calls `EP.Bots.answer` directly) | Move `EP.Bots.answer` trigger to `Game` hook | 1 |
-| `game.js:607-683` | SCREEN | `V[9]` Stats Update, Graduation, `milestoneCompleteScreen`, `finalResultsScreen`, `END_SCREENS`, `pointBuyHTML` (line 614 re-sorts standings) | Use `G.teamStandings()` at 614; rest stays in `game.js` | 1 |
-| `game.js:684-749` | SCREEN | Arrival elevator cutscene SVG, `ADMIN_LINES`, `ROLE_BRIEF`, `vnBox`, `roleBrief`, `skipArrival`, `arrivalAdvance`, `runElevator` | Move `ADMIN_LINES`/`ROLE_BRIEF` copy to data file | 50 |
-| `game.js:750-828` | SCREEN | Escape listener, `render()`, `bind()` for steps 0-9 (line 801 calls `G.start()`, line 772 checks `@icstars.org`), `sopPress` | Move `G.start()` and email enforcement to actor | 4 |
-| `game.js:829-863` | COORDINATION | Single-player step-closing triggers (`lockPoints`, `applyOpenFloorEnd`, `checkSop`, `sopPile`, `sopScored`, `payCost`, `endAccusations`) | Move step-closing logic to `Game`/actor; keep `sopPile`/`sopScored` | 28 |
-| `game.js:864-884` | SCREEN | Glitch cursor, nav button bindings, `BoardView`, `FullscreenView`, Host Script toggle, `AttendanceView` mount | Stays in `game.js` | 0 |
-| `game.js:885-912` | COORDINATION | `DEV_JUMP`, `devJumpLevel`, `devJump`, keydown listener, initial `render()` | Gate behind server/test config + `Game` flag (Bug 21) | 15 |
-| `mirror-view.js:1-28` | SCREEN | Formatters, `STEP_LABELS`, `playerById`, `statusBadge`, `inBand` | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:29-36` | RULE | `shuffleArr` using `Math.random()` for cable bag (Bug 54) | `rules/MirrorParts.js` (`SetupCrew` using `#rng`) | 8 |
-| `mirror-view.js:37-106` | SCREEN | Display helpers (`milestoneLabel`, `ownerSlotFor`, `stepProgressText`, `setupProgressSig`, `formatBoost`, `formatAtt`, `countSetupHiccups`) | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:107-126` | TIMER | `resetShowtimeState` initializing local cables/sound/mic/deck/Q&A clocks | Move step clocks/state to `SetupCrew` | 10 |
-| `mirror-view.js:127-168` | SCREEN | `screen(opts)` setup, `G.mirror*` reads, lobby cursor init (`155-156` uses `Math.random()`) | Seed cursor start in `MirrorLobby` | 2 |
-| `mirror-view.js:169-194` | SCREEN | `lobbySecs`, `showtimeSecs`, `teamAttentionPct`, `rackMachines` helpers | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:195-301` | SCREEN | Header, lobby-failed banner, and trial result HTML builders | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:302-422` | SCREEN | Lobby phase HTML, signal-grab click handler, 250ms cursor sweep `tick` | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:423-487` | SCREEN | Crew Reveal / Failed phase HTML, `bind`, phase-change `tick` | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:488-511` | COORDINATION | Showtime snapshot init and local step-change cleanup | Shrinks once step timers move to `SetupCrew` | 10 |
-| `mirror-view.js:512-556` | TIMER | `ensureMicFlash`, `ensureDeckTimer`, `ensureQaTimer` screen timer initializers | `rules/MirrorParts.js` (`SetupCrew` deadlines) | 45 |
-| `mirror-view.js:557-753` | SCREEN | Showtime HTML renderers (attention bar, setup frame, dance readout, waiting view, all 5 setup steps, wrap-up) | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:754-791` | COORDINATION | `syncSetupSnapshots` and `checkSetupChange` polling rules state for updates | Stays in `mirror-view.js` (actor push on Base44) | 0 |
-| `mirror-view.js:792-837` | SCREEN | Showtime view routing (failed, wrapped, `MirrorDanceView` handoff, setup owner/waiting, inactive) | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:838-890` | SCREEN | Incremental DOM updaters (`updateMsgEl`, `updateSoundUI`, `updateMicUI`, `updateDeckOrderUI`) | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:891-944` | RULE | Cables click handler judging hit vs spark (`-3`) against local belt clock | Move belt/hit validation to `SetupCrew` | 25 |
-| `mirror-view.js:945-970` | RULE | Sound click handler mutating local `snd.level` and triggering `G.mirrorSoundFeedback` | `rules/MirrorParts.js` (`SetupCrew`) | 15 |
-| `mirror-view.js:971-1074` | SCREEN | Mic, Deck (line 1027 spite-reshuffle timer), Q&A, and Wrap-up click handlers | Move line 1027 spite timer to `SetupCrew` | 3 |
-| `mirror-view.js:1075-1126` | SCREEN | Showtime `tick` updating attention bar, timer, setup changes, and dance readout | Stays in `mirror-view.js` | 0 |
-| `mirror-view.js:1127-1164` | TIMER | Cables belt 250ms spawner, `Math.random()` shuffle, missed-cable re-queue | `rules/MirrorParts.js` (`SetupCrew` using `#rng`) | 32 |
-| `mirror-view.js:1165-1209` | TIMER | Sound check 250ms simulation (`Math.random()` spikes/jitter, drift, passive `-4` feedback, 3s hold step advance) | `rules/MirrorParts.js` (`SetupCrew` using `#rng`) | 40 |
-| `mirror-view.js:1210-1249` | TIMER | Mic flash-hide timer, Deck reshuffle timer (`G.mirrorReshuffleDeck`), Q&A 29-tick timeout (`G.mirrorTimeoutQa`) | `rules/MirrorParts.js` (`SetupCrew` + `Game`/`Timer` deadlines) | 35 |
-| `mirror-view.js:1250-1256` | SCREEN | Return object and `MirrorView` export | Stays in `mirror-view.js` | 0 |
-| `mirror-dance-view.js:1-50` | SCREEN | Formatters, `statusBadge`, `fallbackAvatar`, `dancerAvatarHTML` | Stays in `mirror-dance-view.js` | 0 |
-| `mirror-dance-view.js:51-60` | RULE | `nextArrowDir` rolling `Math.random()` with max-2-same rule | `rules/MirrorParts.js` (`DanceCrew` using `#rng`) | 10 |
-| `mirror-dance-view.js:61-99` | TIMER | `initDanceState`, `noteGapTicks` tempo ramp, `spawnNoteOn` note scheduler | `rules/MirrorParts.js` (`DanceCrew` seeded chart) | 30 |
-| `mirror-dance-view.js:100-118` | RULE | `noteZone` window classifier (`perfect`/`good`/`incoming`) + `laneHTML` | Align window logic with `DanceCrew`; keep `laneHTML` | 6 |
-| `mirror-dance-view.js:119-245` | SCREEN | `screen(opts)` setup, 0-dancer fallback, dancer/roster/lane HTML builders | Stays in `mirror-dance-view.js` | 0 |
-| `mirror-dance-view.js:246-354` | SCREEN | DOM sync helpers (`updateAttentionAndTimerDOM`, `syncAvatarsDOM`, `syncDanceDOM`, `flashKey`, `cleanup`) | Stays in `mirror-dance-view.js` | 0 |
-| `mirror-dance-view.js:355-398` | TIMER | `stepMotion` advancing note clock and charging `-2` misses via `G.mirrorDanceMiss(ME)` | `rules/MirrorParts.js` (`DanceCrew`) | 30 |
-| `mirror-dance-view.js:399-454` | RULE | `handleInput` judging perfect/good/stray against local note clock | Validate/score in `DanceCrew`; keep input sender | 25 |
-| `mirror-dance-view.js:455-476` | SCREEN | Arrow-key `onKey` listener (blocks keys while `.board-ov` is open) | Stays in `mirror-dance-view.js` | 0 |
-| `mirror-dance-view.js:477-492` | TIMER | `frame(ts)` `requestAnimationFrame` loop driving `stepMotion` | Keep for visual animation only (not miss scoring) | 6 |
-| `mirror-dance-view.js:493-560` | SCREEN | `bind`, `tick`, return object, `MirrorDanceView` export | Stays in `mirror-dance-view.js` | 0 |
-| `splitbrief-view.js:1-291` | SCREEN | Complete Split Brief UI (cards, notes, board, Lock In confirm, twist popup, focus restore, `tick`). Note: mutates `G.round.trial` directly instead of calling `Game` (see Section C). | Stays in `splitbrief-view.js` (rewire calls through `Game`) | 0 |
-| `judged-view.js:1-25` | SCREEN | Formatters and `screen(opts)` setup | Stays in `judged-view.js` | 0 |
-| `judged-view.js:26-28` | COORDINATION | Render-time `G.startWriting()`, `EP.Bots.submit(G)`, and `G.startVote()` | `rules/Game.js` (`advance()` / `Bots.hooks`) | 3 |
-| `judged-view.js:29-95` | SCREEN | Result table, writing box, and vote form HTML | Stays in `judged-view.js` | 0 |
-| `judged-view.js:96-111` | SCREEN | Vote select and `#castVote` binding (calls `v.cast()` directly; see Section C) | Stays in `judged-view.js` (route `v.cast` through `Game`) | 0 |
-| `judged-view.js:112-116` | COORDINATION | Post-vote `EP.Bots.vote(G, v, G.rng); G.runTrial()` closing trial on one vote | `rules/Game.js` (`Bots.hooks` + vote close rule) | 4 |
-| `judged-view.js:117-121` | SCREEN | Return object and `JudgedView` export | Stays in `judged-view.js` | 0 |
-| `world-map.js:1-199` | SCREEN | Floor 60 geometry, collision, SVG map/minimap, room/NPC/ghost panels, `rAF` movement (cosmetic `Math.random()` at 172), keyboard/joystick controls | Stays in `world-map.js` | 0 |
-| `world-map.js:200-203` | TIMER | Dead `ghostHop` `setInterval(2600)` + `Math.random()` for removed `.gwalk` elements + whisper auto-hide | Remove dead `ghostHop` timer | 4 |
-| `pixel-art.js:1-120` | SCREEN | Palettes, pixel intern `sprite`/`pix` SVG engine, `TOOLS` icons, `avatarSVG`, instructor SVGs | Stays in `pixel-art.js` | 0 |
-| `pixel-art.js:121-146` | SCREEN | `DIALOGS` instructor onboarding copy, `DPOS`, `dialogsHTML` | Optional: move `DIALOGS` copy to data file | 20 |
-| `pixel-art.js:147-162` | SCREEN | UI icons `IC` and `tabIcon` | Stays in `pixel-art.js` | 0 |
-| `board.js:1-52` | SCREEN | Read-only Progress Board modal reading only `Game.board()` | Stays in `board.js` | 0 |
-| `attendance-view.js:1-30` | SCREEN | Overlay DOM, `input()` reporter (sends `Date.now()`), `show`/`close` popup UI | Stays in `attendance-view.js` (drop client `Date.now()`) | 0 |
-| `attendance-view.js:31-44` | TIMER | `tick()` calling `G.checkAttendance(Date.now())` and rendering popup/miss | Run `checkAttendance` on Base44 actor; client listens to events | 10 |
-| `attendance-view.js:45-75` | SCREEN | Capture-phase key swallow, input listeners, throttled `pointermove`, 1s `setInterval` (line 73) | Remove client `setInterval` on Base44; keep input + key swallow | 1 |
-| `attendance-view.js:76-86` | SCREEN | `missedText` formatter and `AttendanceView` export | Stays in `attendance-view.js` | 0 |
-| `fullscreen-view.js:1-38` | SCREEN | Fullscreen toggle button and `fullscreenchange` listener | Stays in `fullscreen-view.js` | 0 |
-| `pages/vote-test.js:1-22` | SCREEN | Standalone test page helpers, mounts, UI state | Stays in `pages/vote-test.js` | 0 |
-| `pages/vote-test.js:23-67` | COORDINATION | `newGame`, `placeMine` (mutates `ME` directly), bot round loop for Levels 1-4 | Replace with `Game.jumpToLevel(5)` + `Bots.hooks` | 35 |
-| `pages/vote-test.js:68-84` | TIMER | 1s `setInterval` calling `G.tick()` and auto-transitioning `toVote()` | Replace with shared page tick or `Game` timer hook | 10 |
-| `pages/vote-test.js:85-163` | SCREEN | Setup, prompt, `JudgedView` wrapper, done screen, `render`, `bind` | Stays in `pages/vote-test.js` | 0 |
-
-### Section B Summary: Lines per label per file
-
-| File | RULE | TIMER | PASS-THROUGH | COORDINATION | SCREEN | Total | Movable out (est.) |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `rules/Game.js` | 154 | 171 | 251 | 465 | 0 | 1,041 | 465 |
-| `rules/Trial.js` | 832 | 2 | 108 | 354 | 0 | 1,296 | 1,143 (optional split) |
-| `rules/MirrorParts.js` | 1,172 | 228 | 0 | 204 | 0 | 1,604 | 0 |
-| **Subtotal rules mapped (3 files)** | **2,158** | **401** | **359** | **1,023** | **0** | **3,941** | **465 (`Game.js`)** |
-| `game.js` | 0 | 19 | 0 | 152 | 741 | 912 | 341 |
-| `mirror-view.js` | 88 | 188 | 0 | 62 | 918 | 1,256 | 225 |
-| `mirror-dance-view.js` | 85 | 99 | 0 | 0 | 376 | 560 | 107 |
-| `splitbrief-view.js` | 0 | 0 | 0 | 0 | 291 | 291 | 0 |
-| `judged-view.js` | 0 | 0 | 0 | 8 | 113 | 121 | 7 |
-| `world-map.js` | 0 | 4 | 0 | 0 | 199 | 203 | 4 |
-| `pixel-art.js` | 0 | 0 | 0 | 0 | 162 | 162 | 20 |
-| `board.js` | 0 | 0 | 0 | 0 | 52 | 52 | 0 |
-| `attendance-view.js` | 0 | 14 | 0 | 0 | 72 | 86 | 11 |
-| `fullscreen-view.js` | 0 | 0 | 0 | 0 | 38 | 38 | 0 |
-| `pages/vote-test.js` | 0 | 17 | 0 | 45 | 101 | 163 | 45 |
-| **Subtotal screen files (11 files)** | **173** | **341** | **0** | **267** | **3,063** | **3,844** | **760** |
-| **Total `Game.js` + screen files** | **327** | **512** | **251** | **732** | **3,063** | **4,885** | **1,225** |
-
-Summary of movable lines:
-- Out of `rules/Game.js`: **~465 lines** (140 `jumpToLevel`, ~155 Mirror timer/coordination/pass-through glue, ~85 timer tables/Split Brief/Attendance schedule, ~85 rules in `Attendance`/`Round`/`Team`/`Economy`).
-- Out of screen files: **~760 lines** total (~517 lines of gameplay RULE/TIMER/COORDINATION/dead timer code plus ~243 lines of static copy tables such as `BRIEFINGS`, `LEVEL_HINTS`, `FAC_BY_LEVEL`, `ADMIN_LINES`, `ROLE_BRIEF`, `CLUES`, `MEMOS`, `DIALOGS`).
-- Combined (`Game.js` + all 11 screen files): **~1,225 lines** (~982 lines excluding static copy tables).
+| `rules/Game.js:92` | `Math.random` | `rng = Math.random` | **Problem** | Defaulting to `Math.random` creates an unsaveable `Game` (`toJSON()` throws) if a caller omits `rng`. |
+| `rules/Game.js:92` | `Date.now` | `clock = () => Date.now()` | **Allowed** | Default live wall-clock injector; tests and actors pass a controlled `clock` function. |
+| `rules/Game.js:1402` | `Date.now` | `clock = () => Date.now()` | **Allowed** | Default live wall-clock injector on `Game.fromJSON`; overridden by tests and actor. |
+| `rules/Player.js:109` | `Date.now` | `markActive(now = Date.now())` | **Problem** | Direct `Date.now()` default bypasses `Game`'s injected clock if called without `now`. |
+| `rules/Rng.js:21` | `Date.now` & `Math.random` | `((Date.now() ^ ((Math.random() * 0x100000000) >>> 0)) >>> 0)` | **Allowed** | One-time initial seed generator (`Rng.randomSeed()`); all gameplay draws use the saved seeded `Rng`. |
+| `rules/Timer.js:6` | `Date.now` | `clock = () => Date.now()` | **Allowed** | Default live wall-clock injector on `Timer`; `Game` always forwards its own injected `clock`. |
+| `rules/Trial.js:20` | `Math.random` | `constructor(rng = Math.random)` | **Problem** | Base `Trial` allows unseeded `SopTrial`/`AutoTrial`/`JudgedTrial` instances if `rng` is omitted. |
+| `rules/Vote.js:11` | `Math.random` | `constructor(teams, rng = Math.random, ...)` | **Problem** | Allows unseeded vote tie-breaks if constructed outside `Game` without a seeded `Rng`. |
+| `rules/bots.js:76` | `Math.random` | `soloGame({ ..., rng = Math.random, ... })` | **Problem** | Creates an unsaveable solo game if caller omits `rng`. |
 
 ---
 
-## C. Game methods the screens call
+### Area 6: Hannah Readiness (Levels 4, 5, 6)
 
-Total distinct `Game` methods called from screen code: **64** (**58** called by the main app `index.html` screens, plus **6** called only by the standalone test page `pages/vote-test.js`: `closeWriting`, `computeEarnings`, `endGlitchReport`, `lockIn`, `payTrialCosts`, `setPrompt`). Breakdown: **18** read-only, **46** state-changing (including `results` which locks endings on its first call and `typeSubmission` which records Attendance activity).
+#### 1. Shared-file boundaries in `CLAUDE.md:13-17` vs real codebase
 
-| Game method | Called from (file:line) | Reads only or changes state | Notes |
-|---|---|---|---|
-| `accuse` | `game.js:810` | Changes state | Glitch Report accusation (`G.accuse(ME, target)`). |
-| `activity` | `attendance-view.js:15`, `judged-view.js:107`, `mirror-dance-view.js:405`, `mirror-view.js:346, 896, 947, 973, 1007, 1039, 1063`, `splitbrief-view.js:162, 172, 184, 194, 206, 218, 229, 237` | Changes state | Resets Attendance timer and clears `idle`. `attendance-view.js:15` passes client `Date.now()`; Base44 actor should stamp server time. |
-| `advance` | `game.js:327`, `pages/vote-test.js:44, 45, 46, 47, 54, 55, 62, 63` | Changes state | Advances round step. Server/host-owned on Base44 (not a player call). |
-| `answerGift` | `game.js:603` | Changes state | Accepts/declines pending gift. Currently passes a live `Gift` object from `G.round.gifts`; Base44 needs a gift ID. |
-| `board` | `game.js:874`, `pages/vote-test.js:15` | Reads only | Safe public Progress Board snapshot (no hidden stats or types). |
-| `cashOut` | `game.js:817` | Changes state | Independent once-per-game 2 hearts for +1 point at Stats Update. |
-| `checkAttendance` | `attendance-view.js:34` | Changes state | Sets `idle`, `attendancePending`, or locks attendance glitch + Empathy. Must run on Base44 server, not from client `Date.now()`. |
-| `closeTimer` | `game.js:251, 835, 840, 845, 848, 860` | Changes state | Force-closes active timer for the whole game. Single-player shortcut; must NOT be a player actor call on Base44. |
-| `closeWriting` | `pages/vote-test.js:120` | Changes state | Test page only ("Test: end the timer now"). Host/timer-only on Base44. |
-| `computeEarnings` | `pages/vote-test.js:48` | Changes state | Test page only (`vote-test.js` bot loop). Server-only on Base44. |
-| `didRun` | `game.js:234, 235, 236, 237, 853`, `judged-view.js:25`, `mirror-dance-view.js:132`, `mirror-view.js:138, 377, 481, 897, 948, 974, 1008, 1040, 1064, 1077`, `splitbrief-view.js:43`, `pages/vote-test.js:83` | Reads only | Checks round action completion flags (`runTrial`, `endGlitchReport`, `lockIn`, `finishRound`, `payTrialCosts`). |
-| `draftPoint` | `game.js:815, 816` | Changes state | Adds (+1) or removes (-1) a draft point at Stats Update or Graduation. |
-| `endGlitchReport` | `pages/vote-test.js:45` | Changes state | Test page only (`vote-test.js` bot loop). Server-only on Base44. |
-| `endTrial` | `game.js:854` | Changes state | Pays trial costs for all players and advances to Glitch Report. Server/host-only on Base44. |
-| `finishRound` | `game.js:840`, `pages/vote-test.js:50` | Changes state | Refills hearts, rolls Grit bonus, moves to Intermission. Server-only on Base44. |
-| `gift` | `game.js:596` | Changes state | Sends 1 or 2 gift points to a teammate in Open Floor or Gift Window. |
-| `jumpToLevel` | `game.js:904` | Changes state | Dev jump (`Ctrl+Shift+1..7`). Must be disabled/gated in production Base44 actor (Bug 21). |
-| `lockIn` | `pages/vote-test.js:47` | Changes state | Test page only (`vote-test.js` bot loop). Server-only on Base44. |
-| `lockPoints` | `game.js:833, 838` | Changes state | Commits player's draft points during Stats Update or Graduation. |
-| `mirrorAnswerQa` | `mirror-view.js:1046` | Changes state | Submits Level 3 Q&A answer (may recover 5 or cost 5 and trigger 0% close). |
-| `mirrorAttention` | `mirror-view.js:182, 226`, `mirror-dance-view.js:147` | Reads only | Current/final team Audience Attention (0..100). |
-| `mirrorCableHit` | `mirror-view.js:914` | Changes state | Records Level 3 cable port connected. |
-| `mirrorCableMiss` | `mirror-view.js:933` | Changes state | Records Level 3 cable spark (-3 attention, checks 0% fail). |
-| `mirrorConnect` | `mirror-view.js:353` | Changes state | Records Level 3 lobby signal connect (may close lobby early). |
-| `mirrorCrew` | `mirror-view.js:143` | Reads only | Returns team's `{ setupIds, danceIds }`. |
-| `mirrorDanceHit` | `mirror-dance-view.js:426` | Changes state | Records Level 3 dancer note hit (`perfect` +3 or `good` +2, cap 45). |
-| `mirrorDanceMiss` | `mirror-dance-view.js:375` | Changes state | Records Level 3 dancer missed note (-2 penalty, checks 0% fail). Currently fired by client `rAF` clock. |
-| `mirrorDanceStray` | `mirror-dance-view.js:439` | Changes state | Records Level 3 dancer off-beat key press (-1 penalty, checks 0% fail). |
-| `mirrorDanceTeam` | `mirror-view.js:274, 489, 1098`, `mirror-dance-view.js:128, 283, 394` | Reads only | Returns team Dance Crew snapshot (`dancers`, `avgBoost`, `avgPenalties`). |
-| `mirrorFailReason` | `mirror-view.js:146, 1077`, `mirror-dance-view.js:134` | Reads only | Returns `"lobby"`, `"attention"`, or `null`. |
-| `mirrorLobbyTeam` | `mirror-view.js:140, 348, 387` | Reads only | Returns team lobby snapshot (`players`, `connected`, `speed`, `zone`, `failed`, `allConnected`). |
-| `mirrorMicTap` | `mirror-view.js:981` | Changes state | Records Level 3 mic memory tap (advances round/step or charges -4). |
-| `mirrorMiss` | `mirror-view.js:362` | Changes state | Records Level 3 lobby signal miss (+2 speed up to 16, rolls glitch reason). |
-| `mirrorPhase` | `game.js:208`, `mirror-view.js:139, 347, 377, 481, 897, 948, 974, 1008, 1040, 1064, 1077`, `mirror-dance-view.js:133` | Reads only | Returns `"idle"`, `"lobby"`, `"reveal"`, `"showtime"`, `"failed"`, or `null`. |
-| `mirrorPickFile` | `mirror-view.js:1015` | Changes state | Records Level 3 deck file click (advances step or charges -6). |
-| `mirrorReshuffleDeck` | `mirror-view.js:1219` | Changes state | Reshuffles deck file order via `G.rng`. Currently fired by client 250ms tick. |
-| `mirrorRole` | `mirror-view.js:145` | Reads only | Returns `"setup"`, `"dance"`, or `null` for `ME`. |
-| `mirrorSetupSlots` | `mirror-view.js:144` | Reads only | Returns team Setup Crew slot assignments and steps. |
-| `mirrorSetupTeam` | `mirror-view.js:263, 488, 898, 918, 935, 949, 962, 975, 983, 1009, 1017, 1041, 1048, 1065, 1069, 1097, 1184, 1194, 1240`, `mirror-dance-view.js:127, 135, 529` | Reads only | Returns full team Setup Crew snapshot. On Base44, scope `mic.sequence` to the active Setup owner only. |
-| `mirrorShowtimeSecondsLeft` | `mirror-view.js:177`, `mirror-dance-view.js:142` | Reads only | Fallback remaining showtime seconds. |
-| `mirrorSoundFeedback` | `mirror-view.js:959, 1181` | Changes state | Records Level 3 sound overshoot (-4 penalty, checks 0% fail). Line 1181 fires passively from client tick. |
-| `mirrorSoundHeld` | `mirror-view.js:1192` | Changes state | Records Level 3 sound 3s hold complete (advances step). Fired from client tick. |
-| `mirrorTimeoutQa` | `mirror-view.js:1238` | Changes state | Records Level 3 Q&A timeout (-5 penalty, advances Q&A). Fired from client tick. |
-| `mirrorWrapUp` | `mirror-view.js:1067` | Changes state | Last Setup player locks team attention and may close showtime early. |
-| `payTrialCosts` | `pages/vote-test.js:44` | Changes state | Test page only (`vote-test.js` bot loop). Server-only on Base44. |
-| `placeAllRemaining` | `game.js:835, 840` | Changes state | Auto-places all unplaced points when no timer is running. Server-only on Base44. |
-| `results` | `game.js:613, 835` | Changes state (1st call) / Reads only (later) | First call locks all Level 7 endings and pauses Attendance; later calls return locked endings. Line 613 calls it during render. |
-| `runTrial` | `game.js:518`, `judged-view.js:113`, `pages/vote-test.js:121` | Changes state | Finalizes and ranks the trial for all teams. Server/timer/all-voted owned on Base44. |
-| `sabotage` | `game.js:806` | Changes state | Contrarian Open Floor sabotage action. |
-| `secondsLeft` | `game.js:279, 477, 569`, `mirror-view.js:170, 175`, `mirror-dance-view.js:140`, `splitbrief-view.js:90`, `pages/vote-test.js:77, 113` | Reads only | Whole seconds remaining on active step timer. |
-| `setPrompt` | `pages/vote-test.js:153` | Changes state | Test page only (host-only Level 5-6 prompt selector). |
-| `setSopBoard` | `game.js:497, 498, 499` | Changes state | Updates team's shared Level 1 SOP board. |
-| `sopBoard` | `game.js:487, 496, 850` | Reads only | Returns team's Level 1 SOP board steps. |
-| `start` | `game.js:801`, `pages/vote-test.js:145` | Changes state | Starts the step timer engine. Server/host/lobby-timer owned on Base44. |
-| `startNextRound` | `game.js:251, 255`, `pages/vote-test.js:54, 62` | Changes state | Starts next level's Briefing. Server/host-owned on Base44. |
-| `startVote` | `judged-view.js:27, 73`, `pages/vote-test.js:83` | Changes state | Opens Level 5-6 Vote phase. Server-owned on Base44. |
-| `startWriting` | `judged-view.js:26`, `pages/vote-test.js:66, 155` | Changes state | Opens Level 5-6 writing phase and rolls prompt if no host. Server-owned on Base44. |
-| `submit` | `judged-view.js:70` | Changes state | Submits Level 5-6 written response (may close writing early when all active submit). |
-| `teamOf` | `game.js:471, 622, 905`, `judged-view.js:84`, `pages/vote-test.js:34` | Reads only | Looks up a player's `Team`. |
-| `teamStandings` | `game.js:631` | Reads only | Returns teams sorted by `trialWins`. |
-| `teamTrialResults` | `game.js:626` | Reads only | Returns `{ [level]: won }` copy for a team. |
-| `tick` | `game.js:293`, `pages/vote-test.js:76` | Changes state | Advances timers, twist deadline, bot hooks, and Mirror attention check. Server scheduled wake on Base44. |
-| `trialRanking` | `mirror-view.js:221` | Reads only | Returns current trial's `ranking` array. |
-| `typeSubmission` | `judged-view.js:58` | Changes state (calls `activity`) | Validates submission character count and records Attendance activity on input. |
+`CLAUDE.md:15` currently allows Hannah to edit only:
+`rules/Game.js` (one-line pass-throughs), `rules/index.js` (exports), `rules/Round.js` (`LEVELS` entries), `rules/Trial.js` (new `Trial` subclass registration only), and `game.js` (show her screen).
 
-### Flagged: Screen code that reads or writes rules objects directly (bypassing `Game`)
+Real touchpoints required to add Level 4 (and replace/extend Levels 5-6):
 
-1. **Direct writes / mutations bypassing `Game` (CRITICAL for Base44):**
-   - `splitbrief-view.js:163` (`trial.postNote(ME, noteIn.value)`): writes team notes directly on `SplitBriefTrial` without a `Game` method (`Game` has no Split Brief action pass-throughs).
-   - `splitbrief-view.js:186, 198, 210, 221` (`trial.setBoard(ME, ...)`): mutates team board directly on `SplitBriefTrial`.
-   - `splitbrief-view.js:230` (`trial.lockIn(ME)`): locks team board (and can close the trial via `onAllLocked`) directly on `SplitBriefTrial`.
-   - `judged-view.js:108` (`v.cast(ME, ...)`): casts Level 5-6 ballot directly on `Vote` (`G.round.trial.vote`), bypassing `Game` (`Game` has no `castVote` method).
-   - `judged-view.js:26, 113` (`EP.Bots.submit(G)`, `EP.Bots.vote(G, v, G.rng)`): screen calls `Bots` directly to mutate trial/vote state and advance `G.rng`.
-   - `game.js:596` (`EP.Bots.answer(G, r.gift, G.rng)`): screen calls `Bots` directly to answer gifts and advance `G.rng`.
-   - `pages/vote-test.js:39-40` (`ME.earned = Math.min(ME.earned, ME.roomLeft()); ME.placePoints(...)`): directly writes `Player.earned` and mutates `Player` points bypassing `Game`/`Economy`.
-   - `pages/vote-test.js:26, 30-32, 45-46, 49, 55-56, 63, 70, 121`: directly instantiates `EP.Player`/`EP.Team`/`EP.Game` and invokes `EP.Bots.*` (test harness).
+| File | Listed in `CLAUDE.md:15`? | Actual touchpoints needed |
+|---|---|---|
+| `rules/Game.js` | Listed as "one-line pass-throughs" only | Actually has **9** trial-dispatch sites: `TIMER_SECONDS` (`76-84`), `_makeTimer` `onStart`/`onClose` (`115-128`), `timerName()` (`143-155`), `tick()` (`188-213`), `_closeTimerPhase()` (`216-231`), `advance()` (`344-353`), `setTrialForTest()` (`358-370`), `jumpToLevel()` (`437-489`), `trialResultView()` (`1017-1049`), plus new view/action methods. |
+| `rules/index.js` | Listed | Matches real code (single-line imports/exports + `EP` namespace object). |
+| `rules/Round.js` | Listed (`LEVELS`) | Matches real code (`LEVELS` entries for `trialName`, `trialKind`, `attr`, `cost`). |
+| `rules/Trial.js` | Listed (registration only) | Matches if new trial classes live in `rules/Level4Parts.js` (etc.) and register in `Trial.forRound` and `Trial.fromJSON`, though Level 3 (`MirrorTrial`) itself currently lives inside `rules/Trial.js`. |
+| `game.js` | Listed ("show her screen") | Actually requires: `TRIAL_SCREENS` (`575-581`), `TIMER_LABELS` (`376-380`), `BRIEFINGS`/`LEVEL_HINTS`/`FAC_BY_LEVEL` (`63-204`), `END_SCREENS` (`680-688`), and **3 hardcoded Level 4 locks** (`339`, `358`, `683`). |
+| `index.html` | **Omitted** | Must add `<script src="level4-view.js">` (etc.) before `game.js` (`index.html:34-44`). |
+| `styles.css` | **Omitted** | Must add CSS for new Level 4-6 trial screens (as Level 2 `.sb-*` and Level 3 `.mirror-*` did). |
+| `rules/bots.js` | **Omitted** | Must add bot behavior and `Bots.hooks` calls for new trials so solo play and `jumpToLevel` work. |
+| `tools/baseline.js` | **Omitted** | Must register new `Tests/check_level4_*.js` scripts in `TESTS` / `NO_SNAPSHOT`. |
+| `docs/class-diagram.md` | **Omitted** | Required by `CLAUDE.md:35` whenever any class in `rules/` changes. |
+| `Tests/check_save.js` & `Tests/check_screens.js` | **Omitted** | Must add mid-trial save/load coverage for Levels 4-6 and update screen tests when Level 4 unlocks. |
 
-2. **Direct reads of `Game` internal properties and sub-objects (breaks server-to-client privacy boundary on Base44):**
-   - `G.players`, `G.teams`, `G.rng`: `game.js:226, 596, 614`, `judged-view.js:48, 83, 89, 108, 113`, `mirror-view.js:187` (gives screen code direct references to every player's secret `type`, `attrs`, `hearts`, `caughtBy`, and `G.rng`).
-   - `G.round` and its internals (`G.round.drainOn`, `G.round.gifts`, `G.round.caughtOn`, `G.round.sopResults`, `G.round.earnings`, `G.round.trial`): `game.js:205, 251, 259, 480, 487, 513, 558, 598, 603, 605, 673, 851`, `splitbrief-view.js:42`, `judged-view.js:25, 29`, `attendance-view.js:14`, `pages/vote-test.js:72, 79, 83, 99, 113, 115, 121, 132`. Notably `G.round.gifts` (`game.js:598`) and `G.round.earnings` (`game.js:673`) expose all players' records, and `game.js:487, 513` reads `G.round.trial.ranking` instead of `G.trialRanking()`.
-   - Direct `SplitBriefTrial` reads: `splitbrief-view.js:47, 51-53, 59-65, 68, 85, 90, 186, 195, 207, 219, 238, 257, 267, 273, 277` (`trial.ranking`, `boardFor`, `postTwistAnswer`, `cardsFor`, `twistFired`, `twistFor`, `notesFor`, `notesLeft`, `isLocked`, `tasks`, `scenario`). Note: reading `trial.postTwistAnswer` before trial close must never be sent to clients on Base44.
-   - Direct `JudgedTrial` and `Vote` reads: `judged-view.js:25-27, 33, 46-50, 73, 82-83, 87, 89, 91` and `pages/vote-test.js:72, 79, 83, 115, 121` (`writing`, `vote`, `ranking`, `submissions`, `prompt`, `choicesFor`, `slotsFor`).
-   - Direct `Player` and `Team` object reads: `game.js` (`273, 310, 367-368, 462-463, 468, 473-474, 482-483, 557-589, 606, 614-681, 833, 838`), `world-map.js:124-125, 130, 188`, `splitbrief-view.js:55, 66, 93`, `judged-view.js:38, 48, 82-89, 94`, `mirror-view.js:17, 21, 224, 285, 313, 457, 832`, `mirror-dance-view.js:9, 13`, `attendance-view.js:80`, `pages/vote-test.js:38-40, 116`.
-   - Direct `EP.*` rule-helper calls (beyond static display constants): `world-map.js:124, 125, 188` (`EP.Sabotage.cost`, `EP.Sabotage.check`), `game.js:589` (`EP.Gift.cost`, `EP.Gift.check`), `game.js:259` (`new EP.Round(1)`), `game.js:270, 455-456, 798-799` (`EP.Player.spendLeft/canRaise/canLower/startValue`), `splitbrief-view.js:52` (`SBT.score`). On Base44, live per-player state and action eligibility should come from a `Game.playerView(playerId)` projection instead of direct `Player`/`Team`/`Round`/`Trial` object access.
+#### 2. Shared rule changes Levels 4-6 will likely need (listed only; not designed)
 
+- **Multi-phase or mid-trial timers inside `Game`:** If Level 4, 5, or 6 uses sub-phases (like Mirror lobby/reveal/showtime) or mid-trial events (like Split Brief twist), `Game` will need generalized trial timer/tick/wake hooks instead of more hardcoded `instanceof` branches in `Game.js`.
+- **Level 4 Geek Week replacing `AutoTrial`:** Switching Level 4 from untimed `AutoTrial` to a real timed trial changes `Round.LEVELS[3].trialKind`, `TIMER_SECONDS`, `jumpToLevel(5+)` fast-forward, and `Tests/baseline.json` (plus `pages/vote-test.js`, which fast-forwards Levels 1-4).
+- **Level 5-6 Bots and Prompts:** `CLAUDE.md:65` specifies 15 pre-written bot answers per prompt for Levels 5-6 (replacing `"Bot answer"` in `rules/bots.js`), and if Level 5 or 6 adds interactive gameplay before/alongside `JudgedTrial`, `JudgedTrial` and `pages/vote-test.js` will be affected.
+- **Hidden math & player views:** Any new trial results screen must use `Game.trialResultView` (rounded scores only) and `Game` player-scoped views, never direct `G.round.trial` or `ME`/`MYTEAM` reads.
+
+#### 3. Simplest way to cover the guard gap (not built)
+
+- **Choose a small automated test** (`Tests/check_rules_guard.js`, registered as `NO_SNAPSHOT` in `tools/baseline.js` so `npm test` runs it automatically on every commit):
+  - Scans every `rules/*.js` (excluding `rules.bundle.js`) for forbidden tokens (`Math.random`, `Date.now`, `new Date`, `document`, `window`, `setTimeout`, `setInterval` with a tiny exact allowlist for `Rng.randomSeed` and the 3 default clock injectors) plus the single-line `import`/`export` rule required by `tools/build-rules.js`.
+  - Scans every new `*-view.js` automatically (glob instead of hardcoded list in `Tests/check_screen_rules.js`) so Hannah's new `level4-view.js`..`level6-view.js` are guarded on day one without editing the test list.
+  - Pair it with a **1-line PR checklist command** (`git diff --name-only screen-state-cleanup...HEAD`) for Hannah's shared-file boundaries, since branch diff boundaries belong at PR review rather than inside unit tests.
 
 ---
 
-## D. Code checks
+### Area 7: Test Gaps
 
-### D.1 Flaky screen tests (Bug 18)
-
-| File:lines | Test / Run | Dependency type | Cause |
-|---|---|---|---|
-| `Tests/check_screens.js:82, 88-91, 3652, 3658, 3660` | Runs 1-2 (`level1`, `waitForGift`) | Timing | Uses real wall-clock `Date.now()` and `sleep(1000)` polling up to 40s for the live 30s Gift Window (`secs < 35`), plus fixed `sleep(12000)` and `sleep(10000)`. CPU/CI load or timer jitter can push `secs >= 35`. |
-| `Tests/check_screens.js:76` | `creation` helper | Timing | Polls `for (let i = 0; i < 40; i++) { next(); await sleep(200); }` against real `setTimeout` elevator steps (`game.js:747-748`) and 1800ms spawn delay (`game.js:742`). |
-| `Tests/check_screens.js:658-688` | Run 3 (`walk` / `breakoutLabel`) | Timing + Random | Walks via live `requestAnimationFrame` (`world-map.js:157`) with `await sleep(10)` polling and a 300ms real-time stall cutoff (`still >= 300`). Slow jsdom frames can halt the walk before reaching Breakout Room (`x >= 1628`, `y <= 712`). Line `674` manually neutralizes ghosts to dodge random `ghostHop` (`world-map.js:202`). |
-| `Tests/check_screens.js:347, 371, 3276, 3312` | Run 4 (`fullSevenLevelGame`) and Run 12 (`mirrorStep8Cases`) | Random | Mirror lobby cursor `pos` and `dir` start with unseeded `Math.random()` (`mirror-view.js:155-156`) and are probed with bounded loops (`60` and `80` ticks). |
-| `Tests/check_screens.js:210, 341-485` | Run 4 (`fullSevenLevelGame`) | Timing + Random | Swaps `G._timer.clock = () => window._mirSimNow` while `game.js:293`'s real 250ms `setInterval` keeps running across `await sleep(10)` and `sleep(2)` pauses, advancing `mirror-view.js` ticks asynchronously mid-test. Bounded loops at `422` (25-tick cable frame) and `432-443` (sound) also depend on unseeded `Math.random()` (`mirror-view.js:32, 1170-1178`). |
-| `Tests/check_screens.js:1149, 1195, 1783, 1792` | Runs 7-8 (Mirror Setup Crew) | Random | 200-tick cable loops (`1149, 1783`) and 400-tick sound loops (`1195, 1792`) rely on unseeded `Math.random()` in cable bag shuffle (`mirror-view.js:32`) and sound bar jumps (`mirror-view.js:1170-1178`). |
-| `Tests/check_screens.js:2073, 2162` | Run 9 (Mirror Dance Crew) | Random | Dance note loops rely on unseeded `Math.random()` lane selection in `mirror-dance-view.js:53`. |
-| `Tests/check_screens.js:690-719` | Run 5 (`voteTestPage`) | Random + Timing | Creates a separate `JSDOM` for `pages/vote-test.html` without pinning `EP.Rng.randomSeed`, so `pages/vote-test.js:10, 25` seeds from `Date.now() ^ Math.random()` (non-deterministic game every run); also uses `await sleep(100)` and `sleep(50)`. |
-| `Tests/check_screens.js:21-38, 3145, 3642-3683` | Runs 1-4 and 6-12 | Order + Timing | All runs except Run 5 share a single `JSDOM` window (`w`), one 250ms `setInterval` (`game.js:293`), one 1000ms `setInterval(api.tick, 1000)` (`attendance-view.js:73`), and one 2600ms `setInterval(ghostHop, 2600)` (`world-map.js:202`). Run 2 depends on Run 1 clicking `#replay` (`3654`); Run 3 depends on Run 2 clicking `#replay` (`3661`); `w.EP.Rng.randomSeed = () => 2026` is set only once at `3644`; and line `3145` explicitly races `attendance-view.js`'s 1s `ATT.tick` ("no sleep before keydown so 1s ATT.tick cannot close it first"). |
-
-### D.2 `LEVEL_HINTS` (Bug 19)
-
-- **Location and size:** `game.js:114-171` (58 lines; 7 entries for Levels `1` through `7`, each defining `ghosts: { "USER_???", "ATTEMPT_01", "NULL" }` and `tea`).
-- **Direct readers:** `ghostHint(name)` at `game.js:206`, `teaHint()` at `game.js:207`, and one test eval in `Tests/check_screens.js:123` (`LEVEL_HINTS[1].ghosts["ATTEMPT_01"]` and `LEVEL_HINTS[1].tea`). `world-map.js:126, 135, 203` calls `teaHint()` / `ghostHint()`, not `LEVEL_HINTS` directly.
-- **What a move to a data file would take:**
-  1. Move `LEVEL_HINTS` into a dedicated data file: either `data/level-hints.js` defining global `LEVEL_HINTS` and loaded via `<script src="data/level-hints.js">` in `index.html` right before `game.js:44` (zero caller changes), OR `rules/levelHints.js` exported via `rules/index.js` as `EP.LEVEL_HINTS`, rebuilt into `rules/rules.bundle.js`, and read via `EP.LEVEL_HINTS` (with a 1-line alias in `game.js` to keep `Tests/check_screens.js:123` working).
-  2. Delete `game.js:114-171` (saves 58 lines in `game.js`). Minimal migration risk.
-
-### D.3 Hint rows for Levels 4 to 7 (Bug 20)
-
-- **Do they exist?** Yes. Placeholder rows exist at `game.js:139-170`: Level 4 (`139-146`), Level 5 (`147-154`), Level 6 (`155-162`), Level 7 (`163-170`), each containing all 3 ghosts (`USER_???`, `ATTEMPT_01`, `NULL`) and a `tea` string.
-- **What is missing:**
-  1. **Approved design copy in `CLAUDE.md`:** `CLAUDE.md` specifies approved ghost and tea hints only for Levels 1, 2 (`CLAUDE.md:482-486`), and 3 (`CLAUDE.md:545-550`). Levels 4 to 7 in `game.js:139-170` are unapproved placeholder copy added in Level 2 Step 6a, and Level 4's real mini-game is not designed yet (`AutoTrial`).
-  2. **Reachability for Level 7:** `game.js:163-170` is dead/unreachable in normal play because Level 7 skips Open Floor and moves straight from Briefing (`V[5]`) to Graduation (`V[9]`) at `game.js:327` (`go(R().isFinal?9:6)`).
-  3. **Screen test coverage:** `Tests/check_screens.js` verifies hints only for Levels 1 (`123-124`), 2 (`130-136`), and 3 (`166-190`), not Levels 4 to 7.
-  4. **Attribute mentions in placeholders:** `game.js:143` ("Initiative"), `150` ("Composure"), and `158` ("Five points... Composure") name the tested attribute, which is shown in Open Floor after Briefing (no pre-briefing leak, though Level 4-6 copy remains unapproved placeholder text).
-
-### D.4 Dev jump (Bug 21)
-
-- **Where the flag is read:** `game.js:886` declares `var DEV_JUMP = true;` (a mutable global `var`). It is checked only in `devJump(n)` (`game.js:893`) and the `keydown` handler (`game.js:911`).
-- **Does the rules engine refuse a jump when the flag is off?** **No.** `Game.jumpToLevel(targetLevel)` (`rules/Game.js:358-498`) has no flag, constructor option, or permission check. Calling `G.jumpToLevel(n)` directly (e.g. from DevTools console or a Base44 actor call) succeeds even when `DEV_JUMP = false`. (`Tests/check_screens.js:3119` also calls `g.jumpToLevel(7)` directly with no flag.) For Base44, `Game` (or the actor wrapper) must store an explicit dev/test flag defaulting to `false` and refuse `jumpToLevel` when off.
-
-### D.5 `Game.jumpToLevel` (Bug 27)
-
-- **Exact line range:** `rules/Game.js:358-498` (141 lines; `356-498` with doc comment = 143 lines).
-- **Coupling analysis:**
-  - Uses public `Game` members/methods: `level`, `step`, `running`, `start()`, `players`, `teams`, `round`, `rng`, `hooks` (`onFastForward`, `beforeClose`), `now()`, `didRun()`, `advance()`, `startNextRound()`, `closeMirrorLobby()`, `startMirrorShowtime()`, `closeMirror()`, `closeSop()`, `closeSplitBrief()`, `setPrompt()`, `startWriting()`, `closeWriting()`, `startVote()`, `runTrial()`, `endTrial()`, `closeGlitchReport()`, `closeGiftWindow()`, `lockIn()`, `computeEarnings()`, `placeAllRemaining()`, `finishRound()`, `syncAttendance()`, `refreshTimer()`, plus `Round.LEVELS` and `Trial.*`.
-  - Only private/internal access: `this._timer.current` and `this._timer.closeAt(...)` at `rules/Game.js:384, 393, 399, 410-411, 423, 426, 441, 459, 469, 476`.
-- **What a move to its own file (e.g. `rules/devJump.js`) would take:**
-  1. Replace `this._timer.current` and `this._timer.closeAt(...)` with existing public `game.timer` (`rules/Game.js:130`) and `game.closeTimerAt(...)` (`rules/Game.js:190`).
-  2. Create `rules/devJump.js` exporting `jumpToLevel(game, targetLevel)` importing `Round` and `Trial` (following single-line imports/exports per `CLAUDE.md:107`).
-  3. Keep a guarded 1-line wrapper `jumpToLevel(targetLevel)` on `Game` (enforcing the Bug 21 dev flag) or export from `rules/index.js`, rebuild `rules/rules.bundle.js` (`npm run build`), and update `docs/class-diagram.md`. Existing callers (`game.js:904`, `Tests/check_screens.js:3119`) remain compatible. Saves ~140 lines from `rules/Game.js`.
+| # | Missing test | Affects Multiplayer? | Affects Save/Load? | Notes |
+|---:|---|---|---|---|
+| 1 | Multi-human same-team interaction tests (2+ humans editing Level 1 SOP, submitting SOP independently, editing/locking Level 2 Split Brief, sharing Level 3 Setup/Dance, human-to-human open/pending/declined/expired gifts) | **Yes** | **Yes** | All current tests use 1 human + bots or all-bot teams; would have immediately caught **A-01** (`submitSop` round-wide lock) and **A-04** (`TEAM.find` crash). |
+| 2 | `Tests/check_save.js` driving real `Game` player APIs (`splitBriefPostNote`, `splitBriefSetBoard`, `splitBriefLockIn`, `submitSop`, `skipAccusation`, `answerGiftByIndex`, `mirrorSoundAdjust`, `mirrorDancePress`) across mid-trial reloads | **Yes** | **Yes** | Currently `check_save.js:77-95, 115-149` calls direct `SplitBriefTrial` methods and legacy `mirrorSoundHeld`/`mirrorDanceHit` wrappers instead of live player methods. |
+| 3 | Sleeping Base44 actor wake test (`toJSON` -> sleep past `twistDeadline`, Mirror Setup/Dance deadlines, and `Attendance` popup/miss -> `fromJSON` -> `tick()` + `pollAttendance()`) | **Yes** | **Yes** | No test verifies combined `tick()` + `pollAttendance()` catch-up after an actor wakes from sleep (**A-06**). |
+| 4 | Player privacy and hidden-math contract test (asserting `playerState`, `roundSummary`, `splitBriefView`, `judgedView`, `mirrorSetupView`, `mirrorDanceView`, `giftOptions`, `sabotageOptions`, `board` never contain `isBot`, other players' stats/types/hearts, `cost: 0` on Independent refusal, raw `base`, unrounded `score`, `total`, or `firsts`) | **Yes** | No | Would have immediately caught **A-07**, **A-08**, **A-09**, and **A-15**. |
+| 5 | Idle-player refusal tests across all actions (`setSopBoard`, `submitSop`, `mirrorMiss`, `mirrorConnect`, Setup/Dance actions, `skipAccusation`, `castVote`, `switchTeam`) and SetupCrew idle-return catch-up | **Yes** | **Yes** | Would have caught **A-10** and **A-14**. |
+| 6 | Duplicate display names and `switchTeam()` UI/session tests (gifts, sabotage, accusations, rosters, and `world-map.js` after team switch or non-solo names) | **Yes** | **Yes** | Would have caught **A-04** and **A-11**. |
+| 7 | Unit tests in fast `npm test` for Step 6-12 `Game` APIs (`checkEmail`, `checkJoinCode`, `anomaliesFor`/`recordAnomaly`, `playerState`, `roundSummary`, `giftOptions`, `sabotageOptions`, `answerGiftByIndex`, `trialResultView`, `teamStandings`, `judgedView`, `castVote`, `skipAccusation`, `submitSop`) | **Yes** | **Yes** | Currently covered mostly in jsdom `test:screens`, not in fast `rules/` unit tests (`check_steps.js`/`check_save.js`). |
+| 8 | `rules/*.js` guard test (no `Math.random`/`Date.now`/DOM/timers, single-line `import`/`export`, auto-discovering new `*-view.js` files) | **Yes** | **Yes** | Covers the Step 13 gap (**A-23**, Area 6). |
+| 9 | Level 3 visual hit-frame alignment test (checking rendered `leftPct` at `progress = 1` falls inside `.hitframe` geometry) and excluded-idle screen copy test | No | No | Would have caught **A-18** and **A-19**. |
 
 ---
 
-## E. Bug 30 and ranking (Hannah's code at hz-level3)
+### Area 8: Carry-Forward Details (Items l, n, o, p)
 
-### E.1 Can a player patch another team's machine? Does it count toward a score?
+#### Item l: Git exit code 1 on first try in Windows PowerShell 5.1
 
-- **Answer:** **Yes, the player must patch all 4 teams' machines**, and it counts **only toward the player's own team (`MYTEAM`)** Step 1 completion and attention score, never toward any other team's score.
-- **Exact quotes from `hz-level3`:**
-  - `hz-level3:game.js:48-52`:
-    ```js
-    const MIR_TEAMS=[{id:"kestrel",n:"Team Kestrel",port:"HDMI",me:true},{id:"wren",n:"Team Wren",port:"USB-C"},{id:"finch",n:"Team Finch",port:"AirLink"},{id:"heron",n:"Team Heron",port:"VGA"}];
-    ```
-  - `hz-level3:game.js:488-498`:
-    ```js
-    function plugCable(id){const m=S.mirror;
-      if(S.step!==7||!G||!G.round||R().trialKind!=="mirror"||sopDone()||m.phase!==1||!meOnSetup())return;
-      const t=MIR_TEAMS.find(x=>x.id===id);
-      if(!t||m.links[id])return;
-      let best=null,bd=99;
-      for(const c of m.rack){if(c.j||c.type!==t.port)continue;const d=Math.abs(m.t-(c.t0+MIR_PLUG_TRAVEL));if(d<bd){bd=d;best=c}}
-      if(best&&bd<=2){best.j="plug";best.jT=m.t;m.links[id]=t.port;
-        const left=MIR_TEAMS.filter(x=>!m.links[x.id]).length;
-        m.msg=t.n+" is on the projector. "+(left?left+" to go.":"Every machine is live. Sound check next.")}
-      else{m.pen+=3;m.msg="Spark. "+t.n+" takes "+t.port+" and there is no "+t.port+" cable in the frame (attention \u22123)."}
-      afterMirrorAction()}
-    ```
-  - `hz-level3:game.js:524` and `609`:
-    ```js
-    const rackDone=MIR_TEAMS.every(t2=>m.links[t2.id]);
-    ```
-    ```js
-    const allLinked=MIR_TEAMS.every(t=>m.links[t.id]);
-    ```
-  - `hz-level3:game.js:430`:
-    ```js
-    function pushMirrorScore(){... G.setMirrorScore(MYTEAM,mirAtt())}
-    ```
-  - Bot teams' scores are untouched by `plugCable`; they receive `this.randomBase()` (0 to 7) at `hz-level3:rules/Trial.js:231`.
+- **Read-only checks performed:**
+  - `git config --list --show-origin` shows `core.autocrlf=true` in `C:/Program Files/Git/etc/gitconfig` (repo `.gitattributes` does not exist).
+  - `Get-ChildItem .git\hooks` shows only `.sample` files (no active Git hooks).
+  - PowerShell version is `5.1.26100.9818` (`$ErrorActionPreference = Continue` in interactive shell).
+- **Likely cause:**
+  1. Git writes normal non-error output to `stderr`: `git add` emits `warning: in the working copy of '...', LF will be replaced by CRLF` under `core.autocrlf=true`, and `git push` always writes remote progress/branch updates (`To https://...`) to `stderr`.
+  2. In Windows PowerShell 5.1, any native command writing to `stderr` produces PowerShell `ErrorRecord` objects; under `$ErrorActionPreference = 'Stop'` (or any tool wrapper that treats non-empty `stderr` / `$? = $false` as failure), PowerShell aborts with exit code 1 even when Git's own `$LASTEXITCODE` is `0`. On retry, `git add` has already normalized the index entry (no new warning) and `git push` prints `"Everything up-to-date"` (or succeeds cleanly once the warning/lock clears). A secondary transient cause for `add`/`commit` in VS Code on Windows is `.git/index.lock` held briefly by VS Code's background Git auto-fetch.
+- **One-line fix:** Keep `$ErrorActionPreference = 'Continue'` and judge Git success strictly by `$LASTEXITCODE` (or pass `-q` / set `$env:GIT_REDIRECT_STDERR = '2>&1'` / use PowerShell 7).
 
-### E.2 How Hannah's ranking sorts
+#### Item n: Code touched by Open Questions Q1, Q9, Q11 (questions not answered)
 
-- **Sort order:** `score = base + influence` descending, then random `this.rng()` tie-break (`a.roll - b.roll`). No exact-attention tie-break.
-- **Exact quotes from `hz-level3:rules/Trial.js`:**
-  - `hz-level3:rules/Trial.js:48-54` (`Trial.sortBy`):
-    ```js
-    sortBy(entries, keys) {
-      entries.forEach(e => { e.roll = this.rng(); });
-      return entries.sort((a, b) => {
-        for (const k of keys) { const d = k(b) - k(a); if (d) return d; }
-        return a.roll - b.roll;
-      });
-    }
-    ```
-  - `hz-level3:rules/Trial.js:71-78` (`Trial.rankWithInfluence`):
-    ```js
-    rankWithInfluence(round, teams, baseOf) {
-      const inf = Trial.influence(round, teams);
-      const entries = teams.map(team => {
-        const base = baseOf(team);
-        return { team, base, influence: inf.get(team), score: base + inf.get(team) };
-      });
-      return this.sortBy(entries, [e => e.score]);
-    }
-    ```
-  - `hz-level3:rules/Trial.js:204-207, 230-233` (`MirrorTrial.score` and `MirrorTrial.rank`):
-    ```js
-    static score(attention) {
-      const a = Math.max(0, Math.min(100, Number(attention) || 0));
-      return Math.max(0, Math.min(MirrorTrial.MAX_SCORE, Math.round(a / 100 * MirrorTrial.MAX_SCORE)));
-    }
-    rank(round, teams) {
-      for (const t of teams) if (!this.scores.has(t)) this.scores.set(t, this.randomBase());
-      return this.rankWithInfluence(round, teams, t => this.scores.get(t));
-    }
-    ```
-  - Result display at `hz-level3:game.js:399-401` renders `shownScore(x.score)` (rounded `base + influence`, clamped `0..7`).
+- **Q1 (Open Floor position as game state or pure UI):**
+  - `game.js:214` (`S.pos`, `S.visited`, `S.wroom`, `S.room`), `game.js:852` (Replay preserves `S.visited`).
+  - `world-map.js:23-39` (`walkable`, `blocked`, `canStand`, `roomAt`), `95` (`#wme`), `107` (`#mmme`), `113` (`#wroom`), `145-179` (`initWorld` `rAF` loop, collision, room transitions, ghost proximity), `194-196` (`keydown`/`keyup`, `doUse`).
+  - If promoted to game state: `rules/Player.js`, `rules/Game.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`.
+- **Q9 (Open Floor tap speed, Bug 3):**
+  - `world-map.js:136` (`TAP_MS = 110`).
+  - `world-map.js:156-163` (`frame(t)` reading `held()` and applying `sp = 300`).
+  - `world-map.js:195` (`keydown` setting `tap[k] = performance.now() + TAP_MS` vs `rAF` timestamp `t`).
+- **Q11 (Owner of one-click untimed buttons in multiplayer):**
+  - `game.js:255-261` (`startLevel`, `startNextLevel`), `327-331, 341, 354-358` (`fwd`/`goForward` for Intermission, Briefing, AutoTrial, All-hands, Next Level), `549` (`#runAuto`), `873-876` (`payCost` -> `G.endTrial()`).
+  - `pages/vote-test.js:43-49` (`openJudgedTrial`), `104-108` (`onEndNow`, `onResultNext`).
+  - `rules/Game.js:137` (`start`), `214` (`closeTimer`), `336` (`advance`), `372` (`startNextRound`), `1222` (`runTrial`), `1235` (`endTrial`), `1617` (`results`).
+  - `Tests/check_steps.js`, `Tests/check_screens.js`.
 
-### E.3 Comparison to current code
+#### Item o: Pure UI Bugs Still Open (2, 3, 8, 9)
 
-- **Patching other teams' machines:** **SAME mechanic, dynamic team labels.** Current code (`mirror-view.js:186-193, 653-668, 894-943`; `rules/MirrorParts.js:471-525`) binds `EP.MirrorData.ports` (`HDMI`, `USB-C`, `AirLink`, `VGA`) dynamically to `[MYTEAM, ...otherTeams]` instead of hardcoded `MIR_TEAMS`, still requires patching all 4 ports labeled with other teams' names to finish Step 1, and records hits/sparks only on the acting player's own team (`ts.cables.connected`, `ts.penalties`) with zero effect on other teams' scores.
-- **Ranking sort:** **DIFFERENT in 3 ways (plus standings note):**
-  1. **Exact-attention tie-break added:** Current `rules/Trial.js:79-86, 1033-1052` sorts by `score = base + influence` descending, then higher exact `attention` (`0..100`) descending, then random `this.rng()` roll.
-  2. **Bot-only scores:** Hannah rolled uniform integer `0..7` (`randomBase()`, `hz-level3:rules/Trial.js:231`); current `rules/Trial.js:604-611, 665-675` (`#ensureBotAttention`) rolls uniform integer `0..100` attention and maps via `Math.round(att / 100 * 7)`.
-  3. **Result display mismatch:** Hannah (`hz-level3:game.js:401`) showed `shownScore(x.score)` (`base + influence` rounded); current `mirror-view.js:252` sorts by `G.trialRanking()` (`base + influence`) while printing `r.base / 7` (pre-influence score) with no influence column, so a lower displayed `r.base / 7` can appear ranked above a higher one. Also `Game.teamStandings()` (`rules/Game.js:762`) sorts cumulative `trialWins` descending with sequential `place: i + 1` in team-array order on ties.
+All 4 bugs are confirmed **still present** and **still pure UI** (no rule or save/load state involved):
+- **Bug 2 (note counter):** `splitbrief-view.js:95, 172-181`. `#splitNoteIn` has `maxlength="80"` and label `Post a note (max 80 chars)`, with no live `N / 80` character counter element or update in the `input` listener.
+- **Bug 3 (tap speed):** `world-map.js:136, 156-163, 195`. `TAP_MS = 110` moves ~33px per tap at `300 px/s` across a 2300px map, and `keydown` writes `performance.now() + TAP_MS` while `held()` compares against `rAF` `t`.
+- **Bug 8 (button wrap):** `splitbrief-view.js:81`; `styles.css:31, 352`. `.sb-slot` and `.row` both use `flex-wrap: wrap`, so longer task names wrap the 3 Up/Down/Remove buttons inconsistently between slots 1 and 2.
+- **Bug 9 (footer after Lock In):** `splitbrief-view.js:297`; `game.js:369, 372`. `SplitBriefView.screen` always returns `waitHint: "Wait for the Split Brief timer to finish"` even when `locked === true`.
+
+#### Item p: Git Remotes (`git remote -v`)
+
+Confirmed exact output of `git remote -v`:
+```text
+backup  https://github.com/bcoppage-IC/Exit_ProtocoL.git (fetch)
+backup  https://github.com/bcoppage-IC/Exit_ProtocoL.git (push)
+origin  https://github.com/myiamack/exit-protocol.git (fetch)
+origin  https://github.com/myiamack/exit-protocol.git (push)
+origin  https://github.com/bcoppage-IC/Exit_ProtocoL.git (push)
+```
+`origin` already pushes to both `myiamack/exit-protocol.git` and `bcoppage-IC/Exit_ProtocoL.git`, so running `git push backup` right after `git push origin` pushes to an already-updated remote and is a no-op. No remotes were changed.
 
 ---
 
-## F. Bug 29: cable timing
+### Area 9: Size and Dead Code
 
-- **Code constants (`rules/mirrorData.js:6, 63, 90-97`; `mirror-view.js:120, 187-192, 641-650, 1128-1164`):**
-  - Ports: `["HDMI", "USB-C", "AirLink", "VGA"]` (`MYTEAM` is always mapped to `HDMI` at `mirror-view.js:187-192`).
-  - `tickMs = 250` ms (0.25 s/tick); showtime window = 75 s (300 ticks).
-  - `travelTicks = 11` (2.75 s to frame center); `hitWindowTicks = 2` (`|tick - (t0 + 11)| <= 2`).
-  - A cable spawned at tick `t0`:
-    - First enters hit frame at `t0 + 9` (2.25 s after spawn).
-    - Reaches frame center at `t0 + 11` (2.75 s after spawn).
-    - Last valid hit tick at `t0 + 13` (3.25 s after spawn).
-    - Marked `"past"` and returned to `c.bag` via `c.bag.push(item.port)` at `t0 + 14` (3.50 s after spawn; `mirror-view.js:1151-1156`).
-  - Spawn gaps: `spawnGapInitial = 6` ticks (1.50 s, 0 connected), `spawnGapMid = 5` ticks (1.25 s, 1-2 connected), `spawnGapFast = 4` ticks (1.00 s, 3 connected).
-  - Bag initialization (`mirror-view.js:1138-1140`): `c.bag = shuffleArr(needed.concat(needed))` (8 items, 2 copies of each port), drawn with `c.bag.pop()`. Initial `c = { tick: 0, belt: [], bag: [], nextSpawn: 0 }`, so Spawn #1 happens on `tick = 1` (0.25 s).
+#### Line Counts
 
-- **Spawn arrival schedule (0 connected, gap = 6 ticks = 1.50 s):**
+- `rules/Game.js`: **1,666 lines** (up from 1,041 lines before Steps 3-12).
+- `game.js`: **924 lines**.
 
-| Spawn # | Spawn tick `t0` (time) | First enters hit frame (`t0 + 9`) | Center (`t0 + 11`) | Exits window (`t0 + 13`) | Marked missed & re-pushed (`t0 + 14`) |
-|---|---|---|---|---|---|
-| #1 | tick `1` (0.25 s) | tick `10` (**2.50 s**) | tick `12` (3.00 s) | tick `14` (3.50 s) | tick `15` (3.75 s) |
-| #2 | tick `7` (1.75 s) | tick `16` (**4.00 s**) | tick `18` (4.50 s) | tick `20` (5.00 s) | tick `21` (5.25 s) |
-| #3 | tick `13` (3.25 s) | tick `22` (**5.50 s**) | tick `24` (6.00 s) | tick `26` (6.50 s) | tick `27` (6.75 s) |
-| #4 | tick `19` (4.75 s) | tick `28` (**7.00 s**) | tick `30` (7.50 s) | tick `32` (8.00 s) | tick `33` (8.25 s), OR re-pops #1 if #1 missed |
+#### Split Plans (not executed)
 
-- **Critical LIFO 3-cable lock finding (Bug 29 + Bug 54 + Bug 30 interaction):**
-  - Both `c.bag.push(item.port)` (`mirror-view.js:1155`) and `c.bag.pop()` (`mirror-view.js:1140`) operate on the same end of `c.bag` (LIFO stack).
-  - Because Spawn #1 goes `"past"` at tick `15` (4 ticks before Spawn #4 pops at tick `19`), Spawn #4 always re-pops Spawn #1's missed port; Spawn #5 (tick `25`) re-pops Spawn #2 (pushed at tick `21`); Spawn #6 (tick `31`) re-pops Spawn #3 (pushed at tick `27`).
-  - Therefore, if the player does not plug any of the first 3 spawned cables (e.g. waiting for their own team's `HDMI` without plugging other teams' machines), those same 3 cables loop indefinitely and the remaining 5 entries buried in `c.bag` never spawn during the entire 75 s showtime.
-  - Exact analytical probability that any given port (including `HDMI`) is absent from the first 3 pops of the 8-item bag (2 copies of target, 6 copies of others): `P = (6/8) * (5/7) * (4/6) = 120/336 = 5/14 = 35.71%`.
+**`rules/Game.js` (1,666 lines -> core ~750-800 lines):**
+1. **`rules/GameViews.js` (~350 lines):** Read-only player/public view projections (`playerState`, `roundSummary`, `splitBriefView`, `judgedView`, `trialResultView`, `sabotageOptions`, `giftOptions`, `teamStandings`, `teamTrialResults`, `board`, `statTieOrderLabel`, `roundDisplayScore`).
+2. **`rules/DevJump.js` (~145 lines):** Prototype-only `jumpToLevel()` fast-forward runner (`rules/Game.js:391-531`).
+3. **`rules/MirrorAdapter.js` or generic `trialAction`/`trialView` dispatch (~320 lines):** Moves the 30+ Mirror wrappers and `_advanceMirrorShowtime` / `_mirrorCall` (`rules/Game.js:708-1074`) out of `Game.js` so Levels 4-6 do not repeat this growth pattern.
+4. **`rules/LobbyRules.js` or static helper (~45 lines):** `checkEmail`, `checkJoinCode`, `quietHeartBuff`, and `switchTeam` validation helpers.
 
-- **50,000-trial simulation results (replicating `mirror-view.js:1128-1160`):**
-  - **Active play (player plugs every port on first entry into hit frame, shrinking gap 6 -> 5 -> 4):** Symmetric across all 4 ports (`HDMI`, `USB-C`, `AirLink`, `VGA`):
-    - Min first reach: **2.50 s** (Spawn #1)
-    - Median first reach: **5.50 s**
-    - Mean first reach: **5.05 s to 5.07 s**
-    - 95th percentile first reach: **8.00 s**
-    - Worst-case max first reach: **10.50 s** (bag order `[A, A, B, B, C, C, target, target]`, probability `1/28 = 3.57%`: Spawns 1-6 at ticks `1, 7, 13, 18, 23, 28`, Spawn #7 at `t0 = 33`, enters hit frame at tick `42 = 10.50 s`; all 4 ports connected in `6.75 s` min / `8.00 s` median / `9.25 s` p95 / `10.50 s` max).
-  - **Passive / selective play (player waits for one port without plugging other ports):**
-    - `HDMI`: never reaches hit frame in 75 s in **35.84%** of runs (exact theoretical **35.71%**); when present in the first 3 draws (`64.29%`), arrives at `2.50 s` (`25.0%`), `4.00 s` (`21.4%`), or `5.50 s` (`17.9%`), median `4.00 s`, mean `3.84 s`.
-    - `USB-C` (`35.52%` never), `AirLink` (`35.70%` never), `VGA` (`35.66%` never): identical theoretical `5/14 = 35.71%`.
+**`game.js` (924 lines -> core ~470 lines):**
+1. **`level-copy.js` (~220 lines):** Pure static text/display tables (`TYPE_TEXT`, `FAC`, `MEMOS`, `BRIEFINGS`, `LEVEL_HINTS`, `FAC_BY_LEVEL`, `CLUES`, `ADMIN_LINES`, `ROLE_BRIEF`, `ghostHint`, `teaHint`, `facLines`).
+2. **`arrival-view.js` (~85 lines):** Elevator cutscene SVG, `adminFig`, `leadInDoor`, `vnBox`, `roleBrief`, `runElevator`, `skipArrival`, `arrivalAdvance` (`game.js:719-784`).
+3. **`end-screens.js` (~80 lines):** `nextLevelCard`, `finalResultsScreen`, `milestoneCompleteScreen`, `END_SCREENS` (`game.js:639-688`).
+4. **`sop-view.js` (~45 lines):** `trialSopScreen`, `sopPress`, `checkSop`, `sopPile` (`game.js:515-533, 858-872`), matching `splitbrief-view.js`, `mirror-view.js`, and `judged-view.js`.
+5. **`code-rain.js` (~25 lines):** Background canvas matrix rain (`game.js:1-23`).
 
-- **Can the shuffle (Bug 54) delay HDMI past a normal play window?**
-  - Under **active play** (plugging every port as it arrives): **No** (max `10.50 s`, well inside the 75 s showtime, though `6.75 s` to `10.50 s` is slower than the 4 s bot milestone).
-  - Under **selective or missed play** (trying to plug `HDMI` first without patching other teams' ports, or missing the first 3 cables): **Yes, catastrophically.** Bug 54's shuffle combined with LIFO `c.bag.push()` + `c.bag.pop()` delays `HDMI` past the entire 75 s showtime in **35.71% (`5/14`)** of games.
+#### Dead Code List
 
----
+**Screen files, HTML, and CSS (A-28):**
+- `game.js:40-41`: `SOP` and `DECOY` constants (never referenced after Step 12 moved SOP checking to `Game.trialResultView`).
+- `world-map.js:6`: `GSPOTS` constant (unused leftover from the old static map).
+- `world-map.js:198-199`: `addEventListener("click", ...)` handler for `.gwalk` elements and `#whisper` popup (no `.gwalk` elements are rendered anywhere in the DOM).
+- `index.html:26`: `<div class="whisper" id="whisper" hidden></div>` (only ever hidden on `Escape` at `game.js:786` and `devJump` at `game.js:911`, never opened).
+- `mirror-view.js:114`: `m.dance = null;` (obsolete key; `mirror-dance-view.js` uses `state.danceUI`, **A-21**).
+- `styles.css:76`: `.flag.OK` (never used; statuses are `Active`, `risk`, `Glitching`, `Stuck`, `Idle`).
+- `styles.css:111`: `.field .lab` (never referenced in HTML or JS).
+- `styles.css:132`: `.small .badge` (never referenced in HTML or JS).
+- `styles.css:276`: `.gwalk` (leftover static-map ghost class).
+- `styles.css:280-282`: `.whisper`, `.whisper b`, `.whisper p` (leftover static-map whisper box styles).
+- `styles.css:438`: `.mfile.ok` (never toggled by `mirror-view.js`).
 
-## G. Bug 50: KEYS order vs TIE_ORDER
-
-- **Definitions:**
-  - `KEYS = ["focus", "initiative", "collab", "composure", "grit"]` (`rules/Attributes.js:5`, `rules/PlayerStatus.js:5`, `rules/Wallet.js:5`, re-exported via `rules/Player.js:11, 63`).
-  - `TIE_ORDER = ["focus", "collab", "initiative", "grit", "composure"]` (`rules/Attributes.js:6`, `rules/Player.js:12, 244`; `GIFT_TIE_ORDER = TIE_ORDER` at `rules/Attributes.js:7`).
-- **Verdict:** **No, `KEYS` order is NOT only storage order (save format).** It affects display, tie-breaks, and gameplay results in 4 runtime places (plus 1 test):
-  1. **Display (`rules/Attributes.js:66-72`, `abilityLines()`, rendered at `game.js:680`):** Iterates `KEYS`, so the Stats Update "Your abilities" panel displays attributes in `Focus, Initiative, Collaboration, Composure, Grit` order instead of canonical `Focus, Collaboration, Initiative, Grit, Composure`.
-  2. **Tie-breaks (`rules/Attributes.js:49-50`, `highestKey()` and `lowestKey()`):** Both reduce over `KEYS`, breaking ties toward `initiative` over `collab` and `composure` over `grit`. (Wrong accusations at `rules/Attributes.js:100` use `highestKeyIn(TIE_ORDER)` and gifts at `rules/Attributes.js:111` use `GIFT_TIE_ORDER`, so those two already follow `TIE_ORDER`.)
-  3. **Results - Reboot donor tie-breaks (`rules/Attributes.js:133-149`, `reboot()`):** Iterates glitched attributes in `KEYS` order (`134`) and builds `donors = KEYS.filter(...).sort((a, b) => attrs[b] - attrs[a])` (`139-140`). Because JS `Array.prototype.sort` is stable, tied highest donors lose points in `KEYS` order (`initiative` drained before `collab`, `composure` before `grit`), altering post-reboot stats and graduation outcomes.
-  4. **Results - Auto-placement and bot allocation (`rules/Economy.js:74-89`, `Economy.allocate()`):** Line `78` raises `< 2` attributes at Round 7 Graduation in `KEYS` order when points are scarce; lines `81, 85` (`open = KEYS.filter(...)`, `pool.reduce(...)`) break all non-bonus lowest-attribute ties in `KEYS` order for every bot and every auto-placed human point on timer close.
-  5. **Test RNG draw order (`Tests/check_save.js:182`):** `any(EP.Player.KEYS, d)` indexes into `KEYS`, so reordering `KEYS` shifts save-test RNG choices.
-- **Verified non-impacts:** `Bots.typicalSpend` (`rules/bots.js:56-59`) produces the same 2-element `others` order under both `KEYS` and `TIE_ORDER` for all 3 types (`coop: focus, grit`; `indep: initiative, composure`; `contra: focus, collab`). `PlayerStatus.isGlitching`/`isAtRisk` (`rules/PlayerStatus.js:27, 30`), `Wallet.placePoints`/`placeLeft`/`roomLeft` (`rules/Wallet.js:61-76`), and `Attributes.total`/`lowest` (`rules/Attributes.js:47-48`) are order-independent.
-
----
-
-## H. Full class list
-
-### Exact name confirmations
-- Class in `rules/Attributes.js`: **`Attributes`** (`rules/Attributes.js:22-157`)
-- Split Brief trial subclass: **`SplitBriefTrial`** (`extends Trial`, `rules/Trial.js:216-512`)
-- Judged trial subclass: **`JudgedTrial`** (`extends Trial`, `rules/Trial.js:1163-1273`)
-
-### All 30 classes in `rules/`
-
-| # | Class | File:lines | Parent class | Methods (excl. ctor) | Explicit constructor |
-|---:|---|---|---|---:|---:|
-| 1 | `Accusation` | `rules/Accusation.js:5-38` | (none) | 2 | 0 |
-| 2 | `Attendance` | `rules/Attendance.js:16-86` | (none) | 7 | 1 |
-| 3 | `Attributes` | `rules/Attributes.js:22-157` | (none) | 24 | 1 |
-| 4 | `CharacterType` | `rules/CharacterType.js:11-51` | (none) | 15 | 1 |
-| 5 | `Cooperative` | `rules/CharacterType.js:53-59` | `CharacterType` | 1 | 1 |
-| 6 | `Independent` | `rules/CharacterType.js:61-70` | `CharacterType` | 4 | 1 |
-| 7 | `Contrarian` | `rules/CharacterType.js:72-79` | `CharacterType` | 2 | 1 |
-| 8 | `Economy` | `rules/Economy.js:8-109` | (none) | 9 | 0 |
-| 9 | `Game` | `rules/Game.js:83-1030` | (none) | 120 | 1 |
-| 10 | `Gift` | `rules/Gift.js:12-87` | (none) | 8 | 0 |
-| 11 | `Hearts` | `rules/Hearts.js:8-33` | (none) | 10 | 1 |
-| 12 | `MirrorLobby` | `rules/MirrorParts.js:10-270` | (none) | 24 | 1 |
-| 13 | `SetupCrew` | `rules/MirrorParts.js:275-1198` | (none) | 48 | 1 |
-| 14 | `DanceCrew` | `rules/MirrorParts.js:1204-1600` | (none) | 26 | 1 |
-| 15 | `PathTracker` | `rules/PathTracker.js:6-73` | (none) | 12 | 1 |
-| 16 | `Player` | `rules/Player.js:28-241` | (none) | 81 | 1 |
-| 17 | `PlayerStatus` | `rules/PlayerStatus.js:9-59` | (none) | 16 | 1 |
-| 18 | `Rng` | `rules/Rng.js:7-24` | (none) | 3 | 0 |
-| 19 | `Round` | `rules/Round.js:22-110` | (none) | 17 | 1 |
-| 20 | `Sabotage` | `rules/Sabotage.js:3-38` | (none) | 4 | 0 |
-| 21 | `Team` | `rules/Team.js:3-31` | (none) | 9 | 1 |
-| 22 | `Timer` | `rules/Timer.js:5-65` | (none) | 9 | 1 |
-| 23 | `Trial` | `rules/Trial.js:18-131` | (none) | 12 | 1 |
-| 24 | `SopTrial` | `rules/Trial.js:134-197` | `Trial` | 12 | 1 |
-| 25 | `AutoTrial` | `rules/Trial.js:206-208` | `Trial` | 1 | 0 |
-| 26 | `SplitBriefTrial` | `rules/Trial.js:216-512` | `Trial` | 39 | 1 |
-| 27 | `MirrorTrial` | `rules/Trial.js:518-1129` | `Trial` | 85 | 1 |
-| 28 | `JudgedTrial` | `rules/Trial.js:1163-1273` | `Trial` | 15 | 1 |
-| 29 | `Vote` | `rules/Vote.js:9-79` | (none) | 6 | 1 |
-| 30 | `Wallet` | `rules/Wallet.js:8-98` | (none) | 19 | 1 |
-
-- **Non-class modules in `rules/`:** `bots.js` (plain object `Bots` + `Bots.hooks`), `index.js`, `mirrorData.js`, `scenarios.js` (generated `rules.bundle.js` excluded).
-- **Totals vs reference (`30 classes, 8 subclasses, 640 methods`):**
-  - **Classes:** 30 (matches 30).
-  - **Subclasses:** 8 (`Cooperative`, `Independent`, `Contrarian` extending `CharacterType`; `SopTrial`, `AutoTrial`, `SplitBriefTrial`, `MirrorTrial`, `JudgedTrial` extending `Trial`) (matches 8).
-  - **Methods:** 640 excluding the 24 explicit `constructor` definitions (matches 640; 664 if constructors are included). Zero mismatches flagged.
-
----
-
-## I. Summary
-
-1. Single-player UI clicks close shared steps, end trials, or close votes for the whole room (`game.js:251-258, 327-330, 518, 810-811, 831-862`; `judged-view.js:26-27, 73, 113` - Sections A, C).
-2. Screen code mutates rules objects directly instead of going through `Game` (`splitbrief-view.js:163, 186, 198, 210, 221, 230`; `judged-view.js:26, 108, 113`; `game.js:596`; `pages/vote-test.js:39-40` - Section C).
-3. Screen code reads full mutable `Game`/`Player`/`Round`/`Trial` internals directly with no per-player privacy boundary (`game.js:226, 598, 673`; `splitbrief-view.js:42-90`; `judged-view.js:25-91`; `mirror-view.js:187` - Section C).
-4. Client-side `setInterval` loops and `Date.now()` clocks drive `Game.tick()`, `Attendance`, and spawn/elevator timing (`game.js:293, 742, 747-748, 801`; `attendance-view.js:15, 34, 73` - Sections A, C).
-5. Dance Crew runs on a client `requestAnimationFrame` clock that spawns notes with unseeded `Math.random()`, charges `-2` misses on idle/Board-blocked players, and stops on tab close or Back (`mirror-dance-view.js:51-60, 355-397, 468-470, 477-491`; `game.js:296, 756, 871` - Section A).
-6. Setup Crew Q&A, Sound, Mic, and Deck run unsaved screen-side timers and unseeded `Math.random()` that charge penalties, advance steps, or consume `G.rng` on client ticks (`mirror-view.js:512-555, 945-969, 1027, 1165-1248` - Section A).
-7. Cable belt unseeded `Math.random()` shuffle plus LIFO `push()`/`pop()` traps missed cables in an infinite 3-cable loop, blocking `HDMI` for the entire 75s showtime in 35.71% of runs if other ports are not plugged first (`mirror-view.js:29-36, 1128-1164` - Sections A, E, F).
-8. `Game.jumpToLevel` has no rules-side dev flag check (`DEV_JUMP` is enforced only in `game.js`), allowing any direct actor call to jump levels (`rules/Game.js:358-498`; `game.js:886-911` - Sections C, D).
-9. Screen `canBack()` stays enabled during active trials, tearing down trial views and freezing screen-side timers while `Game` keeps running (`game.js:296, 756, 871` - Sections A, B).
-10. `KEYS` order diverges from `TIE_ORDER` in display (`abilityLines`), reboot donor ties (`reboot`), and auto-placement/bot allocation (`Economy.allocate`) (`rules/Attributes.js:5-6, 49-50, 66-72, 133-149`; `rules/Economy.js:74-89` - Section G).
+**`rules/` files (A-29):**
+- `rules/Attributes.js:7`: `GIFT_TIE_ORDER` (zero callers; alias of `TIE_ORDER`).
+- `rules/Attributes.js:49-50`: `highestKey()` and `lowestKey()` (zero callers; `highest()` and `lowest()` are used instead).
+- `rules/Player.js:95-96`: `highestKey()` and `lowestKey()` pass-throughs (zero callers).
+- `rules/Player.js:113` & `rules/PlayerStatus.js:34-39`: `Player.flag()` / `PlayerStatus.flag()` (zero screen callers; kept only by older unit tests; screens use `boardStatus()`).
+- `rules/Game.js:585-594` & `rules/Trial.js:188-192`: `Game.setSopScore` / `Game.scoreSop` / `SopTrial.scoreSop` (zero screen callers; `scoreSop` has zero callers anywhere in code or tests).
+- `rules/Trial.js:1016, 1026`: `MirrorTrial.setupState()` and `MirrorTrial.danceState()` (zero callers).
+- `rules/Game.js:971-972, 974-975, 978, 980, 983-985`: 9 legacy pre-Step-3b/4 `Game.mirror*` pass-throughs (`mirrorNextSoundSpike`, `mirrorNextSoundJitter`, `mirrorSoundHeld`, `mirrorSoundFeedback`, `mirrorReshuffleDeck`, `mirrorTimeoutQa`, `mirrorDanceHit`, `mirrorDanceMiss`, `mirrorDanceStray`) that have zero screen callers and remain only for older unit tests.
+- `rules/mirrorData.js:65, 67, 159, 197, 200-201`: 6 unused data entries (`timers.lobbyTicks`, `timers.revealTicks`, `dance.choreoLength`, `flavor.statusMessages.lobbyAllIn`, `doorsPartial`, `doorsAllIn`).
