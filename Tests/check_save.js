@@ -582,6 +582,13 @@ console.log("-- 7. Mid-round save/reload preserves round details and anomalies (
   g.advance();        // openFloor
   g.advance();        // trial (SOP)
 
+  const rngBeforeOrder = g.rng.getState();
+  const sopOrderBefore = g.sopOrder();
+  const rngUnchangedByOrder = g.rng.getState() === rngBeforeOrder;
+  const expectedSopSet = [...Trial.SopTrial.STEPS, Trial.SopTrial.ENDLESS].sort();
+  const sopOrderValid = sopOrderBefore.length === expectedSopSet.length &&
+    JSON.stringify([...sopOrderBefore].sort()) === JSON.stringify(expectedSopSet);
+
   const addL1 = g.recordAnomaly(me, "L");
   const addL2 = g.recordAnomaly(me, "L");
   const addId = g.recordAnomaly(me, "id");
@@ -598,6 +605,12 @@ console.log("-- 7. Mid-round save/reload preserves round details and anomalies (
   const snap = save(g);
   const parsed = JSON.parse(snap);
   const g2 = load(snap, T, { hooks: {}, tick: false });
+  const rng2BeforeOrder = g2.rng.getState();
+  const sopOrderAfter = g2.sopOrder();
+  const sopOrderMatchesAfterReload = rngUnchangedByOrder && sopOrderValid &&
+    g2.rng.getState() === rng2BeforeOrder &&
+    JSON.stringify(sopOrderAfter) === JSON.stringify(sopOrderBefore) &&
+    JSON.stringify(g.sopOrder()) === JSON.stringify(sopOrderBefore);
   const me2 = g2.players.find(p => p.id === me.id);
   const mate2 = g2.players.find(p => p.id === mate.id);
 
@@ -608,11 +621,14 @@ console.log("-- 7. Mid-round save/reload preserves round details and anomalies (
 
   const oldParsed = JSON.parse(snap);
   for (const p of oldParsed.players) delete p.anomalies;
+  if (oldParsed.round && oldParsed.round.trialState) delete oldParsed.round.trialState.pileSeed;
   const gOld = Game.fromJSON(oldParsed, { clock: () => T.now, hooks: {}, tick: false });
 
   ok(
     "mid-round save/reload keeps trialPayments, accusations[].safe, sopTimedOut, and anomalies (old saves default to [])",
     addL1 === true && addL2 === false && addId === true && addBad === false &&
+      sopOrderMatchesAfterReload &&
+      gOld.sopOrder().length === expectedSopSet.length &&
       g.round.sopTimedOut === true && g2.round.sopTimedOut === true &&
       Object.keys(g.round.trialPayments).length > 0 &&
       JSON.stringify(g2.round.trialPayments) === JSON.stringify(g.round.trialPayments) &&

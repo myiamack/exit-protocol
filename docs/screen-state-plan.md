@@ -21,7 +21,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 9:** Move anomaly tracking (`S.found`) into `Player` / `Game` save state (`V-06, V-38`)
 - [x] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
 - [x] **Step 11:** Remove scoring, ranking, and tie-break math from screen code (`V-12, V-13, V-22`)
-- [ ] **Step 12:** Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap (`V-10, V-15, V-17`)
+- [x] **Step 12:** Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap (`V-10, V-15, V-17`)
 - [ ] **Step 13:** Add automated guard test `Tests/check_screen_rules.js` (using `// cosmetic-ok` markers)
 
 ---
@@ -171,14 +171,15 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 
 ### Phase 5: Everything Else
 
-#### Step 12: Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap
+#### Step 12: Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap — DONE
 - **Violations covered:** `V-10, V-15, V-17`
-- **Files touched:** `rules/Trial.js`, `rules/Game.js`, `rules/rules.bundle.js`, `game.js`, `Tests/check_save.js`, `Tests/check_screens.js`
-- **Where logic moves:** Existing `SopTrial` (`rules/Trial.js`) and `Game` (`rules/Game.js`).
-  - Provide deterministic SOP step display order from `SopTrial` (derived via a pure hash of `round.n` and seed state so it is reproducible and requires zero extra `Rng` draws, keeping Level 1 fixed-seed baselines 100% identical) and remove `shuffle()`'s `Math.random()` from `game.js:264`.
-  - Keep `localStorage["ep.names"]` display-name memory (`game.js:243-244`) behind a prototype-only helper until Base44 login replaces it (answers Q6).
-  - Move `devJump()` default build fill (`EP.Bots.typicalSpend`) into `Game.jumpToLevel` / `Bots` bootstrap and remove dead `ghostHop` `setInterval` (`world-map.js:201-202`).
+- **Files touched:** `rules/Trial.js`, `rules/Game.js`, `rules/bots.js`, `rules/rules.bundle.js`, `game.js`, `world-map.js`, `Tests/check_save.js`, `Tests/check_screens.js`, `docs/class-diagram.md`, `docs/screen-state-plan.md`
+- **Where logic moves:** Existing `SopTrial` (`rules/Trial.js`), `Game` (`rules/Game.js`), and `Bots` (`rules/bots.js`).
+  - Provide deterministic SOP step display order from `SopTrial` (derived via a pure hash of `round.n` and saved `#pileSeed` so it is reproducible and requires zero extra `Rng` draws, keeping Level 1 fixed-seed baselines 100% identical) and remove `shuffle()`'s `Math.random()` from `game.js`.
+  - Keep `localStorage["ep.names"]` display-name memory behind `protoNameStore` (`// prototype-only: replaced by Base44 login`) until Base44 login replaces it (answers Q6).
+  - Move `devJump()` default build fill (`EP.Bots.typicalSpend`) into `Bots.devBuild(type, spend)` (`rules/bots.js`) and remove dead `ghostHop` `setInterval` (`world-map.js`).
 - **QA bugs fixed:** None (cleanup for deterministic replays and Base44 handoff).
+- **Done notes:** Added `SopTrial.#pileSeed` (snapshotted from `rng.getState()` at creation with zero `Rng` draws, saved in `toJSON`/`fromJSON` with `0` default for older saves), `SopTrial.pileOrder(roundN)` (pure FNV-1a + Murmur3 hash), and `Game.sopOrder()`. Removed `shuffle()` from `game.js`; `"Start over"` (`#reset`) now shows the same pile order as the first render. Isolated `localStorage["ep.names"]` inside `protoNameStore` with `// prototype-only: replaced by Base44 login` while keeping `signOut` behavior unchanged. Added pure `Bots.devBuild(type, spend)` in `rules/bots.js` (zero `Rng` draws), kept `DEV_JUMP = true` and `EP.Bots.soloGame` unchanged, and removed the dead `ghostHop` `setInterval` from `world-map.js` while keeping live wandering ghost hints and `#whisper`.
 - **Checks:** `npm run build`, `npm test` (exact baseline match), `npm run test:screens`.
 
 ---

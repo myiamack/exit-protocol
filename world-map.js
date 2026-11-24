@@ -195,7 +195,5 @@ function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom=
 addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT"||BOARD.isOpen())return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"){if(S.panel){S.panel=false;if(!useAction().ok){render();return}}doUse()}/* E with a popup open: close it, open the new interaction */if(k==="m"&&!e.repeat)toggleMinimap()});
 addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;W.keys[k]=false});
 
-/* wandering ghosts: fade in and out at random spots; tap one for a hint */
-function ghostHop(){$$(".gwalk").forEach(el=>{if(Math.random()<.45)return;el.setAttribute("opacity","0");setTimeout(()=>{const [x,y]=GSPOTS[Math.floor(Math.random()*GSPOTS.length)];el.setAttribute("transform",`translate(${x} ${y})`);el.setAttribute("opacity",String(.5+Math.random()*.35))},900)})}
-setInterval(ghostHop,2600);setTimeout(ghostHop,400);
+/* legacy static-map whisper click handler */
 document.addEventListener("click",e=>{const g=e.target.closest&&e.target.closest(".gwalk");if(!g||g.getAttribute("opacity")==="0")return;const gh=GHOSTS[+g.dataset.ghost];const w=$("#whisper");w.innerHTML=`<b>${gh.n}</b> whispers: “${esc(ghostHint(gh.n))}”`;w.hidden=false;clearTimeout(w._t);w._t=setTimeout(()=>w.hidden=true,6000)});

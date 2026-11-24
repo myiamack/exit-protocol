@@ -4295,7 +4295,7 @@ class Trial {
     const teamById = new Map(teams.map(t => [t.id, t]));
     let t;
     if (data.kind === "sop") {
-      t = new SopTrial(rng);
+      t = new SopTrial(rng, { pileSeed: Number.isInteger(data.pileSeed) ? (data.pileSeed >>> 0) : 0 });
       t.scores = new Map(data.scores.map(([id, s]) => [teamById.get(id), s]));
     } else if (data.kind === "splitBrief") {
       t = SplitBriefTrial.fromJSON(data, { rng, teams, byId });
@@ -4318,9 +4318,41 @@ class Trial {
   }
 }
 
+/* Pure 32-bit FNV-1a + Murmur3 mix for deterministic SOP pile display order (no Math.random, no Rng draws). */
+function sopHashInt(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
 /* Level 1: the coffee SOP. */
 class SopTrial extends Trial {
-  constructor(rng) { super(rng); this.scores = new Map(); }
+  #pileSeed;
+  constructor(rng, { pileSeed = null } = {}) {
+    super(rng);
+    this.scores = new Map();
+    this.#pileSeed = Number.isInteger(pileSeed) ? (pileSeed >>> 0) : (Rng.canSave(rng) ? (rng.getState() >>> 0) : 0);
+  }
+
+  get pileSeed() { return this.#pileSeed; }
+
+  /* Deterministic display order for SOP cards from round number and saved pileSeed (0 Rng draws). */
+  pileOrder(roundN = 1) {
+    const out = [...SopTrial.STEPS, SopTrial.ENDLESS];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = sopHashInt(roundN + "|" + this.#pileSeed + "|" + i) % (i + 1);
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
 
   static get MAX_SCORE() { return 7; }
   /* built: the team's steps in order. correct: the right order. endless: the step that should be left out.
@@ -4382,7 +4414,7 @@ class SopTrial extends Trial {
   }
 
   get kind() { return "sop"; }
-  toJSON() { return { ...super.toJSON(), scores: [...this.scores].map(([team, s]) => [team.id, s]) }; }
+  toJSON() { return { ...super.toJSON(), scores: [...this.scores].map(([team, s]) => [team.id, s]), pileSeed: this.#pileSeed }; }
 }
 
 /* The coffee SOP: the steps in the right order, and the endless step that should be left out. */
@@ -6474,6 +6506,7 @@ class Game {
       ? this.round.trial.sopBoard(this.round, team)
       : Trial.SopTrial.sopBoard(this.round, team);
   }
+  sopOrder() { return this.round && this.round.trial instanceof Trial.SopTrial ? this.round.trial.pileOrder(this.round.n) : []; }
   setSopBoard(p, built) {
     const why = this.wrongStep("trial") || (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null);
     if (why) return { ok: false, reason: why };
@@ -7593,6 +7626,12 @@ const Bots = {
     const spend = {};
     order.forEach((k, i) => { spend[k] = [5, 4, 3, 2, 1][i]; });
     return spend;
+  },
+  /* Pure helper for dev jump: default type "coop", fill typicalSpend if points are unspent. */
+  devBuild(type, spend) {
+    const t = type || "coop";
+    const s = spend && typeof spend === "object" && Player.spendLeft(spend) === 0 ? spend : Bots.typicalSpend(t);
+    return { type: t, spend: s };
   },
   makePlayer(id, name, type) {
     return new Player({ id, name, type, spend: Bots.typicalSpend(type), isBot: true });

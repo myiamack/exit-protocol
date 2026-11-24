@@ -598,6 +598,7 @@ class Game {
       ? this.round.trial.sopBoard(this.round, team)
       : Trial.SopTrial.sopBoard(this.round, team);
   }
+  sopOrder() { return this.round && this.round.trial instanceof Trial.SopTrial ? this.round.trial.pileOrder(this.round.n) : []; }
   setSopBoard(p, built) {
     const why = this.wrongStep("trial") || (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null);
     if (why) return { ok: false, reason: why };

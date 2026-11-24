@@ -240,8 +240,13 @@ function endSession(){if(currentTrialView&&currentTrialView.cleanup)currentTrial
    The name comes back on the next sign-in with the same email. */
 const NAMES={};
 const nameKey=em=>String(em||"").trim().toLowerCase();
-function savedName(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}}
-function saveName(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}}
+// prototype-only: replaced by Base44 login
+const protoNameStore={
+  get(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}},
+  set(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}},
+};
+const savedName=em=>protoNameStore.get(em);
+const saveName=(em,name)=>protoNameStore.set(em,name);
 function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
 function resetRoundUI(){
   S.panel=false;S.of={msg:""};S.sop={pile:[],submitted:false};
@@ -260,7 +265,6 @@ const R=()=>(G&&ME&&G.roundSummary(ME))||LEVEL1;
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);const $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
 const aOrAn=w=>(/^[aeiou]/i.test(w)?"an ":"a ")+w;   // "an Independent", "a Contrarian"
 const shownName=()=>S.name||"Guest";   // one name source for the top bar and My Badge
 const T=()=>TYPES[S.type];
@@ -509,7 +513,7 @@ function trialResultHTML(tv,note){
   return `<div class="result"><b style="color:${won?"var(--ok)":"var(--bad)"}">Team ${won?"WIN":"LOSS"}. Score ${myScore} of ${maxScore}.</b>${note?`<span class="hint">${note}</span>`:""}<span class="hint">Ranking: ${rank.map(x=>`${x.place}. ${esc(x.teamName)} (${x.shownScore})`).join(" · ")}. Top ${winners} of ${rank.length} teams win.</span><span class="hint">Every player now pays ${rs.cost} ${AN[rs.attr]}. Press <b>All-hands</b> for the meeting.</span></div>`;
 }
 function trialSopScreen(){
-  if(!S.sop.pile.length)S.sop.pile=shuffle([...SOP,DECOY]);
+  if(!S.sop.pile.length)S.sop.pile=G.sopOrder();
   const rs=R(),s=S.sop,built=G.sopBoard(MYTEAM),submitted=s.submitted||rs.sopSubmitted,locked=trialDone()||submitted,res=rs.sopResult||{right:0,endlessOut:false},tv=G.trialResultView(MYTEAM);
   const html=`<div><span class="chip r">The Trial · ${AN[rs.attr]}</span><h2 style="margin-top:8px">Write the coffee SOP</h2></div>
 ${sabotageAlertHTML()}
@@ -523,7 +527,7 @@ ${trialDone()?trialResultHTML(tv,`${res.right} of 6 steps in place${!built.lengt
     const b=()=>G.sopBoard(MYTEAM);   /* any teammate edits the shared board in Game */
     $$("[data-pile]").forEach(btn=>sopPress(btn,()=>{const t=sopPile()[+btn.dataset.pile];if(G.setSopBoard(ME,[...b(),t]).ok)render()}));
     $$("[data-built]").forEach(btn=>sopPress(btn,()=>{const t=b()[+btn.dataset.built];if(G.setSopBoard(ME,b().filter(x=>x!==t)).ok){s.pile=[...s.pile.filter(x=>x!==t),t];render()}}));
-    on("#check",checkSop);on("#reset",()=>{if(G.setSopBoard(ME,[]).ok){s.pile=shuffle([...SOP,DECOY]);render()}});
+    on("#check",checkSop);on("#reset",()=>{if(G.setSopBoard(ME,[]).ok){s.pile=G.sopOrder();render()}});
   };
   return {html,bind,waitHint:submitted?"Waiting for the trial timer to finish":"Submit your SOP first"};
 }
@@ -907,8 +911,7 @@ function devJump(n){
   const w=$("#whisper");if(w){clearTimeout(w._t);w.hidden=true}
   if(!S.code)S.code="CYCLE60";
   if(!S.name)S.name=S.draft&&S.draft.trim().length>=2?S.draft.trim():"Dev";
-  if(!S.type){S.type="coop";S.spend=EP.Bots.typicalSpend("coop")}
-  else if(spendLeft()!==0)S.spend=EP.Bots.typicalSpend(S.type);
+  const b=EP.Bots.devBuild(S.type,S.spend);S.type=b.type;S.spend=b.spend;
   const startNew=!G||n<=G.level;
   if(startNew){endSession();S.pendingL=false;S.maxStep=5;newSession()}
   G.jumpToLevel(n);

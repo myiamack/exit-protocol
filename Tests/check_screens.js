@@ -5383,6 +5383,80 @@ async function step11ScoringAndStandingsCases() {
   check("Step 11 and Level 3 result screen text contains no 'ties:', 'tie rule', 'bonus', 'influence', or 'exact'", noLeakWordsOk);
 }
 
+/* Step 12: SOP pile order from Game.sopOrder(), protoNameStore localStorage helper, Bots.devBuild, and dead ghostHop removal. */
+async function step12CleanupCases() {
+  const fs = require("fs");
+  const path = require("path");
+  const root = path.join(__dirname, "..");
+  const gameSrc = fs.readFileSync(path.join(root, "game.js"), "utf8");
+  const mapSrc = fs.readFileSync(path.join(root, "world-map.js"), "utf8");
+  const sopSection = gameSrc.match(/function trialSopScreen[\s\S]*?\n\}/)?.[0] || "";
+
+  const noSopRandom = !/Math\.random/.test(sopSection) &&
+    !/\bconst\s+shuffle\b/.test(gameSrc) &&
+    sopSection.includes("G.sopOrder()");
+
+  const lsLines = gameSrc.split(/\r?\n/).map((line, i) => ({ line, num: i + 1 })).filter(x => /\blocalStorage\b/.test(x.line));
+  const protoBlock = gameSrc.match(/\/\/ prototype-only: replaced by Base44 login\r?\nconst protoNameStore\s*=\s*\{[\s\S]*?\n\};/)?.[0] || "";
+  const lsOnlyInProto = lsLines.length === 2 &&
+    lsLines.every(x => protoBlock.includes(x.line.trim())) &&
+    !/\bsessionStorage\b/.test(gameSrc);
+
+  const noTypicalSpendInGame = !/typicalSpend/.test(gameSrc) && gameSrc.includes("EP.Bots.devBuild(");
+  const noGhostHop = !/ghostHop/.test(mapSrc) && !/setInterval/.test(mapSrc);
+
+  let sopDeterminismOk = false;
+  let devJump2Ok = false;
+  let nameStoreOk = false;
+  try {
+    w.eval('devJump(1);'); await sleep(20);
+    next(); await sleep(15); // Open Floor
+    finishTimedStep("openFloor"); await sleep(15); // -> SOP Trial
+    const sopCheck = w.eval(`(() => {
+      const r0 = G.rng.getState();
+      const firstPile = S.sop.pile.slice();
+      const fromRule = G.sopOrder();
+      const r1 = G.rng.getState();
+      const cards = [...document.querySelectorAll("[data-pile]")];
+      if (cards.length) cards[0].click();
+      return {
+        rUnchanged: r0 === r1,
+        matchesRule: JSON.stringify(firstPile) === JSON.stringify(fromRule) && firstPile.length === 7,
+        boardCount: G.sopBoard(MYTEAM).length,
+      };
+    })()`);
+    await sleep(15);
+    $("#reset").click(); await sleep(15);
+    const afterReset = w.eval('({ pile: S.sop.pile.slice(), expected: G.sopOrder(), boardLen: G.sopBoard(MYTEAM).length })');
+    sopDeterminismOk = sopCheck.rUnchanged && sopCheck.matchesRule && sopCheck.boardCount === 1 &&
+      afterReset.boardLen === 0 && JSON.stringify(afterReset.pile) === JSON.stringify(afterReset.expected);
+
+    const dbCheck = w.eval(`(() => {
+      const d1 = EP.Bots.devBuild(null, {});
+      const custom = { focus: 6, collab: 3, initiative: 3, grit: 2, composure: 1 };
+      const d2 = EP.Bots.devBuild("indep", custom);
+      return d1.type === "coop" && JSON.stringify(d1.spend) === JSON.stringify(EP.Bots.typicalSpend("coop")) &&
+        d2.type === "indep" && d2.spend === custom;
+    })()`);
+
+    w.eval('const ev = new KeyboardEvent("keydown", { key: "2", code: "Digit2", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }); window.dispatchEvent(ev);');
+    await sleep(20);
+    const dj2 = w.eval('({ level: G.level, gStep: G.step, sStep: S.step, spendOk: spendLeft() === 0 })');
+    devJump2Ok = dbCheck && dj2.level === 2 && dj2.gStep === "briefing" && dj2.sStep === 5 && dj2.spendOk;
+
+    nameStoreOk = w.eval(`(() => {
+      protoNameStore.set("Step12@icstars.org", "Step12Name");
+      return protoNameStore.get("step12@icstars.org") === "Step12Name" && savedName("STEP12@icstars.org") === "Step12Name";
+    })()`);
+  } catch (e) {
+    errors.push(String(e.message || e));
+  }
+
+  check("Step 12: game.js has no Math.random in SOP pile code and G.sopOrder() is deterministic with 0 Rng draws", noSopRandom && sopDeterminismOk);
+  check("Step 12: localStorage appears only in protoNameStore (with prototype-only comment) and preserves display name", lsOnlyInProto && nameStoreOk);
+  check("Step 12: dev jump to Level 2 works via Bots.devBuild and dead ghostHop interval is removed from world-map.js", noTypicalSpendInGame && devJump2Ok && noGhostHop, JSON.stringify({ noTypicalSpendInGame, devJump2Ok, noGhostHop }));
+}
+
 w.addEventListener("load", async () => {
   try {
     w.EP.Rng.randomSeed = () => 2026;
@@ -5448,6 +5522,8 @@ w.addEventListener("load", async () => {
     await step10RuleChecksCases();
     log("run 24: Step 11 scoring, shared standings places, and stat tie-order hints");
     await step11ScoringAndStandingsCases();
+    log("run 25: Step 12 SOP pile order, protoNameStore, Bots.devBuild, and ghostHop cleanup");
+    await step12CleanupCases();
   } catch (e) { errors.push(String(e.message || e)); }
   check("no console errors", !errors.length, errors.length ? [...new Set(errors)].join(" | ") : "none");
   console.log("");

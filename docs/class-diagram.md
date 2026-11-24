@@ -36,7 +36,7 @@ classDiagram
     +startNextRound(), advance(), finishRound(), jumpToLevel(targetLevel)
     +activity(), checkAttendance(), pollAttendance()
     +sabotage(), gift(), answerGift(), switchTeam()
-    +setSopBoard(), canSubmitSop(p), submitSop(), closeSop(), splitBrief(), closeSplitBrief()
+    +setSopBoard(), canSubmitSop(p), submitSop(), sopOrder(), closeSop(), splitBrief(), closeSplitBrief()
     +splitBriefPostNote(), splitBriefSetBoard(), splitBriefLockIn(), splitBriefView()
     +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
     +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDancePress(), mirrorDanceHit()..mirrorDanceStray()
@@ -212,7 +212,7 @@ classDiagram
     <<plain object, not a class>>
     +SETTINGS  rates from sim_v2.py
     +hooks  onStart, onVoteStart, onTick, beforeClose, onGift, onFastForward
-    +soloGame(...), typicalSpend(type), makePlayer(id, name, type)
+    +soloGame(...), typicalSpend(type), devBuild(type, spend), makePlayer(id, name, type)
     +openFloor(), trial(), splitBrief(), mirror(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
     +allocate(p, n, final)
   }
@@ -298,9 +298,12 @@ classDiagram
   }
   class SopTrial {
     Level 1
+    -int #pileSeed
+    +pileSeed  read-only
     +scores  per team, 0 to 7
     +int MAX_SCORE = 7$, STEPS$, ENDLESS$
     +score(built, steps, endless)$, canSubmit(built)$
+    +pileOrder(roundN)
     +setScore(team, score), scoreSop(...)
     +sopBoard(round, team), setSopBoard(...), closeSop(round, teams)
     +rank(round, teams) board score plus influence
@@ -445,5 +448,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code on branch `screen-state-cleanup` (Step 11, from commit `3b69abf`).
+Made from the rules code on branch `screen-state-cleanup` (Step 12, from commit `34bfb8e`).
 Update this diagram whenever a class in `rules/` changes.

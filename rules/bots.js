@@ -59,6 +59,12 @@ const Bots = {
     order.forEach((k, i) => { spend[k] = [5, 4, 3, 2, 1][i]; });
     return spend;
   },
+  /* Pure helper for dev jump: default type "coop", fill typicalSpend if points are unspent. */
+  devBuild(type, spend) {
+    const t = type || "coop";
+    const s = spend && typeof spend === "object" && Player.spendLeft(spend) === 0 ? spend : Bots.typicalSpend(t);
+    return { type: t, spend: s };
+  },
   makePlayer(id, name, type) {
     return new Player({ id, name, type, spend: Bots.typicalSpend(type), isBot: true });
   },
