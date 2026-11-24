@@ -22,7 +22,7 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 - [x] **Step 10:** Enforce rule checks in rules (empty Split Brief Lock In, idle Mirror Setup actions, SOP/sign-in rules) (`V-14, V-21, V-34`)
 - [x] **Step 11:** Remove scoring, ranking, and tie-break math from screen code (`V-12, V-13, V-22`)
 - [x] **Step 12:** Clean up SOP pile randomness, `localStorage`, and session/dev-jump bootstrap (`V-10, V-15, V-17`)
-- [ ] **Step 13:** Add automated guard test `Tests/check_screen_rules.js` (using `// cosmetic-ok` markers)
+- [x] **Step 13:** Add automated guard test `Tests/check_screen_rules.js` (using `// cosmetic-ok` markers)
 
 ---
 
@@ -186,9 +186,9 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
 
 ### Phase 6: Automated Guard Test
 
-#### Step 13: Add automated screen-rule guard test (`Tests/check_screen_rules.js`)
-- **Violations covered:** Enforces all categories `1-8` going forward across all 11 screen files (`game.js`, `world-map.js`, `pixel-art.js`, `board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `judged-view.js`, `mirror-view.js`, `mirror-dance-view.js`, `pages/vote-test.js`).
-- **Files touched:** `Tests/check_screen_rules.js` (new), `tools/baseline.js`
+#### Step 13: Add automated screen-rule guard test (`Tests/check_screen_rules.js`) — DONE
+- **Violations covered:** Enforces all categories `1-8` going forward across all 11 screen files (`game.js`, `world-map.js`, `pixel-art.js`, `board.js`, `attendance-view.js`, `fullscreen-view.js`, `splitbrief-view.js`, `judged-view.js`, `mirror-view.js`, `mirror-dance-view.js`, `pages/vote-test.js`) plus any future `.js` file in repo root or `pages/`.
+- **Files touched:** `Tests/check_screen_rules.js` (new), `tools/baseline.js`, `game.js`, `world-map.js`, `CLAUDE.md`, `docs/screen-state-plan.md`
 - **Where logic moves:** New Node test script `Tests/check_screen_rules.js` registered in `tools/baseline.js` (pass/fail like `check_bundle`, no snapshot file needed) so `npm test` fails automatically if any screen file:
   1. Calls `Math.random()` on lines not marked with `// cosmetic-ok` (for allowed cosmetic randomness such as code rain canvas and pre-game avatar randomize; no line-number allowlists).
   2. Calls `Date.now()` or `new Date`.
@@ -196,7 +196,8 @@ Balance checks are not part of npm test. Run npm run test:balance only at the ch
   4. Writes directly to `G.*`, `ME.*`, `MYTEAM.*`, `trial.*`, `round.*`, or calls mutating methods on `G.round.trial.*`, `v.cast`, `ME.placePoints`, or `EP.Bots.*` (outside session bootstrap).
   5. Calls `localStorage` or `sessionStorage` outside the prototype-only display-name helper (until Base44 login replaces it).
 - **QA bugs fixed:** None (automated regression guard).
-- **Checks:** `npm run build`, `npm test` (now 17/17 checks passing), `node Tests/check_screen_rules.js`.
+- **Done notes:** Added `Tests/check_screen_rules.js` scanning every `.js` file in repo root and `pages/` (with an empty `EXCLUDED_FILES` table for future non-screen files and a required check that all 11 screen files exist), registered in `tools/baseline.js` under `NO_SNAPSHOT` so `npm test` runs 17 pass/fail checks. Added `// cosmetic-ok` tags on the 7 `Math.random()` lines in `game.js` (code rain + `#rand`) and 1 line in `world-map.js` (wandering ghosts), named allowlist entries (including `G.host = S.host` in `pages/vote-test.js` `newGame()`, logged for Step 14), and an in-memory proof verifying R1 to R5 fail on bad samples and pass on allowed ones. Gap noted for `levels-4-6`: `rules/` level files and `levels-4-6` file boundaries are not covered by `check_screen_rules`.
+- **Checks:** `npm test` (now 17/17 checks passing), `npm run test:screens` (229/229 passing), `node Tests/check_screen_rules.js`.
 
 ---
 

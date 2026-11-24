@@ -168,7 +168,7 @@ function initWorld(){
     const mm=$("#mmme");if(mm){mm.setAttribute("cx",S.pos.x);mm.setAttribute("cy",S.pos.y)}
     const rid=roomAt(S.pos.x,S.pos.y);if(rid!==S.wroom){S.wroom=rid;S.visited[rid]=true;if(WROOMS.find(r=>r.id===rid))S.room=rid;const lab=$("#wroom");lab.textContent=RNAME[rid];lab.classList.remove("pop");void lab.offsetWidth;lab.classList.add("pop");$("#mmap").innerHTML=mmapInner()}
     /* ghosts */
-    if(t-W.ghostT>2800){W.ghostT=t;W.ghostPos.forEach((p,i)=>{if(Math.random()<.5){p.on=!p.on;if(p.on){const r=WROOMS[Math.floor(Math.random()*WROOMS.length)],sp=r.spots[Math.floor(Math.random()*r.spots.length)];p.x=sp[0];p.y=sp[1]}ghosts[i].setAttribute("opacity",p.on?".7":"0");ghosts[i].setAttribute("transform",`translate(${p.x} ${p.y})`)}})}
+    if(t-W.ghostT>2800){W.ghostT=t;W.ghostPos.forEach((p,i)=>{if(Math.random()<.5){p.on=!p.on;if(p.on){const r=WROOMS[Math.floor(Math.random()*WROOMS.length)],sp=r.spots[Math.floor(Math.random()*r.spots.length)];p.x=sp[0];p.y=sp[1]}ghosts[i].setAttribute("opacity",p.on?".7":"0");ghosts[i].setAttribute("transform",`translate(${p.x} ${p.y})`)}})} // cosmetic-ok
     let near=-1;W.ghostPos.forEach((p,i)=>{if(p.on&&Math.hypot(p.x-S.pos.x,p.y-S.pos.y)<120)near=i});S.nearGhost=near>=0?near:S.nearGhost;W.near=near;
     /* Popups close when the player walks away: a room popup when leaving the room, others after moving ~140px. */
     if(S.panel&&S.panelAt){const at=S.panelAt,away=S.panel==="room"?S.wroom!==at.room:Math.hypot(S.pos.x-at.x,S.pos.y-at.y)>140;if(away){S.panel=false;S.panelAt=null;const el=$(".wpanel");if(el)el.remove()}}

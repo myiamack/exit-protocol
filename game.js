@@ -1,8 +1,8 @@
 /* ---------- code rain ---------- */
 const WORDS=["JavaScript","Python","HTML","CSS","React","Node.js","SQL","Git","GitHub","API","JSON","TypeScript","Java","C#","Bash","Linux","Docker","Azure","AWS","Cloud","Figma","UX","Agile","Scrum","Sprint","Backlog","Debug","Deploy","Commit","Merge","Excel","Power BI","Base44","flexbox","<div>","async","await","function()","const","return","import","console.log","for loop","if/else","null","true","404","localhost","README","DevOps","Jira","Wireframe","Data","Kanban","Retro","Standup"];
 const cv=document.getElementById("rain"),cx=cv.getContext("2d");let cols=[],rainOn=false,FS=20,lastT=0,sized=false;
-const pick=()=>WORDS[Math.floor(Math.random()*WORDS.length)];
-function sizeRain(){const d=Math.min(2,window.devicePixelRatio||1);cv.width=innerWidth*d;cv.height=innerHeight*d;cx.setTransform(d,0,0,d,0,0);FS=innerWidth<600?16:20;const n=Math.ceil(innerWidth/(FS*1.2));cols=Array.from({length:n},()=>({w:pick(),i:0,y:-Math.random()*innerHeight*1.2,gap:0}));sized=true}
+const pick=()=>WORDS[Math.floor(Math.random()*WORDS.length)]; // cosmetic-ok
+function sizeRain(){const d=Math.min(2,window.devicePixelRatio||1);cv.width=innerWidth*d;cv.height=innerHeight*d;cx.setTransform(d,0,0,d,0,0);FS=innerWidth<600?16:20;const n=Math.ceil(innerWidth/(FS*1.2));cols=Array.from({length:n},()=>({w:pick(),i:0,y:-Math.random()*innerHeight*1.2,gap:0}));sized=true} // cosmetic-ok
 function rainFrame(t){
   if(!rainOn)return;requestAnimationFrame(rainFrame);if(t-lastT<60)return;lastT=t;
   cx.fillStyle="rgba(20,25,34,0.15)";cx.fillRect(0,0,innerWidth,innerHeight);
@@ -10,12 +10,12 @@ function rainFrame(t){
   cols.forEach((c,k)=>{const x=k*FS*1.2+FS/2;
     if(c.gap>0){c.gap--;return}
     const ch=c.w[c.i];
-    if(c.y>-FS){cx.fillStyle=Math.random()<.05?"#e0394d":"#3a74ff";cx.fillText(ch,x,c.y-FS);cx.fillStyle="#cfe8ff";cx.fillText(ch,x,c.y)}
+    if(c.y>-FS){cx.fillStyle=Math.random()<.05?"#e0394d":"#3a74ff";cx.fillText(ch,x,c.y-FS);cx.fillStyle="#cfe8ff";cx.fillText(ch,x,c.y)} // cosmetic-ok
     c.y+=FS;c.i++;
-    if(c.i>=c.w.length){c.i=0;c.w=pick();c.gap=1+Math.floor(Math.random()*3);c.y+=FS}
-    if(c.y>innerHeight+FS){c.y=-Math.random()*innerHeight*.5;c.i=0;c.w=pick()}
+    if(c.i>=c.w.length){c.i=0;c.w=pick();c.gap=1+Math.floor(Math.random()*3);c.y+=FS} // cosmetic-ok
+    if(c.y>innerHeight+FS){c.y=-Math.random()*innerHeight*.5;c.i=0;c.w=pick()} // cosmetic-ok
   })}
-function staticRain(){cx.clearRect(0,0,innerWidth,innerHeight);cx.font=`${FS}px VT323, monospace`;cx.textAlign="center";cx.textBaseline="top";cols.forEach((c,k)=>{const x=k*FS*1.2+FS/2;let y=Math.random()*innerHeight*.7;for(let i=0;i<c.w.length;i++){cx.fillStyle=`rgba(105,170,255,${.12+.45*(i/c.w.length)})`;cx.fillText(c.w[i],x,y);y+=FS}})}
+function staticRain(){cx.clearRect(0,0,innerWidth,innerHeight);cx.font=`${FS}px VT323, monospace`;cx.textAlign="center";cx.textBaseline="top";cols.forEach((c,k)=>{const x=k*FS*1.2+FS/2;let y=Math.random()*innerHeight*.7;for(let i=0;i<c.w.length;i++){cx.fillStyle=`rgba(105,170,255,${.12+.45*(i/c.w.length)})`;cx.fillText(c.w[i],x,y);y+=FS}})} // cosmetic-ok
 function setRain(level){
   cv.style.opacity=String(level);
   if(!sized){sizeRain();if(matchMedia("(prefers-reduced-motion: reduce)").matches)staticRain();else{rainOn=true;requestAnimationFrame(rainFrame)}}
@@ -823,7 +823,7 @@ function bind(){
     $$("[data-tab]").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;render()});
     $$("[data-k]").forEach(b=>b.onclick=()=>{S.av[b.dataset.k]=+b.dataset.i;render()});
     on("#closeW",()=>go(1));
-    on("#rand",()=>{const r=n=>Math.floor(Math.random()*n);S.av={body:r(2),skin:r(SKIN.length),hair:r(HAIR.length),hairC:r(HAIRC.length),top:r(CLOTH.length),topS:r(TOP.length),bot:r(BOTC.length),botS:r(BOT.length),hat:r(HAT.length),extra:r(EXTRA.length),acc:r(CLOTH.length),tool:r(TOOLS.length)};render()});
+    on("#rand",()=>{const r=n=>Math.floor(Math.random()*n);S.av={body:r(2),skin:r(SKIN.length),hair:r(HAIR.length),hairC:r(HAIRC.length),top:r(CLOTH.length),topS:r(TOP.length),bot:r(BOTC.length),botS:r(BOT.length),hat:r(HAT.length),extra:r(EXTRA.length),acc:r(CLOTH.length),tool:r(TOOLS.length)};render()}); // cosmetic-ok
   }
   if(S.step===3){
     $$("[data-type]").forEach(b=>b.onclick=()=>{const t=b.dataset.type;if(t===S.type)return;
