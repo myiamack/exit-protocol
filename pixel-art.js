@@ -95,7 +95,14 @@ const TOOLS=[
  {n:"Desk Plant",rar:"Rare",r:"var(--rare)",ab:"Breathe",d:"Add 10 seconds to your team's gift window.",uses:"2 uses",m:["...k..k...","..kgk.kgk.","..kgkkggk.","...kggk...","....kk....","..kkkkkk..","..kccccck.","...kccck..","...kkkkk..",".........."],p:{k:E,g:"#4fe08a",c:"#e2706a"}},
  {n:"Rubber Duck",rar:"Epic",r:"var(--epic)",ab:"Debug",d:"Your team's next wrong accusation costs nothing.",uses:"1 use",m:["....kkk...","...kyyyk..","...kyeykok","...kyyykkk","kk.kyyyk..","kykkyyyykk","kyyyyyyyyk",".kyyyyyyk.","..kkkkkk..",".........."],p:{k:E,y:"#f5e04a",e:E,o:"#f2852a"}},
  {n:"USB Backup",rar:"Legendary",r:"var(--legend)",ab:"Restore point",d:"Your first glitch reboots without losing your hearts.",uses:"1 use",m:["..........","kkkkkkk...","kbbbbbkkkk","kbcbbbkssk","kbbbbbkskk","kbbbbbkssk","kbbbbbkkkk","kkkkkkk...",".........."],p:{k:E,b:"#2f5fe0",c:"#5ff2ff",s:"#cbd3dc"}}];
-const WTABS=[["body","Character"],["hair","Hair"],["outfit","Outfit"],["acc","Accessories"],["tool","Tool"]];
+const WTABS=[["body","Character"],["hair","Hair"],["outfit","Outfit"],["acc","Accessories"],["id","My ID"]];
+/* Starter looks. Picking a body type puts on its starter outfit (skin and hair color stay).
+   Masculine: buzz cut, blue polo, black pants. Feminine: ponytail, pink cardigan, blue skirt. No accessories for either.
+   Tools are no longer picked here: they will be found on the floor during tasks (TOOLS stays for that). */
+const STARTER=[
+  {hair:1,top:1,topS:4,bot:0,botS:0,hat:0,extra:0},
+  {hair:7,top:4,topS:3,bot:2,botS:1,hat:0,extra:0}];
+const starterLook=(body,keep={})=>({skin:7,hairC:0,acc:4,...keep,body,...STARTER[body]});
 
 /* ---------- character = Pixel Intern (sprite engine above) ---------- */
 function avatarSVG(a,o={}){return sprite(a,{head:o.head,legs:o.legs,label:o.label,holo:o.holo,ghost:o.ghost,holoC:o.holoC,cell:10,attrs:(o.extra||"")+(o.style?` style="${o.style}"`:"")})}
@@ -158,5 +165,5 @@ function tabIcon(k){
   if(k==="hair")return avatarSVG({...a,hat:0},{head:true,label:"Hair"});
   if(k==="outfit")return avatarSVG(a,{label:"Outfit"});
   if(k==="acc")return avatarSVG({...a,hat:a.hat||2},{head:true,label:"Accessories"});
-  return pix(TOOLS[a.tool].m,TOOLS[a.tool].p);
+  return IC.badge;
 }

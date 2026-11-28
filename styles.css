@@ -272,9 +272,12 @@ body>.hud{margin-bottom:4px}
 .speech.corrupt{color:var(--pink);text-shadow:2px 0 #38e6d6}
 .dlg .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 12px;border-top:3px solid var(--edge);background:#1d232e}
 .dots{display:flex;gap:4px}.dots i{width:9px;height:9px;border-radius:2px;background:var(--frame3)}.dots i.on{background:var(--gold)}
-/* menus-only red glitch cursor */
-body.menucur,body.menucur button,body.menucur input,body.menucur label,body.menucur .gwalk{cursor:var(--cur-red),auto}
-body.menucur.curgl,body.menucur.curgl button,body.menucur.curgl input{cursor:var(--cur-gl),auto}
+/* red cursor on every screen (class set in game.js); glitch frames on click and while Glitching */
+body.menucur,body.menucur *{cursor:var(--cur-red),auto}
+body.menucur :disabled,body.menucur :disabled *{cursor:var(--cur-no),not-allowed}
+body.menucur input[type=text],body.menucur input[type=email],body.menucur textarea{cursor:text}
+body.menucur.curgl,body.menucur.curgl *{cursor:var(--cur-gl),auto}
+body.menucur.curgl2,body.menucur.curgl2 *{cursor:var(--cur-gl2),auto}
 .btngl{filter:drop-shadow(3px 0 0 #ff4fa3) drop-shadow(-3px 0 0 #38e6d6)!important}
 /* ghost whisper */
 .whisper{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);z-index:6;max-width:min(560px,calc(100% - 32px));background:rgba(11,14,19,.94);border:3px solid #e9ecff;border-radius:14px;padding:10px 16px;font-family:var(--px);color:#e9ecff;box-shadow:0 0 24px rgba(233,236,255,.25)}
@@ -485,3 +488,13 @@ body.menucur.curgl,body.menucur.curgl button,body.menucur.curgl input{cursor:var
 .mirror-summary{display:grid;gap:6px;margin-top:4px}
 .mirror-summary-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;background:#141922;border:2px solid var(--edge);border-radius:8px;padding:6px 10px}
 .mirror-summary-row b{font-family:var(--mono);font-size:.9rem}
+
+/* Work style: plain-language stat cards */
+.statexplain p{max-width:none}
+.brow .nm .statwhy{flex-basis:100%;font-family:var(--body);font-weight:400;text-transform:none;letter-spacing:0;font-size:.92rem;line-height:1.35;color:var(--muted)}
+.brow .nm .statwhy b{color:var(--ink);font-weight:600}
+.brow .nm .statwhy i{color:var(--sky);font-style:normal}
+/* Wardrobe: My ID tab */
+.wleft .idbadge{width:100%}
+.wleft .idbadge .bc-pic{aspect-ratio:auto;padding:8px 6px 4px}
+.wleft .idbadge .bc-pic svg{max-height:170px;width:auto}

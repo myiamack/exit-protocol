@@ -22,9 +22,20 @@ function setRain(level){
 }
 addEventListener("resize",()=>{if(sized){sizeRain();if(!rainOn)staticRain()}});
 
+/* Sound lives in sound.js (screen-only playback). SND is a silent stand-in if it did not load. */
+const SND=typeof Sound!=="undefined"?Sound:{music(){},elevator(){},ding(){},glitch(){},toggleMute(){return true},muted:true};
+let lastStatus=null;
 /* ---------- data ---------- */
 const A=[{k:"focus",n:"Focus"},{k:"collab",n:"Collaboration"},{k:"initiative",n:"Initiative"},{k:"grit",n:"Grit"},{k:"composure",n:"Composure"}];
 const AN=Object.fromEntries(A.map(a=>[a.k,a.n]));
+/* Plain-language stat cards (display text only; the math lives in rules/Attributes.js and rules/Vote.js).
+   Do not say which level tests which stat: that stays hidden until each Briefing. */
+const STAT_TEXT={
+  focus:{nick:"Your brain's zoom lens",what:"Lock in when everything around you is buzzing.",perk:"More Focus, better odds that a wrong guess at the all-hands costs you nothing."},
+  collab:{nick:"Your teamwork battery",what:"For the jobs that need the whole squad, not just you.",perk:"More Collaboration, better odds your gifts cost 1 heart less."},
+  initiative:{nick:"Your raise-your-hand button",what:"Somebody has to go first. Why not you?",perk:"More Initiative makes your vote count for more in Levels 5 and 6."},
+  grit:{nick:"Your keep-going fuel",what:"It's hard, you're tired, and you do it anyway.",perk:"More Grit, better odds of a free heart at the end of each round."},
+  composure:{nick:"Your chill meter",what:"Stay cool when someone tries to mess with you.",perk:"More Composure, better odds a sabotage only takes 1 point instead of 2."}};
 /* Rule data lives in rules/*.js. These tables only add display text. */
 const TYPE_TEXT={
   coop:{blurb:"You lift the team. Strong at working with others and staying calm. Slower to jump in first.",pathDesc:"Cancel 1 teammate glitch with a gift in the gift window."},
@@ -209,7 +220,7 @@ function facLines(step,level,phase){const byLv=FAC_BY_LEVEL[level],entry=byLv&&b
 
 /* ---------- state ---------- */
 const fresh=()=>({step:0,maxStep:0,menu:"map",email:"",code:"",pendingL:false,
-  av:{body:1,skin:7,hair:4,hairC:0,top:0,topS:1,bot:1,botS:1,hat:0,extra:3,acc:4,tool:4},name:"",draft:"",tab:"body",
+  av:starterLook(1),name:"",draft:"",tab:"body",lookMsg:"",
   type:null,spend:{focus:0,initiative:0,collab:0,composure:0,grit:0},
   room:"studio",arrived:false,arr:"elev",arrLine:0,doorsDone:false,pos:{x:100,y:710},visited:{elevator:true},panel:false,wroom:"elevator",nearGhost:0,
   of:{msg:""},mmHidden:false,
@@ -236,15 +247,21 @@ const accDone=()=>!!G&&G.didRun("endGlitchReport");
 const gwClosed=()=>!!G&&G.didRun("lockIn");
 const roundDone=()=>!!G&&G.didRun("finishRound");
 function endSession(){if(currentTrialView&&currentTrialView.cleanup)currentTrialView.cleanup();currentTrialView=null;G=null;ME=null;MYTEAM=null}
-/* Sign out keeps only the display name, saved under the email. Look, tool and progress reset.
+/* Sign out keeps the display name and any saved look, under the email. Progress resets.
    The name comes back on the next sign-in with the same email. */
 const NAMES={};
 const nameKey=em=>String(em||"").trim().toLowerCase();
 // prototype-only: replaced by Base44 login
 const protoNameStore={
-  get(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];try{return (JSON.parse(localStorage.getItem("ep.names")||"{}"))[k]||""}catch(e){return ""}},
-  set(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;try{const all=JSON.parse(localStorage.getItem("ep.names")||"{}");all[k]=name;localStorage.setItem("ep.names",JSON.stringify(all))}catch(e){}},
+  read(key){try{return JSON.parse(localStorage.getItem(key)||"{}")}catch(e){return {}}},
+  write(key,all){try{localStorage.setItem(key,JSON.stringify(all))}catch(e){}},
+  get(em){const k=nameKey(em);if(NAMES[k])return NAMES[k];return this.read("ep.names")[k]||""},
+  set(em,name){const k=nameKey(em);if(!k||!name)return;NAMES[k]=name;const all=this.read("ep.names");all[k]=name;this.write("ep.names",all)},
+  /* Saved look ("Save this look for later" on the My ID tab). */
+  getLook(em){const k=nameKey(em);if(LOOKS[k])return LOOKS[k];return this.read("ep.looks")[k]||null},
+  setLook(em,av){const k=nameKey(em);if(!k||!av)return;LOOKS[k]={...av};const all=this.read("ep.looks");all[k]={...av};this.write("ep.looks",all)},
 };
+const LOOKS={};
 const savedName=em=>protoNameStore.get(em);
 const saveName=(em,name)=>protoNameStore.set(em,name);
 function signOut(){saveName(S.email,S.name);endSession();S=fresh();render()}
@@ -381,7 +398,10 @@ const TIMER_LABELS={
 function chrome(){
   const inGame=S.step>=5;
   setRain(S.step===0?1:S.step===1?.18:.06);
-  document.body.classList.toggle("menucur",S.step<=2);
+  document.body.classList.add("menucur");   /* the red cursor is used on every screen */
+  document.body.classList.toggle("curglitching",!!(G&&ME)&&status()==="Glitching");
+  SND.music(S.step>=1);
+  SND.elevator(S.step===4&&!S.arrived&&S.arr==="elev");
   $("#topbar").hidden=S.step===0;
   $("#whoName").textContent=shownName();
   $("#boardBtn").hidden=!(G&&S.step>=5);   /* Progress board: from the Level 1 briefing on */
@@ -466,13 +486,20 @@ V[2]=()=>{const t=S.tab,a=S.av;let left="",nm="",tag="Equipped";
   else if(t==="hair"){left=`<h3>Hair</h3>${itRow("hair",HAIR,"Style",true)}${swRow("hairC",HAIRC,"Hair color")}`;nm=HAIR[a.hair]}
   else if(t==="outfit"){left=`<h3>Outfit</h3>${itRow("topS",TOP,"Top",false)}${swRow("top",CLOTH,"Top color")}${itRow("botS",BOT,"Bottoms",false,true)}${swRow("bot",BOTC,"Bottom color")}`;nm=TOP[a.topS]+" + "+BOT[a.botS]}
   else if(t==="acc"){left=`<h3>Accessories</h3>${itRow("hat",HAT,"Hats",true)}${itRow("extra",EXTRA,"Extras",true)}${swRow("acc",CLOTH,"Hat, wrap and accessory color")}`;nm=HAT[a.hat]==="None"?EXTRA[a.extra]:HAT[a.hat];if(HAT[a.hat]==="None"&&EXTRA[a.extra]==="None")tag="Nothing equipped"}
-  else{left=`<h3>Tool</h3><p class="hint">Carry one office tool. Abilities are being playtested by the team.</p><div class="toolg">${TOOLS.map((x,i)=>`<button class="tl" data-k="tool" data-i="${i}" aria-pressed="${a.tool===i}" style="--r:${x.r}"><span class="ta">${pix(x.m,x.p)}</span><span><b>${x.n}</b><span class="rar">${x.rar}</span><span class="ab">${x.ab}</span><span class="td">${x.d}</span></span></button>`).join("")}</div>`;nm=TOOLS[a.tool].n}
+  else{const saved=protoNameStore.getLook(S.email),nmShown=S.draft.trim()||"Your name";
+    left=`<h3>My ID</h3><p class="hint">This is how the floor will see you. Happy with it?</p>
+    <div class="badgecard idbadge"><div class="bc-pic">${avatarSVG(a,{label:"ID photo"})}</div><div class="bc-data">
+      <span class="wide"><span class="k">Display name</span><br><span class="v">${esc(nmShown)}</span></span>
+      <span><span class="k">Cohort</span><br><span class="v">Cycle 60</span></span><span><span class="k">Floor</span><br><span class="v">60</span></span>
+      <span class="wide"><span class="k">Look</span><br><span class="v">${HAIR[a.hair]} · ${TOP[a.topS]} + ${BOT[a.botS]}</span></span>
+      <span class="wide"><span class="k">Tools</span><br><span class="v">None yet. Find them on the floor.</span></span></div></div>
+    <div class="row" style="justify-content:center;margin-top:12px"><button class="btn green" id="saveLook">Save this look for later</button><button class="btn outline" id="keepEdit">Keep editing</button>${saved?`<button class="btn soft" id="loadLook">Load my saved look</button>`:""}</div>
+    ${S.lookMsg?`<p class="okmsg" style="text-align:center">${esc(S.lookMsg)}</p>`:""}`;nm=nmShown;tag="ID preview"}
   return `<div class="wardrobe">
   <div class="wtabs" role="tablist"><button class="xclose" id="closeW" aria-label="Back to menu">✕</button>${WTABS.map(([k,l])=>`<button class="wt" role="tab" data-tab="${k}" aria-selected="${t===k}" aria-label="${l}">${tabIcon(k)}<span>${l}</span></button>`).join("")}<button class="btn soft sm" id="rand" style="margin-left:auto">Randomize</button></div>
   <div class="wbody">
     <div class="wleft">${left}</div>
     <div class="wright"><div class="fig">${avatarSVG(a,{label:"Your character"})}</div><span class="eqname">${esc(nm)}</span><span class="eqtag">${tag}</span>
-      <span class="toolchip">${pix(TOOLS[a.tool].m,TOOLS[a.tool].p,4)}${TOOLS[a.tool].n}</span>
       <div class="namebar"><label for="nm" class="label" style="color:var(--sky)">Display name</label><input type="text" id="nm" maxlength="16" value="${esc(S.draft)}" placeholder="2–16 characters"><span class="namemsg" id="nmMsg">Letters, numbers and spaces only. No real names.</span></div>
     </div>
   </div></div>`};
@@ -482,8 +509,9 @@ V[3]=()=>{const left=spendLeft(),P=EP.Player,CT=EP.CharacterType;return `<div><s
   <span class="row" style="gap:6px">${t.bonus.map(b=>`<span class="tag b">+${P.BOOST} ${AN[b]}</span>`).join("")}<span class="tag p">${AN[t.pen]} max ${CT.PEN_MAX}</span></span>
   <span style="opacity:.9;font-size:.92rem"><b>Secret path · ${t.path}:</b> ${t.pathDesc}</span></button>`).join("")}</div>
 ${S.type?`<div class="row" style="justify-content:space-between"><h3>Spend your points</h3><span class="counter" style="color:${left?"var(--gold)":"var(--ok)"}">${left} of ${P.SPEND} left</span></div>
+<div class="memo statexplain"><span class="label">How points work (the short version)</span><p>Your 5 stats are like 5 piggy banks. Each level <b>tests one of them</b> and takes points out of it. You won't know which one until that level starts, so don't put all your eggs in one bank. If a bank hits <b>below 0, you glitch</b>. Hearts can cover you, and teammates can gift you points (Independents go it alone and can't accept gifts).</p></div>
 <p class="hint">Every attribute starts at ${P.START_EACH}. Bonus attributes get +${P.BOOST} after you confirm. Max is ${CT.MAX} (your weak attribute caps at ${CT.PEN_MAX}).</p>
-<div class="buy">${A.map(a=>{const v=P.START_EACH+S.spend[a.k];return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?`<span class="tag b">+${P.BOOST} bonus</span>`:""}${T().pen===a.k?`<span class="tag p">max ${CT.PEN_MAX}</span>`:""}</span>
+<div class="buy">${A.map(a=>{const v=P.START_EACH+S.spend[a.k],tx=STAT_TEXT[a.k];return `<div class="brow"><span class="nm">${a.n}${isBonus(a.k)?`<span class="tag b">+${P.BOOST} bonus</span>`:""}${T().pen===a.k?`<span class="tag p">max ${CT.PEN_MAX}</span>`:""}<span class="statwhy"><b>${tx.nick}.</b> ${tx.what} <i>${tx.perk}</i></span></span>
   <span class="step"><button class="minus" data-dec="${a.k}" aria-label="Lower ${a.n}" ${!P.canLower(S.spend,a.k)?"disabled":""}>−</button><span class="val">${v}</span><button class="plus" data-inc="${a.k}" aria-label="Raise ${a.n}" ${!P.canRaise(S.type,S.spend,a.k)?"disabled":""}>+</button></span>
   <span class="fin">final ${P.startValue(S.type,S.spend,a.k)}</span></div>`}).join("")}</div>`:""}`};
 
@@ -770,16 +798,16 @@ function roleBrief(){const rb=ROLE_BRIEF[S.type],d=DIALOGS[rb.lead],t=T();
   const dossier=`<div class="dossier"><span><b>Strengths</b>${rb.face}</span><span><b>Weakness</b>${rb.weak}</span><span><b>Gifts</b>${giftCostText(t.ct)}</span><span><b>Secret path</b>${t.path}</span><span class="w"><b>Watch for</b>${rb.watch}</span></div>`;
   return vnBox(d.who,t.n+" briefing",`<div class="vnportrait">${d.draw("talk")}</div>`,rb.lines[S.arrLine],S.arrLine,rb.lines.length,S.arrLine===rb.lines.length-1?dossier:"")}
 /* Skip intro skips the elevator and ADMIN_0 only. The work-style briefing is never skippable. */
-function skipArrival(){elevTimers.forEach(clearTimeout);elevTimers=[];S.doorsDone=true;S.arr="role";S.arrLine=0;render()}
+function skipArrival(){if(S.arr==="elev")SND.ding();elevTimers.forEach(clearTimeout);elevTimers=[];S.doorsDone=true;S.arr="role";S.arrLine=0;render()}
 function arrivalAdvance(){
-  if(S.arr==="elev"){S.arr="admin";S.arrLine=0;render();return}
+  if(S.arr==="elev"){S.arr="admin";S.arrLine=0;SND.ding();render();return}
   if(S.arr==="admin"){if(S.arrLine<ADMIN_LINES.length-1)S.arrLine++;else{S.arr="role";S.arrLine=0}render();return}
   if(S.arr==="role"){const n=ROLE_BRIEF[S.type].lines.length;if(S.arrLine<n-1)S.arrLine++;else{S.arr="spawn";render();setTimeout(()=>{if(S.arr==="spawn"){S.arrived=true;render()}},1800);return}render();return}
   if(S.arr==="spawn"){S.arrived=true;render()}
 }
 let elevTimers=[];
 function runElevator(){elevTimers.forEach(clearTimeout);elevTimers=[];let f=1;const el=()=>$("#flr");
-  const stepF=()=>{f+=Math.max(1,Math.round((60-f)/6));if(f>60)f=60;if(el())el().textContent="▲ "+String(f).padStart(2,"0");if(f<60)elevTimers.push(setTimeout(stepF,90));else elevTimers.push(setTimeout(()=>{if(S.step===4&&S.arr==="elev")arrivalAdvance()},700))};
+  const stepF=()=>{f+=Math.max(1,Math.round((60-f)/6));if(f>60)f=60;if(el())el().textContent="▲ "+String(f).padStart(2,"0");if(f<60)elevTimers.push(setTimeout(stepF,140));else elevTimers.push(setTimeout(()=>{if(S.step===4&&S.arr==="elev")arrivalAdvance()},700))};
   elevTimers.push(setTimeout(stepF,500))}
 
 /* Escape closes any open popup, same as its X: room and ghost panels, and the whisper box. Works wherever focus is. */
@@ -791,6 +819,7 @@ function render(){
   if(currentTrialView&&currentTrialView.cleanup)currentTrialView.cleanup();
   currentTrialView=S.step===7?trialView():null;
   chrome();$("#stage").innerHTML=V[S.step]();bind();BOARD.refresh();
+  {const st=G&&ME?status():null;if(st==="Glitching"&&lastStatus!=="Glitching")SND.glitch(1);lastStatus=st}
   document.body.classList.toggle("mapscreen",!!$("#world"));
   /* Map screens: the name bar and stat bar get their own rows above the scroll area, so nothing scrolls under them. */
   {const top=$("#topbar"),hud=$("#hud"),wrap=$(".wrap");if($("#world")){if(hud.parentNode!==document.body){document.body.insertBefore(top,wrap);document.body.insertBefore(hud,wrap)}}
@@ -806,7 +835,7 @@ function bind(){
     $("#signForm").onsubmit=e=>{e.preventDefault();const emChk=EP.Game.checkEmail($("#em").value),jcChk=EP.Game.checkJoinCode($("#jc").value);S.email=emChk.value;S.code=jcChk.value;
       if(!emChk.ok){$("#signErr").textContent=emChk.reason;return}
       if(!jcChk.ok){$("#signErr").textContent=jcChk.reason;return}
-      S.name=savedName(emChk.value)||S.name;go(1)};
+      S.name=savedName(emChk.value)||S.name;{const lk=protoNameStore.getLook(emChk.value);if(lk)S.av={...lk}}go(1)};
   }
   if(S.step===1){
     on("#play",()=>go(2));on("#wardrobe",()=>go(2));
@@ -821,9 +850,12 @@ function bind(){
       S.draft=c;updateNav()});
     nm.addEventListener("blur",()=>{S.draft=S.draft.trim();nm.value=S.draft});
     $$("[data-tab]").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;render()});
-    $$("[data-k]").forEach(b=>b.onclick=()=>{S.av[b.dataset.k]=+b.dataset.i;render()});
+    $$("[data-k]").forEach(b=>b.onclick=()=>{const k=b.dataset.k,i=+b.dataset.i;if(k==="body"&&i!==S.av.body)S.av=starterLook(i,{skin:S.av.skin,hairC:S.av.hairC,acc:S.av.acc});else S.av[k]=i;S.lookMsg="";render()});
     on("#closeW",()=>go(1));
-    on("#rand",()=>{const r=n=>Math.floor(Math.random()*n);S.av={body:r(2),skin:r(SKIN.length),hair:r(HAIR.length),hairC:r(HAIRC.length),top:r(CLOTH.length),topS:r(TOP.length),bot:r(BOTC.length),botS:r(BOT.length),hat:r(HAT.length),extra:r(EXTRA.length),acc:r(CLOTH.length),tool:r(TOOLS.length)};render()}); // cosmetic-ok
+    on("#saveLook",()=>{if(!S.draft.trim()||S.draft.trim().length<2){S.lookMsg="Add a display name first (2 to 16 characters).";render();return}saveName(S.email,S.draft.trim());protoNameStore.setLook(S.email,S.av);S.lookMsg="Saved. This look comes back the next time you sign in with this email.";render()});
+    on("#loadLook",()=>{const lk=protoNameStore.getLook(S.email);if(lk){S.av={...lk};S.lookMsg="Saved look loaded."}render()});
+    on("#keepEdit",()=>{S.tab="body";S.lookMsg="";render()});
+    on("#rand",()=>{const r=n=>Math.floor(Math.random()*n);S.av={body:r(2),skin:r(SKIN.length),hair:r(HAIR.length),hairC:r(HAIRC.length),top:r(CLOTH.length),topS:r(TOP.length),bot:r(BOTC.length),botS:r(BOT.length),hat:r(HAT.length),extra:r(EXTRA.length),acc:r(CLOTH.length)};render()}); // cosmetic-ok
   }
   if(S.step===3){
     $$("[data-type]").forEach(b=>b.onclick=()=>{const t=b.dataset.type;if(t===S.type)return;
@@ -875,13 +907,24 @@ function payCost(){
   G.endTrial();   // pay the cost, then Trial > Glitch Report
 }
 
-/* red glitch cursor (menus only) */
+/* red glitch cursor, used on every screen. A click makes it glitch for a moment (with a small glitch sound).
+   While your character is Glitching, the cursor keeps flickering. */
 const curRed=`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="#e0394d" stroke="#0b0e13" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
-const curGl=`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M6 2 L6 26 L12 20 L16 30 L21 28 L17 18 L26 18Z" fill="#ff4fa3" opacity=".8"/><path d="M2 2 L2 26 L8 20 L12 30 L17 28 L13 18 L22 18Z" fill="#38e6d6" opacity=".8"/><path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="#e0394d" stroke="#0b0e13" stroke-width="2.5" stroke-linejoin="round"/><rect x="0" y="12" width="28" height="3" fill="#ff4fa3"/></svg>`;
+const curNo=`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="#6b7383" stroke="#0b0e13" stroke-width="2.5" stroke-linejoin="round"/><circle cx="24" cy="24" r="6" fill="#0b0e13"/><path d="M20 28 L28 20" stroke="#ff5b6e" stroke-width="3"/></svg>`;
+const curGl=`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M7 2 L7 26 L13 20 L17 30 L22 28 L18 18 L27 18Z" fill="#ff4fa3" opacity=".85"/><path d="M1 2 L1 26 L7 20 L11 30 L16 28 L12 18 L21 18Z" fill="#38e6d6" opacity=".85"/><path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="#e0394d" stroke="#0b0e13" stroke-width="2.5" stroke-linejoin="round"/><rect x="0" y="11" width="30" height="3" fill="#ff4fa3"/><rect x="2" y="21" width="18" height="2" fill="#38e6d6"/></svg>`;
+const curGl2=`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><defs><clipPath id="a"><rect x="0" y="0" width="32" height="10"/></clipPath><clipPath id="b"><rect x="0" y="10" width="32" height="9"/></clipPath><clipPath id="c"><rect x="0" y="19" width="32" height="13"/></clipPath></defs><g clip-path="url(#a)"><path d="M6 2 L6 26 L12 20 L16 30 L21 28 L17 18 L26 18Z" fill="#e0394d" stroke="#0b0e13" stroke-width="2.5"/></g><g clip-path="url(#b)"><path d="M1 2 L1 26 L7 20 L11 30 L16 28 L12 18 L21 18Z" fill="#38e6d6" stroke="#0b0e13" stroke-width="2.5"/></g><g clip-path="url(#c)"><path d="M4 2 L4 26 L10 20 L14 30 L19 28 L15 18 L24 18Z" fill="#ff4fa3" stroke="#0b0e13" stroke-width="2.5"/></g><rect x="0" y="16" width="32" height="2" fill="#f2f5f8" opacity=".8"/></svg>`;
 const curUri=x=>`url("data:image/svg+xml,${encodeURIComponent(x)}") 4 2`;
-document.documentElement.style.setProperty("--cur-red",curUri(curRed));document.documentElement.style.setProperty("--cur-gl",curUri(curGl));
-document.addEventListener("pointerdown",()=>{if(!document.body.classList.contains("menucur"))return;document.body.classList.add("curgl");setTimeout(()=>document.body.classList.remove("curgl"),220)});
-document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("button");if(b&&document.body.classList.contains("menucur")){b.classList.add("btngl");setTimeout(()=>b.classList.remove("btngl"),220)}});
+[["--cur-red",curRed],["--cur-no",curNo],["--cur-gl",curGl],["--cur-gl2",curGl2]].forEach(([k,v])=>document.documentElement.style.setProperty(k,curUri(v)));
+/* glitch: switch between two broken frames, then back to normal */
+let curTimers=[];
+function cursorGlitch(ms){curTimers.forEach(clearTimeout);curTimers=[];const b=document.body;
+  [[0,"curgl"],[60,"curgl2"],[120,"curgl"],[180,"curgl2"]].forEach(([t,c])=>curTimers.push(setTimeout(()=>{b.classList.remove("curgl","curgl2");b.classList.add(c)},t)));
+  curTimers.push(setTimeout(()=>b.classList.remove("curgl","curgl2"),ms||240))}
+document.addEventListener("pointerdown",()=>{cursorGlitch(240);if(S.step!==7)SND.glitch(.25)});   /* no click blip during trials (Level 3 taps fast) */
+/* While Glitching: flicker every so often. */
+setInterval(()=>{if(document.body.classList.contains("curglitching")&&Math.random()<.45)cursorGlitch(200)},700); // cosmetic-ok
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("button");if(b){b.classList.add("btngl");setTimeout(()=>b.classList.remove("btngl"),220)}});
+$("#sndBtn").onclick=e=>{const m=SND.toggleMute();e.currentTarget.textContent=m?"🔇 Muted":"🔊 Sound";e.currentTarget.setAttribute("aria-pressed",String(!m));e.currentTarget.setAttribute("aria-label",m?"Sound off. Press to turn on.":"Sound on. Press to mute.")};
 $("#navBack").onclick=()=>{if(!canBack())return;if(S.step===1&&S.menu!=="map"){S.menu="map";render();return}if(S.step===1){signOut();return}go(S.step-1)};
 $("#navNext").onclick=goForward;
 /* Progress board: read-only, open at any time in the game. Data comes only from Game.board(). */
