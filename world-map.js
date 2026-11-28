@@ -90,11 +90,12 @@ function worldSVG(){const E="#0b0e13";
   <text x="1300" y="722" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="24" letter-spacing="12" fill="rgba(11,14,19,.16)">FLOOR 60</text>
   <g id="wnpcs">${TEAM.map((p,i)=>{const [x,y]=[[1150,410],[1350,410],[1250,520]][i];return `<g transform="translate(${x} ${y})">${avatarSVG(p.av,{label:p.n,extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="16" fill="#fff" stroke="#0b0e13" stroke-width="4" paint-order="stroke">${p.n}</text></g>`}).join("")}
    <g transform="translate(1790 520)">${avatarSVG({body:1,skin:4,hair:8,hairC:6,top:7,topS:1,bot:0,botS:1,hat:0,extra:1,acc:2},{label:"Guest",extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="15" fill="#f2b84b" stroke="#0b0e13" stroke-width="4" paint-order="stroke">Guest · Sponsor</text></g>
-   <g transform="translate(1690 745)">${avatarSVG(PRESETS_ROOK,{label:"Rook",extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="16" fill="#cbd3dc" stroke="#0b0e13" stroke-width="4" paint-order="stroke">Rook · Wren</text></g></g>
+   <g transform="translate(1690 745)">${avatarSVG(PRESETS_BRANDIES,{label:"Brandies",extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="16" fill="#f2b84b" stroke="#0b0e13" stroke-width="4" paint-order="stroke">Brandies · Floor Director</text></g></g>
   <g id="wghosts">${GHOSTS.map((g,i)=>`<g class="wg" data-g="${i}" opacity="0" transform="translate(0 0)">${avatarSVG(g.a,{label:g.n,holo:true,ghost:true,holoC:"#e9ecff",extra:' x="-30" y="-100" width="60" height="101"'})}<text y="22" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="15" fill="#e9ecff" stroke="#0b0e13" stroke-width="4" paint-order="stroke">${g.n}</text></g>`).join("")}</g>
   <g id="wme" transform="translate(${S.pos.x} ${S.pos.y})"><ellipse cx="0" cy="2" rx="26" ry="8" fill="rgba(0,0,0,.35)"/><g id="wmeinner">${avatarSVG(S.av,{label:S.name,holo:status()==="Glitching",extra:' x="-30" y="-100" width="60" height="101"'})}</g><text y="24" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="17" fill="#f2b84b" stroke="#0b0e13" stroke-width="4" paint-order="stroke">${esc(S.name)}</text></g>
   </svg>`}
-const PRESETS_ROOK={body:0,skin:9,hair:3,hairC:0,top:7,topS:1,bot:0,botS:0,hat:0,extra:1,acc:2};
+/* Brandies, Floor Director (i.c.stars executive director). Get her OK before demo day. Adjust skin/hair here to match her. */
+const PRESETS_BRANDIES={body:1,skin:6,hair:8,hairC:0,top:0,topS:1,bot:0,botS:0,hat:0,extra:3,acc:2};
 /* Minimap room labels: short full names, squeezed to fit inside the room when needed. */
 const MMLAB={reception:"RECEPTION",kitchen:"KITCHEN",allskate:"ALL SKATE",hightea:"HIGH TEA",wellness:"WELLNESS",conf:"CONFERENCE",breakout:"BREAKOUT"};
 function mmFit(r){const xs=r.pts.map(p=>p[0]),room=Math.max(...xs)-Math.min(...xs),max=room*.72,est=MMLAB[r.id].length*70*.62;
@@ -114,7 +115,7 @@ function worldHTML(mode){return `<div class="world" id="world" data-mode="${mode
   <div class="minimap${S.mmHidden?" min":""}" id="mmap" role="button" tabindex="0" title="Show or hide the map (M)">${mmapInner()}</div>
   <div class="joy" id="joy" aria-label="Move: drag inside the circle, or use arrow keys / WASD"><div class="knob" id="knob"></div></div>
   <button class="usebtn" id="usebtn" disabled>USE</button>
-  ${S.panel?`<div class="wpanel"><button class="xclose" id="closeP" aria-label="Close">✕</button>${S.panel==="ghost"?ghostPanel():S.panel==="npc"?rookPanel():roomPanel()}</div>`:""}
+  ${S.panel?`<div class="wpanel"><button class="xclose" id="closeP" aria-label="Close">✕</button>${S.panel==="ghost"?ghostPanel():S.panel==="npc"?brandiesPanel():roomPanel()}</div>`:""}
   <div class="wact" id="wact" hidden></div>
   <div class="whelp"><span class="kb">Move: arrow keys / WASD · Act: E · Map: M</span><span class="tc">Move: joystick · Act: USE</span></div>
   </div>`}
@@ -128,9 +129,13 @@ function roomPanel(){const t=T();const lockd=!floorOpen()||S.step!==6;const r=S.
   if(r==="reception")return `<div class="panel"><span class="label">Reception · Check in</span><p>The front desk prints your badge again. <b>ATTEMPT 02</b>. You only remember one.</p><span class="okmsg">Anomaly logged: WATCHER.</span></div>`;
   return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. ${T().ct.canSabotage()?"Slip into the Breakout Room to sabotage a teammate. ":""}Gift a teammate in the Kitchen now, or in the gift window after the trial. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow({...p,st:MATE(p.n).boardStatus()})).join("")}</div></div>`;
 }
-/* Rook from Team Wren stands in the hallway. Walk up and press E to talk. */
-const ROOK={x:1690,y:745};
-function rookPanel(){return `<div class="panel"><span class="label">Rook · Team Wren</span><p>"Same trial as you this round. Good luck in there."</p><span class="hint">Other teams are on this floor too.</span></div>`}
+/* Brandies, the Floor Director, stands in the hallway. Walk up and press E to talk. */
+const BRANDIES={x:1690,y:745};
+const BRANDIES_LINES=[
+ "Welcome to Floor 60. I'm Brandies, your Floor Director. Every room on this floor has something to teach you.",
+ "Four tasks, one team. Help each other out, and don't let the glitches get in your head.",
+ "Nobody exits this floor alone. Check on your team before you check out."];
+function brandiesPanel(){const i=Math.min((G&&G.level?G.level:1)-1,BRANDIES_LINES.length-1);return `<div class="panel" style="border-color:#f2b84b"><span class="label" style="color:#f2b84b">Brandies · Floor Director</span><p>"${esc(BRANDIES_LINES[Math.max(0,i)])}"</p><span class="hint">She keeps the whole floor running. Find her in the hallway between rooms.</span></div>`}
 function ghostPanel(){const g=GHOSTS[S.nearGhost||0];return `<div class="panel" style="border-color:#e9ecff"><span class="label" style="color:#e9ecff">${g.n} · wandering ghost</span><p style="font-family:var(--px);color:#e9ecff">“${esc(ghostHint(g.n))}”</p><span class="hint">It flickers and is gone.</span></div>`}
 let W={raf:0,vx:0,vy:0,keys:{},tapT:{},last:0,ghostT:0,ghostPos:[]};
 const TAP_MS=110;   // one quick tap moves about 33px (300 px/s)
@@ -179,7 +184,7 @@ function initWorld(){
 }
 function useAction(){const mode=S.step===6&&floorOpen()?"floor":"lobby";
   if(W.near>=0)return{label:"Listen",ok:true,cls:"ghost",act:"ghost"};
-  if(Math.hypot(S.pos.x-ROOK.x,S.pos.y-ROOK.y)<90)return{label:"Talk",ok:true,act:"npc"};
+  if(Math.hypot(S.pos.x-BRANDIES.x,S.pos.y-BRANDIES.y)<90)return{label:"Talk",ok:true,act:"npc"};
   const r=S.wroom;
   if(r==="kitchen")return{label:"Look",ok:true,act:"room"};
   /* "Sabotage" only if a Sabotage button inside would work (same Game.sabotageOptions check). */
