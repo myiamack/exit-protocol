@@ -9,10 +9,15 @@ class Economy {
   /* Trial cost for every non-Stuck player. */
   payTrialCosts(players, round) {
     const out = new Map();
+    const rec = {};
     for (const p of players) {
       const r = p.payTrial(round.attr, round.cost);
-      if (r) out.set(p, r);
+      if (r) {
+        out.set(p, r);
+        rec[p.id] = { ...r };
+      }
     }
+    round.trialPayments = rec;
     return out;
   }
 

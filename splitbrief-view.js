@@ -1,0 +1,301 @@
+/* Level 2 Split Brief trial screen.
+   Screen code only, loaded by index.html before game.js.
+   Rules live in rules/Trial.js (SplitBriefTrial) and rules/Game.js. */
+(function (root) {
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = x => Math.floor(Math.max(0, x) / 60) + ":" + String(Math.max(0, x) % 60).padStart(2, "0");
+
+  function renderCardsHTML(cards, twistCard) {
+    const list = cards.map(c => `<div class="memo sb-card"><span class="label">${esc(c.title)}</span><p>${esc(c.text)}</p></div>`).join("") ||
+      `<span class="hint">No brief cards dealt to you.</span>`;
+    const twist = twistCard
+      ? `<div class="sb-twist-card"><span class="chip p">Breaking news · Only you</span><p>${esc(twistCard.text)}</p></div>`
+      : "";
+    return list + twist;
+  }
+
+  function renderNotesHTML(notes) {
+    if (!notes.length) return `<span class="hint">No team notes yet.</span>`;
+    return notes.map(n => `<div class="sb-note"><b>${esc(n.posterName)}:</b> <span>${esc(n.text)}</span></div>`).join("");
+  }
+
+  function renderTwistPopupHTML(twistCard) {
+    return `<div class="board-ov" id="splitTwistOv"><div class="board-box sb-twist-pop" role="alertdialog" aria-modal="true" aria-labelledby="splitTwistTitle"><span class="chip p">Urgent · Ghosted Teammate</span><h2 id="splitTwistTitle">Breaking news. Only you got this.</h2><p class="sb-twist-text">${esc(twistCard.text)}</p><div class="row"><button type="button" class="btn red" id="splitTwistOk">Got it</button></div></div></div>`;
+  }
+
+  /* opts:
+     - game: Game instance
+     - me: Player instance
+     - team: Team instance (me's team)
+     - state: mutable UI state object (noteDraft, msg, confirmLock, twistDismissed)
+     - onRender: () => void
+     - header: () => string
+     - costHint: () => string */
+  function screen(opts) {
+    const G = opts.game, ME = opts.me, MYTEAM = opts.team, state = opts.state;
+    if (state.noteDraft == null) state.noteDraft = "";
+    if (state.msg == null) state.msg = "";
+    if (state.confirmLock == null) state.confirmLock = false;
+    if (state.twistDismissed == null) state.twistDismissed = false;
+
+    const SBT = EP.Trial.SplitBriefTrial;
+    const view = G.splitBriefView(ME);
+    const hdr = opts.header ? opts.header() : `<div><span class="chip r">The Trial · Level ${G.level}</span><h2 style="margin-top:8px">Split Brief</h2></div>`;
+    if (!view) return { html: hdr, bind: null, tick: null, waitHint: "Wait for the Split Brief timer to finish" };
+    const done = view.done;
+
+    if (done) {
+      const rank = view.ranking || [];
+      const mine = rank.find(x => x.isMine);
+      const won = mine ? mine.won : MYTEAM.won;
+      const maxScore = view.maxScore != null ? view.maxScore : SBT.MAX_SCORE;
+      const myShown = view.shownScore != null ? view.shownScore : (mine ? mine.shownScore : 0);
+      const winnersCount = view.winnersCount != null ? view.winnersCount : EP.Trial.winners(rank.length);
+      const rawScore = view.boardScore;
+      const keyStr = (view.postTwistAnswer || []).join(" then ");
+      const hint = opts.costHint ? `<span class="hint">${opts.costHint()}</span>` : "";
+      const html = `${hdr}<div class="result"><b style="color:${won ? "var(--ok)" : "var(--bad)"}">Team ${won ? "WIN" : "LOSS"}. Score ${myShown} of ${maxScore}.</b><span class="hint">Board score: ${rawScore} of ${maxScore} (post-twist key: ${esc(keyStr)}). Top ${winnersCount} of ${rank.length} teams win.</span><table class="levels"><thead><tr><th>Place</th><th>Team</th><th>Score</th><th>Result</th></tr></thead><tbody>${rank.map(r => `<tr><td class="n">${r.place}</td><td>${esc(r.teamName)}${r.isMine ? " (you)" : ""}</td><td class="n">${r.shownScore} / ${maxScore}</td><td>${r.won ? "Win" : "Loss"}</td></tr>`).join("")}</tbody></table>${hint}</div>`;
+      return { html, bind: null, tick: null, waitHint: "Wait for the Split Brief trial to finish" };
+    }
+
+    const cards = view.cards;
+    const twistCard = view.twistCard;
+    if (view.twistFired && state.confirmLock) state.confirmLock = false;
+    const notes = view.notes;
+    const left = view.notesLeft;
+    const board = view.board;
+    const locked = view.locked;
+    const canAct = ME.isActive();
+    const canPost = canAct && left > 0;
+    const tasks = view.tasks;
+    const taskById = id => tasks.find(t => t.id === id);
+
+    const tasksHTML = tasks.map(t => {
+      const dis = locked || !canAct || board.includes(t.id) || board.length >= SBT.MAX_BOARD_TASKS;
+      return `<div class="sb-task"><span><b>${esc(t.id)}.</b> ${esc(t.name)} <span class="hint">(${t.days}d)</span></span><button type="button" class="btn blue sm" data-sb-add="${esc(t.id)}" aria-label="Add ${esc(t.id)}" ${dis ? "disabled" : ""}>Add</button></div>`;
+    }).join("");
+
+    const slotsHTML = board.length
+      ? board.map((id, i) => {
+          const t = taskById(id) || { id, name: id, days: 0 };
+          return `<div class="sb-slot"><span><b>${i + 1}. ${esc(t.id)} · ${esc(t.name)}</b> <span class="hint">(${t.days}d)</span></span><span class="row"><button type="button" class="btn soft sm" data-sb-up="${i}" aria-label="Move ${esc(t.id)} up" ${locked || !canAct || i === 0 ? "disabled" : ""}>Up</button><button type="button" class="btn soft sm" data-sb-down="${i}" aria-label="Move ${esc(t.id)} down" ${locked || !canAct || i === board.length - 1 ? "disabled" : ""}>Down</button><button type="button" class="btn soft sm" data-sb-rem="${i}" aria-label="Remove ${esc(t.id)}" ${locked || !canAct ? "disabled" : ""}>Remove</button></span></div>`;
+        }).join("")
+      : `<span class="hint">No tasks picked yet. Add up to ${SBT.MAX_BOARD_TASKS} tasks in order.</span>`;
+
+    const lockHTML = locked
+      ? `<div class="locked" id="splitLockedMsg"><span><b>Board locked in.</b> Final for the whole team. Waiting for the timer or other teams.</span></div>`
+      : state.confirmLock && !view.twistFired
+        ? `<div class="panel sb-confirm" id="splitLockConfirm"><p><b>Wait:</b> "We locked our plan in early. Then the client changed everything." Once you Lock In, your board is final for the whole team even if new information arrives. Lock in anyway?</p><div class="row"><button type="button" class="btn red" id="splitLockYes">Confirm Lock In</button><button type="button" class="btn soft" id="splitLockNo">Cancel</button></div></div>`
+        : `<div class="row"><button type="button" class="btn green" id="splitLockBtn" ${!canAct || !board.length ? "disabled" : ""}>Lock In</button><span class="hint">${canAct ? "Any active teammate can edit until Lock In." : "Inactive players cannot edit or lock in."}</span></div>`;
+
+    const html = `${hdr}
+<div class="panel"><div class="row" style="justify-content:space-between"><span><b>${esc(view.scenarioTitle)}</b> · Time remaining</span><span class="counter" id="splitTmr">${fmt(G.secondsLeft() || 0)}</span></div></div>
+<div class="cols">
+  <div class="panel"><span class="label">My private brief cards (only you)</span><div class="sb-cards" id="splitCards">${renderCardsHTML(cards, twistCard)}</div></div>
+  <div class="panel"><div class="row" style="justify-content:space-between"><span class="label">Team notes (${esc(MYTEAM.name)})</span><span class="counter" id="splitNotesLeft">notes left: ${left}/${SBT.MAX_NOTES}</span></div><div class="sb-feed" id="splitNotesFeed">${renderNotesHTML(notes)}</div><div class="sb-noteform"><label class="label" for="splitNoteIn">Post a note (max ${SBT.MAX_NOTE_CHARS} chars)</label><div class="row"><input type="text" id="splitNoteIn" maxlength="${SBT.MAX_NOTE_CHARS}" placeholder="Share what your cards say..." value="${esc(state.noteDraft)}" ${!canPost ? "disabled" : ""} style="flex:1;min-width:160px"><button type="button" class="btn blue sm" id="splitPostNote" ${!canPost || !state.noteDraft.trim() ? "disabled" : ""}>Post</button></div></div></div>
+</div>
+<div class="panel" id="splitBoard"><span class="label" id="splitBoardHead" tabindex="-1">Shared team board · Pick ${SBT.MAX_BOARD_TASKS} tasks in order</span>
+  <div class="cols">
+    <div><span class="label">Available tasks</span><div class="sb-tasks">${tasksHTML}</div></div>
+    <div><span class="label">Team plan (1st, 2nd)</span><div class="sb-slots">${slotsHTML}</div></div>
+  </div>
+  ${state.msg ? `<div class="err" id="splitErr">${esc(state.msg)}</div>` : ""}
+  ${lockHTML}
+</div>
+<div id="splitTwistHost">${twistCard && !state.twistDismissed ? renderTwistPopupHTML(twistCard) : ""}</div>`;
+
+    let lastNoteCount = notes.length;
+    let lastTwistShown = !!(twistCard && !state.twistDismissed);
+    let mountedRoot = null;
+
+    const bindTwistOk = rootEl => {
+      const okBtn = rootEl.querySelector("#splitTwistOk");
+      if (okBtn) okBtn.onclick = () => {
+        state.twistDismissed = true;
+        const host = rootEl.querySelector("#splitTwistHost");
+        if (host) host.innerHTML = "";
+      };
+    };
+
+    const restoreFocus = (rootEl, f) => {
+      if (!f) return;
+      const pick = sels => {
+        for (const s of sels) {
+          const el = rootEl.querySelector(s);
+          if (el && !el.disabled) { el.focus(); return true; }
+        }
+        return false;
+      };
+      if (f.kind === "post") {
+        pick(["#splitNoteIn", "[data-sb-add]:not(:disabled)", "#splitBoardHead"]);
+        return;
+      }
+      if (f.kind === "add") {
+        const all = [...rootEl.querySelectorAll("[data-sb-add]")];
+        const idx = all.findIndex(b => b.dataset.sbAdd === f.id);
+        const ordered = idx >= 0 ? [...all.slice(idx), ...all.slice(0, idx).reverse()] : all;
+        const hit = ordered.find(b => !b.disabled);
+        if (hit) { hit.focus(); return; }
+        pick(["[data-sb-up]:not(:disabled)", "[data-sb-down]:not(:disabled)", "[data-sb-rem]:not(:disabled)", "#splitLockBtn"]);
+        return;
+      }
+      if (f.kind === "up") {
+        pick([`[data-sb-up="${f.index}"]`, `[data-sb-down="${f.index}"]`, `[data-sb-rem="${f.index}"]`, "[data-sb-add]:not(:disabled)"]);
+        return;
+      }
+      if (f.kind === "down") {
+        pick([`[data-sb-down="${f.index}"]`, `[data-sb-up="${f.index}"]`, `[data-sb-rem="${f.index}"]`, "[data-sb-add]:not(:disabled)"]);
+        return;
+      }
+      if (f.kind === "rem") {
+        pick([`[data-sb-rem="${f.index}"]`, `[data-sb-rem="${f.index - 1}"]`, "[data-sb-add]:not(:disabled)"]);
+      }
+    };
+
+    const bind = rootEl => {
+      mountedRoot = rootEl;
+      const feed = rootEl.querySelector("#splitNotesFeed");
+      if (feed) feed.scrollTop = feed.scrollHeight;
+
+      const noteIn = rootEl.querySelector("#splitNoteIn");
+      const postBtn = rootEl.querySelector("#splitPostNote");
+      const submitNote = () => {
+        if (!noteIn || noteIn.disabled) return;
+        G.activity(ME);
+        const r = G.splitBriefPostNote(ME, noteIn.value);
+        if (!r.ok) { state.msg = r.reason; state.sbFocus = { kind: "post" }; opts.onRender(); return; }
+        state.noteDraft = "";
+        state.msg = "";
+        state.sbFocus = { kind: "post" };
+        opts.onRender();
+      };
+      if (noteIn) {
+        noteIn.addEventListener("input", () => {
+          G.activity(ME);
+          state.noteDraft = noteIn.value;
+          if (postBtn) postBtn.disabled = !canPost || !noteIn.value.trim();
+        });
+        noteIn.addEventListener("keydown", e => {
+          if (e.key === "Enter") { e.preventDefault(); submitNote(); }
+        });
+      }
+      if (postBtn) postBtn.onclick = submitNote;
+
+      rootEl.querySelectorAll("[data-sb-add]").forEach(btn => {
+        btn.onclick = () => {
+          G.activity(ME);
+          const id = btn.dataset.sbAdd;
+          const cur = G.splitBriefView(ME);
+          const r = G.splitBriefSetBoard(ME, [...(cur ? cur.board : []), id]);
+          state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "add", id };
+          opts.onRender();
+        };
+      });
+      rootEl.querySelectorAll("[data-sb-up]").forEach(btn => {
+        btn.onclick = () => {
+          G.activity(ME);
+          const cur = G.splitBriefView(ME);
+          const i = +btn.dataset.sbUp, b = cur ? cur.board.slice() : [];
+          const moved = i > 0 && i < b.length;
+          if (moved) [b[i - 1], b[i]] = [b[i], b[i - 1]];
+          const r = G.splitBriefSetBoard(ME, b);
+          state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "up", index: moved && r.ok ? i - 1 : i };
+          opts.onRender();
+        };
+      });
+      rootEl.querySelectorAll("[data-sb-down]").forEach(btn => {
+        btn.onclick = () => {
+          G.activity(ME);
+          const cur = G.splitBriefView(ME);
+          const i = +btn.dataset.sbDown, b = cur ? cur.board.slice() : [];
+          const moved = i >= 0 && i < b.length - 1;
+          if (moved) [b[i], b[i + 1]] = [b[i + 1], b[i]];
+          const r = G.splitBriefSetBoard(ME, b);
+          state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "down", index: moved && r.ok ? i + 1 : i };
+          opts.onRender();
+        };
+      });
+      rootEl.querySelectorAll("[data-sb-rem]").forEach(btn => {
+        btn.onclick = () => {
+          G.activity(ME);
+          const cur = G.splitBriefView(ME);
+          const i = +btn.dataset.sbRem, b = cur ? cur.board.slice() : [];
+          b.splice(i, 1);
+          const r = G.splitBriefSetBoard(ME, b);
+          state.msg = r.ok ? "" : r.reason;
+          state.sbFocus = { kind: "rem", index: i };
+          opts.onRender();
+        };
+      });
+
+      const doLockIn = () => {
+        G.activity(ME);
+        const r = G.splitBriefLockIn(ME);
+        state.confirmLock = false;
+        state.msg = r.ok ? "" : r.reason;
+        opts.onRender();
+      };
+      const lockBtn = rootEl.querySelector("#splitLockBtn");
+      if (lockBtn) lockBtn.onclick = () => {
+        G.activity(ME);
+        const cur = G.splitBriefView(ME);
+        if (cur && !cur.board.length) { doLockIn(); return; }
+        if (cur && !cur.twistFired) { state.confirmLock = true; opts.onRender(); return; }
+        doLockIn();
+      };
+      const lockYes = rootEl.querySelector("#splitLockYes");
+      if (lockYes) lockYes.onclick = doLockIn;
+      const lockNo = rootEl.querySelector("#splitLockNo");
+      if (lockNo) lockNo.onclick = () => { state.confirmLock = false; opts.onRender(); };
+
+      bindTwistOk(rootEl);
+      const pendingFocus = state.sbFocus;
+      state.sbFocus = null;
+      restoreFocus(rootEl, pendingFocus);
+    };
+
+    const tick = (txt, low) => {
+      if (!mountedRoot) return;
+      const st = mountedRoot.querySelector("#splitTmr");
+      if (st) { st.textContent = txt; st.classList.toggle("low", !!low); }
+
+      const cur = G.splitBriefView(ME);
+      if (!cur) return;
+      const curNotes = cur.notes;
+      if (curNotes.length !== lastNoteCount) {
+        lastNoteCount = curNotes.length;
+        const feed = mountedRoot.querySelector("#splitNotesFeed");
+        if (feed) {
+          feed.innerHTML = renderNotesHTML(curNotes);
+          feed.scrollTop = feed.scrollHeight;
+        }
+      }
+
+      if (cur.twistFired) {
+        if (state.confirmLock) {
+          state.confirmLock = false;
+          opts.onRender();
+          return;
+        }
+        const tc = cur.twistCard;
+        if (tc && !lastTwistShown && !state.twistDismissed) {
+          lastTwistShown = true;
+          const cardsEl = mountedRoot.querySelector("#splitCards");
+          if (cardsEl) cardsEl.innerHTML = renderCardsHTML(cur.cards, tc);
+          const host = mountedRoot.querySelector("#splitTwistHost");
+          if (host) {
+            host.innerHTML = renderTwistPopupHTML(tc);
+            bindTwistOk(mountedRoot);
+          }
+        }
+      }
+    };
+
+    return { html, bind, tick, waitHint: "Wait for the Split Brief timer to finish" };
+  }
+
+  root.SplitBriefView = { screen, fmt };
+})(typeof globalThis !== "undefined" ? globalThis : this);

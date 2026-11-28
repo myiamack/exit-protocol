@@ -1,0 +1,68 @@
+-- 1. Construction and Deal
+PASS  Constructor rejects missing rng
+PASS  3-player team holds 5 unique cards total with round-robin counts  -> counts=[1,2,2]
+PASS  4-player team holds 5 unique cards total with round-robin counts  -> counts=[1,1,1,2]
+PASS  5-player team holds 5 unique cards total with round-robin counts  -> counts=[1,1,1,1,1]
+PASS  Private cardsFor shows only player's own cards
+PASS  Stuck and idle players receive 0 cards while active teammates hold all 5
+-- 2. Team notes
+PASS  Empty/whitespace note is rejected
+PASS  81-character note is rejected without spending a note
+PASS  Stuck and idle players cannot post notes
+PASS  80 chars allowed, cap is 3 notes, 4th rejected, notesLeft accurate
+PASS  Notes are still allowed after team Lock In
+PASS  Feed shows only own team's notes with poster id, name, text, and order
+-- 3. Board and Lock In
+PASS  Bad task id rejected
+PASS  Duplicate task id rejected
+PASS  3 tasks rejected
+PASS  Stuck player rejected from editing board
+PASS  Idle player rejected from editing board
+PASS  0 tasks allowed
+PASS  1 task allowed
+PASS  2 ordered tasks allowed and editable by teammate
+PASS  Stuck player cannot lock in
+PASS  Idle player cannot lock in
+PASS  Active player locks team board (order 1)
+PASS  Second Lock In on same team rejected
+PASS  Board edit after Lock In rejected
+PASS  allLocked is false while another team is unlocked
+PASS  Unlocked team can still edit its board
+PASS  Second team locks in (order 2) and allLocked becomes true
+-- 4. Ghosted Teammate twist
+PASS  Twist is null for everyone before fireTwist()
+PASS  fireTwist picks exactly 1 active player per team and fires for locked teams
+PASS  fireTwist fires once only, preserves holders/rng, and exposes twist card text only to holder
+-- 5. Scoring
+PASS  Score ["D","B"] === 5  -> 5
+PASS  Score ["B","D"] === 4  -> 4
+PASS  Score ["C","D"] === 2  -> 2
+PASS  Score ["D"] === 2  -> 2
+PASS  Score [] === 0  -> 0
+PASS  Score ["A","C"] === 0  -> 0
+-- 6. Ranking, bot-only teams, influence, and lock-order tiebreak
+PASS  Bot-only team base score is integer 0 to 5 across seeds  -> 0,1,2,3,4,5
+PASS  Higher score after influence beats earlier lock-in
+PASS  Tie after influence breaks to earliest post-twist lock-in across 25 seeds
+PASS  Post-twist Lock In beats pre-twist Lock In on a tie across 25 seeds
+PASS  Post-twist Lock In beats no Lock In on a tie across 25 seeds
+PASS  Tie between two pre-twist Lock In teams falls back to Rng  -> 0,1
+PASS  Tie between unlocked teams falls back to Rng  -> 0,1
+-- 7. Save and load (toJSON / fromJSON)
+PASS  toJSON returns plain JSON-safe data  -> plain
+PASS  Trial.fromJSON rebuilds identical mid-trial state
+PASS  Lock order counter continues accurately after load
+PASS  Loaded trial produces the exact same ranking as original
+PASS  Post-run save/load preserves ranking and blocks further edits/notes
+-- 8. Per-game label and card order shuffle
+PASS  Different seeds produce different letter maps  -> distinct=12
+PASS  Different seeds produce different card deal orders  -> distinct=14
+PASS  Tasks keep sorted A-D ids after shuffle
+PASS  Shuffled postTwistAnswer scores 5 under every map
+PASS  Save/load preserves letterMap, cardOrder, tasks, and postTwistAnswer
+PASS  Bot notes use shuffled task letters  -> {"A":"D","B":"B","C":"A","D":"C"}
+-- 9. Empty board Lock In check (Step 10)
+PASS  Empty board lockIn is rejected by SplitBriefTrial and Game and stays unlocked
+PASS  Lock in succeeds with 1 task or 2 tasks
+
+57 passed, 0 failed.

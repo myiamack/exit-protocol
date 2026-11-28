@@ -6,6 +6,7 @@
     "build": "node tools/build-rules.js",
     "baseline": "node tools/baseline.js save",
     "test": "node tools/baseline.js check",
+    "test:balance": "node Tests/check_balance.js && node Tests/check_cheese.js && node Tests/check_teams.js",
     "test:screens": "node Tests/check_screens.js"
   },
   "devDependencies": {

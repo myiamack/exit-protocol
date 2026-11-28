@@ -1,18 +1,29 @@
--- 1. Save and load after every action (20 games, 5492 saves)
+-- 1. Save and load after every action (20 games, 5989 saves)
 PASS  both copies hold the same state after every action  -> all equal
 PASS  final endings match the game that never reloaded
 PASS  saved and loaded at every round step  -> intermission, briefing, openFloor, trial, glitchReport, giftWindow, lockIn, statsUpdate, graduation
-PASS  saved and loaded while every timer was running  -> intermission, openFloor, sop, glitchReport, giftWindow, statsUpdate, writing, graduation
--- 2. Load after a passed deadline (48 saves)
+PASS  saved and loaded while every timer was running  -> intermission, openFloor, sop, glitchReport, giftWindow, statsUpdate, splitBrief, mirrorLobby, writing, graduation, mirrorReveal, mirrorShowtime
+-- 2. Load after a passed deadline (72 saves)
 PASS  a passed timer closes on load
 PASS  loading late gives the same game as one that never stopped  -> all equal
 PASS  the next timer starts from the missed deadline  -> all equal
-PASS  tested with every timer  -> intermission, openFloor, sop, glitchReport, giftWindow, statsUpdate, writing, graduation
+PASS  tested with every timer  -> intermission, openFloor, sop, glitchReport, giftWindow, statsUpdate, splitBrief, mirrorLobby, writing, graduation, mirrorReveal, mirrorShowtime
 -- 3. Saved JSON is plain data
 PASS  no functions, Maps, class objects, undefined or circular links in any save  -> all plain
 PASS  save is plain data at the start of a game
 PASS  save survives JSON text unchanged
 PASS  a game with unsaveable random numbers refuses to save, with a clear reason
 PASS  random numbers continue the same sequence after loading
+-- 4. Fixed-seed full game (Levels 1 to 7) with Level 3 Mirror and mid-Level 3 reload
+PASS  fixed-seed full game plays Level 3 as Mirror (Focus, cost 3) and finishes
+PASS  save and load mid-Level 3 in a full game matches unbroken run
+-- 5. Mid-Q&A, mid-Sound-hold, and mid-Mic-flash reload
+PASS  mid-Sound-hold save/reload locks sound at exact same timestamp
+PASS  mid-Mic-flash save/reload hides sequence at exact same timestamp
+PASS  mid-Q&A save/reload times out at exact same timestamp
+-- 6. Mid-dance save and load restores chart, counter, and tempo
+PASS  mid-dance save/reload restores chart, spawnedCount, tempo gapTicks, and fires identical misses/spawns
+-- 7. Mid-round save/reload preserves round details and anomalies (old saves default to [])
+PASS  mid-round save/reload keeps trialPayments, accusations[].safe, sopTimedOut, and anomalies (old saves default to [])
 
-13 passed, 0 failed  (4.2 s)
+20 passed, 0 failed  (4.6 s)

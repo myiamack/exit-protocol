@@ -7,6 +7,7 @@ class Team {
     this.members = [];
     this.won = null;   // trial result this round: true, false, or null (not set)
     this.trialWins = 0;   // trials won so far this game (Progress board)
+    this.trialResults = {};   // level number -> boolean (trial won/lost per level)
     members.forEach(p => this.add(p));
   }
   add(p) { p.teamId = this.id; this.members.push(p); }
@@ -18,12 +19,13 @@ class Team {
   resetRound() { this.won = null; }
 
   /* Save (Part 13): members by player id. */
-  toJSON() { return { id: this.id, name: this.name, members: this.members.map(p => p.id), won: this.won, trialWins: this.trialWins }; }
+  toJSON() { return { id: this.id, name: this.name, members: this.members.map(p => p.id), won: this.won, trialWins: this.trialWins, trialResults: { ...this.trialResults } }; }
   /* Load. byId: player id -> Player. Members keep their saved order. */
   static fromJSON(data, byId) {
     const t = new Team({ id: data.id, name: data.name, members: data.members.map(id => byId.get(id)) });
     t.won = data.won;
     t.trialWins = data.trialWins;
+    t.trialResults = data.trialResults ? { ...data.trialResults } : {};
     return t;
   }
 }

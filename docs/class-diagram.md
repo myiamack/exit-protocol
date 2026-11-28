@@ -27,20 +27,28 @@ classDiagram
     -Timer _timer
     +rng  function from Rng.seeded
     +bool host
-    +hooks  onStart, beforeClose
+    +hooks  onStart, onVoteStart, onTick, beforeClose, onGift, onFastForward
     +log, prompts, submissions
     +step  current step, read-only
     +over  results ran, read-only
     +timer, running  from Timer
-    +start(), tick(), closeTimer(), secondsLeft()
-    +startNextRound(), advance(), finishRound()
-    +activity(), checkAttendance()
+    +start(), tick(), closeTimer(), secondsLeft(), timerView()
+    +startNextRound(), advance(), finishRound(), jumpToLevel(targetLevel)
+    +activity(), checkAttendance(), pollAttendance()
     +sabotage(), gift(), answerGift(), switchTeam()
-    +setSopBoard(), closeSop(), startWriting(), submit(), closeWriting(), startVote(), runTrial()
-    +payTrialCosts(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
+    +setSopBoard(), canSubmitSop(p), submitSop(), sopOrder(), closeSop(), splitBrief(), closeSplitBrief()
+    +splitBriefPostNote(), splitBriefSetBoard(), splitBriefLockIn(), splitBriefView()
+    +mirror(), closeMirrorLobby(), startMirrorShowtime(), closeMirror(), mirrorConnect(), mirrorMiss()
+    +mirrorNextCable(), mirrorReturnCable(), mirrorCableHit()..mirrorWrapUp(), mirrorNextSoundSpike(), mirrorNextSoundJitter(), mirrorSoundAdjust(), mirrorDancePress(), mirrorDanceHit()..mirrorDanceStray()
+    +mirrorPhase(), mirrorAttention(), mirrorScore(), mirrorLobbyTeam(), mirrorLobbyCursorStart(), mirrorCrew(), mirrorSetupSlots(), mirrorRole(), mirrorFailReason(), mirrorSetupTeam(), mirrorSetupView(), mirrorDanceTeam(), mirrorDanceView()
+    +startWriting(), submit(), closeWriting(), startVote(), castVote(), judgedView(), runTrial(), trialRanking(), trialResultView(), teamTrialResults(), teamStandings(), statTieOrderLabel(), statTieOrderLabel()$
+    +payTrialCosts(), accuse(), skipAccusation(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
     +computeEarnings(), draftPoint(), lockPoints(), autoPlacePoints(), cashOut()
+    +playerState(p, draft), roundSummary(p), sabotageOptions(p), giftOptions(p), answerGiftByIndex(p, index, accept)
+    +recordAnomaly(p, id), anomaliesFor(p)
     +board() public view
     +results() endings
+    +checkEmail(email)$, checkJoinCode(code, expected)$
     +toJSON(), fromJSON()$
   }
 
@@ -73,7 +81,7 @@ classDiagram
   class Team {
     +id, name
     +Player[] members
-    +won, int trialWins
+    +won, int trialWins, trialResults
     +int MIN = 3$, MAX = 5$
     +active(), mates(p), has(p), size()
     +add(p), remove(p), resetRound()
@@ -88,13 +96,16 @@ classDiagram
     -PlayerStatus #status
     -PathTracker #pathTracker
     -Wallet #wallet
+    -string[] #anomalies
+    +ANOMALIES$
     +caughtBy  team ids
     +round flags, attendance times
     +payTrial(), lose(), cover(), takeFromHighest(), giftTarget(), receiveGift()
     +lockIn(), lockAttendanceGlitch(), reboot()
     +placePoints(), canCashOut(), cashOut(), takeSkim()
     +creditPath(), gradChecks(), graduates(), lockEnding(), wins(), ending()
-    +rollAbility(), voteWeight(), flag(), boardStatus()
+    +recordAnomaly(id), anomalies()
+    +rollAbility(), abilityLines(draft), voteWeight(), flag(), boardStatus()
     +toJSON(), fromJSON(data)$
   }
 
@@ -103,7 +114,7 @@ classDiagram
     -attrs  5 attributes
     +KEYS$, TIE_ORDER$, START_EACH$, SPEND$, BOOST$, ABILITY$
     +rate(), attr(), addAttr(), total(), lowest(), highestKey(), lowestKey()
-    +abilityValue(), abilityChance(), voteWeight(), rollAbility(), abilityLines()
+    +abilityValue(), abilityChance(), voteWeight(), rollAbility(), abilityLines(draft)
     +lose(), cover(), payTrial(), takeFromHighest(), giftTarget(), receiveGift(), reboot()
     +toJSON(), fromJSON(player, data)$
   }
@@ -177,7 +188,7 @@ classDiagram
     +attr, int cost, bool isFinal, int stepIndex
     +completed, trial
     +sabotages[], accusations[], gifts[]
-    +sopBoards, sopResults, earnings, quietHearts, gritBonus
+    +sopBoards, sopResults, mirrorResults, trialPayments, bool sopTimedOut, earnings, quietHearts, gritBonus
     +steps, step, LEVELS$, STEPS$
     +nextStep(), saboteurs(), drainOn(p), caughtOn(team, except)
     +sabotage(), gift(), answerGift(), accuse(), endGlitchReport(), closeGlitchReport(), closeGiftWindow()
@@ -200,9 +211,9 @@ classDiagram
   class Bots {
     <<plain object, not a class>>
     +SETTINGS  rates from sim_v2.py
-    +hooks  onStart, beforeClose
-    +soloGame(...), typicalSpend(type), makePlayer(id, name, type)
-    +openFloor(), trial(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
+    +hooks  onStart, onVoteStart, onTick, beforeClose, onGift, onFastForward
+    +soloGame(...), typicalSpend(type), devBuild(type, spend), makePlayer(id, name, type)
+    +openFloor(), trial(), splitBrief(), mirror(), submit(), accusations(), gifts(), answer(), statsUpdate(), graduation(), vote()
     +allocate(p, n, final)
   }
 
@@ -228,7 +239,7 @@ classDiagram
 
   Economy ..> Player : reads and updates
   Attendance ..> Player : reads and sets times
-  Bots ..> Game : connects only via hooks (onStart, beforeClose)
+  Bots ..> Game : connects only via hooks (onStart, onVoteStart, onTick, beforeClose, onGift, onFastForward)
   Bots ..> Economy : allocate
   Bots ..> Player : makePlayer
   Bots ..> Team : soloGame
@@ -278,7 +289,7 @@ classDiagram
   class Trial {
     <<abstract>>
     +rng, ranking  best first
-    +kind  sop, auto, judged
+    +kind  sop, splitBrief, mirror, auto, judged
     +run(round, teams), runTrial(round, teams)
     +rank(round, teams)*
     +influence(round, teams)$ Levels 1 to 4
@@ -287,16 +298,89 @@ classDiagram
   }
   class SopTrial {
     Level 1
+    -int #pileSeed
+    +pileSeed  read-only
     +scores  per team, 0 to 7
     +int MAX_SCORE = 7$, STEPS$, ENDLESS$
-    +score(built, steps, endless)$
+    +score(built, steps, endless)$, canSubmit(built)$
+    +pileOrder(roundN)
     +setScore(team, score), scoreSop(...)
     +sopBoard(round, team), setSopBoard(...), closeSop(round, teams)
     +rank(round, teams) board score plus influence
   }
   class AutoTrial {
-    Levels 2 to 4
+    Level 4
     +rank(round, teams) random 0 to 7 plus influence
+  }
+  class SplitBriefTrial {
+    Level 2
+    +scenario, bool dealt, letterMap, cardOrder
+    +tasks, preTwistAnswer, postTwistAnswer
+    +bool twistFired, twistDeadline, onAllLocked
+    +int MAX_NOTE_CHARS = 80$, MAX_NOTES = 3$, MAX_BOARD_TASKS = 2$, MAX_SCORE = 5$
+    +int TRIAL_SECONDS = 180$, TWIST_SECONDS = 90$
+    +deal(teams), cardsFor(player)
+    +postNote(player, text), notesLeft(player), notesFor(team)
+    +boardFor(team), setBoard(player, taskIds)
+    +lockIn(player), isLocked(team), lockOrderOf(team), postTwistLockOrderOf(team), allLocked(teams)
+    +fireTwist(teams), twistFor(player), closeSplitBrief(round, teams)
+    +score(board, answer)$, rank(round, teams)
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class Scenarios {
+    <<data, scenarios.js>>
+    +MEDLINE_SPRINT_1  tasks, cards, twist, answer keys
+  }
+  class MirrorTrial {
+    Level 3
+    -rng #seedRng
+    -MirrorLobby #lobby
+    -SetupCrew #setup
+    -DanceCrew #dance
+    +phase  idle, lobby, reveal, showtime, failed
+    +showtimeStartAt
+    +int MAX_SCORE = 7$, LOBBY_SECONDS = 30$, REVEAL_SECONDS = 1$, SHOWTIME_SECONDS = 75$
+    +score(attention)$, setupCrewSize(n)$
+    +startLobby(teams), connect(id), miss(id), lobbyCursorStart(id), closeDoors(), startShowtime(opts)
+    +nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundAdjust(), soundHeld(), soundFeedback(), micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +nextSetupDeadline(), tickSetup(), nextShowtimeEventAt(), setupViewFor()
+    +dancePress(), nextDanceDeadline(), tickDance(), danceViewFor(), danceHit(), danceMiss(), danceStray(), advanceBotSetup(), advanceBotDance()
+    +attentionFor(), scoreFor(), checkAttention(), finishTeam(), closeMirror(round, teams)
+    +crewFor(), roleOf(), lobbyTeamState(), setupTeamState(), danceTeamState(), failReasonOf()
+    +rank(round, teams) score plus Focus influence, attention tie-break
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class MirrorLobby {
+    <<MirrorParts.js>>
+    -rng, -seedRng, bool #started, bool #closed, #teams, #playerIndex
+    +start(teams), connect(id), miss(id), cursorStartOf(id), closeDoors()
+    +botConnectTimes(), allConnected(), isTeamFailed(), teamState(), playerState()
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class SetupCrew {
+    <<MirrorParts.js>>
+    -rng, -seedRng, bool #started, #showtimeStartAt, #teams, #playerIndex
+    +crewSize(n)$, splitSteps(slots)$, botStepDuration(step)$
+    +beginShowtime(now), start(entries), nextCable(), returnCable(), cableHit(), cableMiss(), nextSoundSpike(), nextSoundJitter(), soundAdjust(), soundHeld(), soundFeedback()
+    +micTap(), pickFile(), reshuffleDeck(), answerQa(), timeoutQa(), wrapUp()
+    +nextDeadline(), tickDeadlines(), setupViewFor()
+    +completeBotStep(), advanceBotSetup(), botStepDueAt()
+    +currentStep(), currentPlayerId(), penaltiesFor(), teamState()
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class DanceCrew {
+    <<MirrorParts.js>>
+    -rng, -seedRng, bool #started, #showtimeStartAt, #teams, #playerIndex
+    +beginShowtime(now), start(setupCrew, opts), press(id, dir, opts), noteHit(), noteMiss(), strayPress()
+    +nextDeadline(), tickDeadlines(), danceViewFor()
+    +applyBotBoost(), advanceBotDance(), avgBoostFor(), avgPenaltiesFor()
+    +dancersFor(), dancerState(), teamState()
+    +toJSON(), fromJSON(data, opts)$
+  }
+  class MirrorData {
+    <<data, mirrorData.js>>
+    +ports, files, qaItems, setupSteps, setupSplits
+    +timers, scoring, lobby, cables, sound, mic, deck, qa, dance, bots, flavor
   }
   class JudgedTrial {
     Levels 5 and 6
@@ -324,18 +408,32 @@ classDiagram
   Round "1" o-- "0..1" Trial : levels 1 to 6, set by Game
   Trial <|-- SopTrial
   Trial <|-- AutoTrial
+  Trial <|-- SplitBriefTrial
+  Trial <|-- MirrorTrial
   Trial <|-- JudgedTrial
+  SplitBriefTrial ..> Scenarios : reads scenario data
+  MirrorTrial "1" *-- "1" MirrorLobby : #lobby
+  MirrorTrial "1" *-- "1" SetupCrew : #setup
+  MirrorTrial "1" *-- "1" DanceCrew : #dance
+  MirrorTrial ..> Rng : owns private #seedRng
+  MirrorTrial ..> MirrorData : reads constants
+  MirrorLobby ..> MirrorData : lobby rules
+  SetupCrew ..> MirrorData : steps, items, penalties
+  DanceCrew ..> MirrorData : boost, penalties, bot timing
+  DanceCrew ..> SetupCrew : reads danceIdsFor on start
   JudgedTrial "1" *-- "0..1" Vote : vote
   Vote "1" o-- "*" Team : ranks teams, sets won
   Vote "1" --> "*" Player : ballots, up to 3 ranked each
-  Trial ..> Team : sets won, trialWins
+  Trial ..> Team : sets won, trialWins, trialResults
   Round --> Player : records link players
 
   Game ..> Trial : forRound, delegates trial calls
   Game ..> Round : delegates round actions
+  Game ..> Attributes : reads TIE_ORDER and ABILITY
   Bots ..> Sabotage : cost
   Bots ..> Gift : cost, pending
-  Bots ..> Trial : JudgedTrial, BOT_ANSWER
+  Bots ..> Trial : SplitBriefTrial, MirrorTrial, JudgedTrial
+  Bots ..> MirrorData : boostCap
 
   Round ..> Sabotage : apply
   Round ..> Accusation : apply
@@ -350,5 +448,5 @@ classDiagram
   Gift ..> CharacterType : cost, refusal, Lifeline
 ```
 
-Made from the rules code at commit `6be32c6` (branch ben-ooad).
+Made from the rules code on branch `screen-state-cleanup` (Step 12, from commit `34bfb8e`).
 Update this diagram whenever a class in `rules/` changes.

@@ -1,0 +1,34 @@
+-- 1. Timer constants, guards, and no Math.random or hardcoded team names
+PASS  TIMER_SECONDS exposes mirrorLobby (30), mirrorReveal (1), mirrorShowtime (75) and Round.LEVELS[2] uses mirror
+PASS  Game guards MirrorTrial methods in wrong step and on non-Mirror trial
+-- 2. Full timer chain: 30s lobby -> 1s reveal -> 75s showtime -> close
+PASS  Entering Mirror trial starts lobby, sets 30s mirrorLobby timer, Attendance active, attention stays 100
+PASS  Mid-lobby at 15s: elapsed=15, 15s left, attention still 100
+PASS  At 30s mirrorLobby closes into 1s mirrorReveal with deadline +31s and attention still 100
+PASS  During reveal at 30.5s attention stays 100 and showtime has not started
+PASS  At 31s mirrorReveal closes into 75s mirrorShowtime with deadline +106s
+PASS  Attention drains strictly by showtime clock (60s left -> 80 attention)
+PASS  At 75s showtime end, trial closes, scores remaining team, and writes round.mirrorResults
+-- 3. Early lobby close on allConnected and mirrorMiss pass-through
+PASS  mirrorMiss speeds up tile and final connect closes lobby early at 12s into 1s mirrorReveal
+PASS  Early reveal chains mirrorShowtime from +13s to +88s
+-- 4. Lobby fail fast-close (all fail, and human fail with bot-only teams)
+PASS  All-fail lobby closes immediately at 30s without opening reveal or showtime
+PASS  Human team lobby fail closes immediately at 30s even when bot-only teams passed lobby
+-- 5. Setup/Dance Game pass-throughs and partial/full human wrap-up
+PASS  All Setup & Dance pass-throughs work, first human wrap-up locks team 0, second closes trial
+-- 6. Attention hitting 0 during showtime (action-triggered and clock-drain)
+PASS  Penalty action dropping attention to 0 fails team with failReason 'attention' and closes trial
+PASS  Clock drain reaching attention 0 closes mirrorShowtime early in tick() with failReason 'attention'
+PASS  mirrorCheckAttention and mirrorFinishTeam handle partial vs final human team completion
+-- 7. Mid-trial save and load catch-up + plain JSON
+PASS  Save in mirrorLobby is plain JSON and wakes identically at 20s (lobby), 30.5s (reveal), 50s (showtime), and 120s (closed)  -> exact match
+PASS  Mid-showtime save/load finishes identically, catches up past deadline identically, and preserves mirrorResults  -> identical
+-- 8. Fixed-seed full Level 3 handoff to the rest of the game
+PASS  Fixed-seed Level 3 plays start-to-finish, charges 3 Focus, pays earnings, updates trialWins, advances to Level 4, and repeats identically
+-- 9. Hook firing order and exact deadline timestamps during catch-up
+PASS  Hooks fire in exact order with deadline timestamps across mirrorLobby -> mirrorReveal -> mirrorShowtime catch-up  -> onStart:mirrorLobby@10000 -> beforeClose:mirrorLobby@40000 -> onStart:mirrorReveal@40000 -> beforeClose:mirrorReveal@41000 -> onStart:mirrorShowtime@41000 -> beforeClose:mirrorShowtime@116000
+-- 10. Setup deadlines via Game.tick() (Sound, Mic, Deck, Q&A) + idle/bot gate + mirrorSetupView
+PASS  Game.tick() fires Sound, Mic, Deck, and Q&A deadlines once at exact clock times, skips idle/bots, and mirrorSetupView is read-only
+
+22 passed, 0 failed.

@@ -1,0 +1,11 @@
+PASS  MEDLINE_SPRINT_1 scenario exists
+PASS  Exactly 5 cards  -> 5
+PASS  Exactly 4 tasks  -> 4
+PASS  4 tasks have unique non-empty ids  -> A, B, C, D
+PASS  Every task has name and positive days
+PASS  Pre-twist answer has 2 distinct real task ids  -> ["C","D"]
+PASS  Post-twist answer has 2 distinct real task ids  -> ["D","B"]
+PASS  Every card has a bot note of 80 chars or less
+PASS  Twist has text and a bot note of 80 chars or less  -> 75
+
+9 passed, 0 failed.

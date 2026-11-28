@@ -143,8 +143,8 @@ PASS  Status Idle  -> Idle
 PASS  Status updates live (At risk back to Active)  -> Active
 PASS  Level 5 submissions appear on the board with name and level  -> 12 entries
 PASS  Team wins update after every trial (2 winners each level)
-PASS  Team wins add up to 12 after 6 levels  -> Team B0:4 Team B1:6 Team B2:2
-PASS  Level 6 submissions added after Level 5's  -> 11 at Level 6
+PASS  Team wins add up to 12 after 6 levels  -> Team B0:4 Team B1:4 Team B2:4
+PASS  Level 6 submissions added after Level 5's  -> 12 at Level 6
 PASS  No submissions on the board before Level 5
 PASS  Default settings: 60 s idle, 15 s popup, 1 per round  -> {"idleMs":60000,"popupMs":15000,"maxPerRound":1}
 PASS  Settings can be changed (idle, popup, per-round max)  -> {"idleMs":30000,"popupMs":5000,"maxPerRound":2}
@@ -225,7 +225,7 @@ PASS  New game starts in intermission (covers the intro), paused
 PASS  Gift during the briefing is refused  -> Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in Briefing.
 PASS  Check during the briefing: nothing, however long
 PASS  Leaving the briefing starts a fresh clock (resume time = Game's clock)  -> 2000 vs 2000
-PASS  Graduation: running for players with points to place, paused for players with 0  -> 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R
+PASS  Graduation: running for players with points to place, paused for players with 0  -> 3R 3R 3R 3R 3R 3R 3R 3R 3R 3R 0P 3R
 PASS  Graduation: everyone paused once all points are placed
 PASS  Every step was visited, Levels 1 to 7  -> briefing,openFloor,trial,glitchReport,giftWindow,lockIn,statsUpdate,intermission,graduation
 PASS  Paused in every briefing, intermission, Glitch Report and Stats Update; running in every other step
@@ -301,5 +301,14 @@ PASS  Spend more than you have is refused  -> 3
 PASS  Refill and refund stop at the cap of 3  -> 3
 PASS  Lose never goes below 0
 PASS  Empty sets hearts to 0
+PASS  Bots.hooks.onGift answers human-to-bot gift at once  -> accepted
+PASS  Without onGift hook, human-to-bot gift stays pending  -> pending
+PASS  onGift uses g.rng in the same order as Bots.answer  -> accepted vs accepted
+PASS  Bots.hooks.onGift leaves a gift to a human pending  -> pending
+PASS  Human can answer the pending gift later  -> accepted
+PASS  submitSop saves board without closing SOP timer
+PASS  skipAccusation validates without closing Glitch Report timer
+PASS  lockPoints saves player picks without closing Stats Update timer
+PASS  lockPoints on Graduation saves final picks without closing Graduation timer
 
-303 passed, 0 failed
+312 passed, 0 failed

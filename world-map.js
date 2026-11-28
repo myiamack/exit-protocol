@@ -1,68 +1,9 @@
 /* ================= OFFICE PREVIEW MAP & WALKABLE FLOOR 60 ================= */
 const GHOSTS=[
- {n:"USER_???",a:{body:0,skin:3,hair:0,hairC:6,top:7,topS:0,bot:0,botS:0,hat:0,extra:4,acc:6},line:"Did you read your badge? Read it again."},
- {n:"ATTEMPT_01",a:{body:1,skin:6,hair:6,hairC:6,top:7,topS:3,bot:0,botS:1,hat:0,extra:0,acc:6},line:"The coffee step that never ends... leave it out."},
- {n:"NULL",a:{body:0,skin:1,hair:8,hairC:6,top:7,topS:2,bot:0,botS:0,hat:3,extra:0,acc:7},line:"Someone on Team Wren keeps slipping into the Breakout Room."}];
+ {n:"USER_???",a:{body:0,skin:3,hair:0,hairC:6,top:7,topS:0,bot:0,botS:0,hat:0,extra:4,acc:6}},
+ {n:"ATTEMPT_01",a:{body:1,skin:6,hair:6,hairC:6,top:7,topS:3,bot:0,botS:1,hat:0,extra:0,acc:6}},
+ {n:"NULL",a:{body:0,skin:1,hair:8,hairC:6,top:7,topS:2,bot:0,botS:0,hat:3,extra:0,acc:7}}];
 const GSPOTS=[[110,170],[190,120],[300,150],[500,140],[400,215],[650,160],[720,210],[130,440],[200,380],[330,430],[470,440],[630,450],[710,380]];
-
-/* ---------- office floor map (top-down) ---------- */
-const ROOMS={
-  break:{n:"Break Room",pts:"40,90 90,40 230,40 230,250 40,250",lx:135,ly:238,fill:"url(#wood)"},
-  studio:{n:"The Studio",pts:"290,30 510,30 550,70 550,250 250,250 250,70",lx:400,ly:238,fill:"url(#checker)"},
-  server:{n:"Server Room",pts:"570,40 710,40 760,90 760,250 570,250",lx:665,ly:238,fill:"url(#grid)"},
-  wellness:{n:"Wellness Room",pts:"40,320 230,320 230,520 90,520 40,470",lx:135,ly:510,fill:"#9cc7a6"},
-  conf:{n:"Conference Room",pts:"250,320 550,320 550,520 250,520",lx:400,ly:510,fill:"#55729e"},
-  mentor:{n:"Mentor Office",pts:"570,320 760,320 760,470 710,520 570,520",lx:665,ly:510,fill:"#b3aca0"}};
-const SPOTS={break:[[150,190],[190,150],[110,160]],studio:[[400,108],[345,162],[455,162],[400,236]],server:[[690,170],[700,120]],wellness:[[150,420],[110,450]],conf:[[400,350],[340,470]],mentor:[[630,420],[700,400]]};
-function furniture(){
-  const E="#0b0e13",st=`stroke="${E}" stroke-width="4" stroke-linejoin="round"`;
-  let f="";
-  // break room
-  f+=`<rect x="96" y="44" width="130" height="26" rx="4" fill="#d9dee5" ${st}/><rect x="110" y="46" width="22" height="20" rx="3" fill="#3e4650" ${st}/><circle cx="121" cy="56" r="4" fill="#e0394d"/><rect x="194" y="44" width="30" height="44" rx="4" fill="#f2f5f8" ${st}/><path d="M198 66 h22" stroke="${E}" stroke-width="3"/>
-  <rect x="46" y="130" width="30" height="64" rx="4" fill="#d8323f" ${st}/><rect x="51" y="136" width="20" height="34" rx="2" fill="#13202b"/><g fill="#f5e04a"><rect x="54" y="140" width="5" height="5"/><rect x="62" y="140" width="5" height="5"/><rect x="54" y="149" width="5" height="5"/><rect x="62" y="158" width="5" height="5"/></g>
-  <circle cx="150" cy="168" r="24" fill="#e6ecf2" ${st}/><path d="M118 168 a32 32 0 0 1 64 0" fill="none" stroke="#2f5fe0" stroke-width="9"/><path d="M118 168 a32 32 0 0 1 64 0" fill="none" stroke="${E}" stroke-width="2"/>`;
-  // studio: round tables + all-hands button
-  [[310,95],[490,95],[310,200],[490,200],[400,150]].forEach(([x,y],i)=>{f+=`<circle cx="${x}" cy="${y}" r="${i===4?30:24}" fill="#3f6fc6" ${st}/><path d="M${x-34} ${y} a34 34 0 0 1 68 0 M${x+34} ${y+6} a34 34 0 0 1 -68 0" fill="none" stroke="#2f4f8f" stroke-width="9" stroke-dasharray="20 8"/>`});
-  f+=`<rect x="388" y="138" width="24" height="24" rx="4" fill="#f2b84b" ${st}/><circle cx="400" cy="150" r="7" fill="#e0394d" stroke="${E}" stroke-width="3"/><text x="400" y="176" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="10" fill="#fff" letter-spacing="1">ALL-HANDS</text>
-  <rect x="300" y="34" width="200" height="10" rx="3" fill="#7fb8ec" ${st}/>`;
-  // server room: racks + panels + wires
-  f+=`${[0,1,2].map(i=>`<rect x="${586+i*30}" y="70" width="24" height="120" rx="3" fill="#2a2f3a" ${st}/>${[0,1,2,3,4,5].map(j=>`<circle cx="${592+i*30}" cy="${82+j*18}" r="2.5" fill="${(i+j)%3?"#4fe08a":"#e0394d"}"/>`).join("")}`).join("")}
-  <rect x="690" y="58" width="40" height="44" rx="4" fill="#cbd3dc" ${st}/><path d="M710 66 l-8 14 h8 l-4 12 l12 -16 h-8 l4 -10z" fill="#f2b84b" stroke="${E}" stroke-width="2"/>
-  <path d="M610 190 C640 230 700 180 720 104" fill="none" stroke="#e0394d" stroke-width="5"/><path d="M640 190 C660 220 730 200 714 104" fill="none" stroke="#f5e04a" stroke-width="5"/><path d="M670 190 C690 214 740 170 726 104" fill="none" stroke="#2f5fe0" stroke-width="5"/><path d="M600 192 C620 230 680 236 740 220" fill="none" stroke="${E}" stroke-width="5"/>`;
-  // wellness: mats, plants, beanbag
-  f+=`<rect x="70" y="350" width="34" height="70" rx="8" fill="#ec5fc0" ${st}/><rect x="114" y="350" width="34" height="70" rx="8" fill="#38e6d6" ${st}/><ellipse cx="190" cy="470" rx="26" ry="20" fill="#d8323f" ${st}/>
-  ${[[200,352],[64,456]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="14" fill="#1f8a3b" ${st}/><circle cx="${x}" cy="${y}" r="6" fill="#5fe04a"/>`).join("")}`;
-  // conference: long table, chairs, wall screen
-  f+=`<rect x="320" y="324" width="160" height="12" rx="3" fill="#13294b" ${st}/><rect x="300" y="380" width="200" height="74" rx="30" fill="#a8743f" ${st}/>
-  ${[320,360,400,440,480].map(x=>`<rect x="${x-10}" y="364" width="20" height="14" rx="5" fill="#3e4650" stroke="${E}" stroke-width="3"/><rect x="${x-10}" y="456" width="20" height="14" rx="5" fill="#3e4650" stroke="${E}" stroke-width="3"/>`).join("")}`;
-  // mentor office: L desk, monitors, bookshelf
-  f+=`<path d="M600 400 H700 V430 H630 V480 H600Z" fill="#8a5a33" ${st}/><rect x="612" y="404" width="26" height="18" rx="3" fill="#13202b" stroke="${E}" stroke-width="3"/><rect x="648" y="404" width="26" height="18" rx="3" fill="#13202b" stroke="${E}" stroke-width="3"/><rect x="615" y="407" width="20" height="12" fill="#6aa8ff" opacity=".7"/><rect x="651" y="407" width="20" height="12" fill="#6aa8ff" opacity=".7"/>
-  <circle cx="660" cy="450" r="12" fill="#2a2f3a" ${st}/><rect x="580" y="326" width="120" height="20" rx="3" fill="#7a4d2a" ${st}/>${[0,1,2,3,4,5,6].map(i=>`<rect x="${586+i*16}" y="329" width="10" height="14" fill="${["#d8323f","#2f5fe0","#f2b84b","#1f8a3b","#ec5fc0","#38e6d6","#f2852a"][i]}"/>`).join("")}`;
-  return f;
-}
-function officeMap(o={}){
-  const E="#0b0e13";const mk=(o.markers||[]);
-  return `<svg viewBox="0 0 800 560" role="img" aria-label="Office floor map">
-  <defs>
-    <pattern id="checker" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="28" height="28" fill="#d9d2c3"/><rect width="14" height="14" fill="#c9c1b0"/><rect x="14" y="14" width="14" height="14" fill="#c9c1b0"/></pattern>
-    <pattern id="wood" width="40" height="16" patternUnits="userSpaceOnUse"><rect width="40" height="16" fill="#c9a77a"/><path d="M0 15.5 H40 M20 0 V16" stroke="#a9875a" stroke-width="1.5"/></pattern>
-    <pattern id="grid" width="22" height="22" patternUnits="userSpaceOnUse"><rect width="22" height="22" fill="#5d636b"/><path d="M0 21.5 H22 M21.5 0 V22" stroke="#4a5058" stroke-width="1.5"/></pattern>
-    <pattern id="hall" width="36" height="36" patternUnits="userSpaceOnUse"><rect width="36" height="36" fill="#8d939a"/><path d="M0 35 H36 M35 0 V36" stroke="#7a8087" stroke-width="2" stroke-dasharray="6 4"/></pattern>
-  </defs>
-  <rect width="800" height="560" fill="#1a1f27"/>
-  <rect x="24" y="22" width="752" height="514" rx="20" fill="#3a4048" stroke="${E}" stroke-width="6"/>
-  <rect x="40" y="252" width="720" height="66" fill="url(#hall)"/>
-  ${Object.entries(ROOMS).map(([k,r])=>`<g class="room ${o.click?"click":""} ${o.here===k?"here":""}" data-room="${k}"><polygon class="floor" points="${r.pts}" fill="${r.fill}" stroke="${E}" stroke-width="6" stroke-linejoin="round"/></g>`).join("")}
-  ${[[115,247],[380,247],[640,247],[115,317],[380,317],[640,317]].map(([x,y])=>`<rect x="${x}" y="${y-4}" width="56" height="8" fill="#8d939a"/>`).join("")}
-  <g pointer-events="none">${furniture()}</g>
-  ${Object.entries(ROOMS).map(([k,r])=>`<text x="${r.lx}" y="${r.ly}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="17" letter-spacing="2" fill="rgba(11,14,19,.55)" pointer-events="none">${r.n.toUpperCase()}</text>`).join("")}
-  <text x="400" y="292" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="16" letter-spacing="6" fill="rgba(11,14,19,.35)">HALLWAY · FLOOR 60</text>
-  ${(o.ghosts?GHOSTS:[]).map((g,i)=>`<g class="gwalk" data-ghost="${i}" opacity="0" transform="translate(${GSPOTS[i*4][0]} ${GSPOTS[i*4][1]})" style="cursor:pointer"><rect x="-24" y="-72" width="48" height="90" fill="transparent"/>${avatarSVG(g.a,{label:g.n,holo:true,ghost:true,holoC:"#e9ecff",extra:' x="-22" y="-66" width="44" height="74"'})}<text x="0" y="18" text-anchor="middle" font-family="Pixelify Sans,monospace" font-weight="700" font-size="12" fill="#e9ecff" stroke="#0b0e13" stroke-width="3" paint-order="stroke">${g.n}</text></g>`).join("")}
-  ${mk.map(m=>`<g pointer-events="none">${avatarSVG(m.av,{label:m.n,holo:m.holo,extra:` x="${m.x-24}" y="${m.y-74}" width="48" height="81"`})}<text x="${m.x}" y="${m.y+20}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="13" fill="${m.me?"#f2b84b":"#fff"}" stroke="#0b0e13" stroke-width="3" paint-order="stroke">${esc(m.n)}</text></g>`).join("")}
-  </svg>`;
-}
-function teamMarkers(room){const s=SPOTS[room]||SPOTS.studio;const me={x:s[0][0],y:s[0][1],av:S.av,n:S.name||"You",me:true};
-  const st=SPOTS.studio;return [me,...TEAM.map((p,i)=>({x:(room==="studio"?st[i+1]:st[i])[0],y:(room==="studio"?st[i+1]:st[i])[1],av:p.av,n:p.n}))]}
 
 /* ================= THE WALKABLE FLOOR (real room names; layout is a placeholder until the blueprint) ================= */
 const WW=2300,WH=1420,PR=16;
@@ -179,19 +120,18 @@ function worldHTML(mode){return `<div class="world" id="world" data-mode="${mode
   </div>`}
 function roomPanel(){const t=T();const lockd=!floorOpen()||S.step!==6;const r=S.room;
   if(r==="kitchen")return `<div class="panel"><span class="label">Kitchen · Gifts</span><p>Gift any teammate here during Open Floor, or in the gift window after the trial.</p><p class="hint">Your cost as ${aOrAn(t.n)}: ${giftCostText(t.ct)}.${t.ct.canAcceptGifts()?"":" You cannot accept gifts."}</p>${lockd?`<p class="hint">${GIFT_RULE}</p>`:incomingGifts()+giftRoster()}${!lockd&&S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}</div>`;
-  if(r==="breakout"){if(!T().ct.canSabotage()||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. The room feels like someone just left.</p></div>`;
-    const cost=EP.Sabotage.cost(ME);
-    return `<div class="panel"><span class="label">Breakout Room · Sabotage a teammate (Contrarian only)</span><p class="hint">This one costs ${cost} heart${cost>1?"s":""}. Drains 2 from the target's ${AN[R().attr]} (their Composure gives a chance it is only 1). Each extra sabotage this round costs 2.</p><div class="roster">${MYTEAM.mates(ME).map(p=>{const why=EP.Sabotage.check(ME,p,MYTEAM);return `<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===p.name).av,{head:true,label:p.name})}${esc(p.name)}</span><span class="row" style="gap:6px">${flag(p.flag())}<button class="btn red sm" data-sab="${esc(p.name)}" ${why?`disabled title="${esc(why)}"`:""}>Sabotage</button></span></div>`}).join("")}</div>${S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}${ME.sabotageBlockedThisRound?`<span class="hint">Blocked: you were caught last round. No sabotage on any team this round.</span>`:ME.wasCaughtBy(MYTEAM.id)?`<span class="hint">This team caught you. No sabotage while you are on it.</span>`:""}</div>`}
-  if(r==="hightea")return `<div class="panel"><span class="label">High Tea · Network with a guest</span><p class="hint">Today's guest is a program sponsor who once sat where you're sitting. You pour the tea and introduce yourself.</p><div class="memo"><p>"When I wrote my first SOP, I put in a step that never ended. A good procedure has no step that sends you in circles. If a step never ends, it doesn't belong."</p></div><p class="hint">Guests share stories, not answers. Prep 3:30 · Tea 4:00 · Debrief 5:00.</p></div>`;
+  if(r==="breakout"){const sab=G&&ME?G.sabotageOptions(ME):null;if(!sab||!sab.canRole||lockd)return `<div class="panel"><span class="label">Breakout Room</span><p>The whiteboard has been wiped, badly. The room feels like someone just left.</p></div>`;
+    return `<div class="panel"><span class="label">Breakout Room · Sabotage a teammate (Contrarian only)</span><p class="hint">This one costs ${sab.cost} heart${sab.cost>1?"s":""}. Drains 2 from the target's ${AN[sab.attr]} (their Composure gives a chance it is only 1). Each extra sabotage this round costs 2.</p><div class="roster">${sab.targets.map(p=>`<div class="person"><span class="who">${avatarSVG(TEAM.find(x=>x.n===p.name).av,{head:true,label:p.name})}${esc(p.name)}</span><span class="row" style="gap:6px">${flag(p.status)}<button class="btn red sm" data-sab="${esc(p.name)}" ${p.reason?`disabled title="${esc(p.reason)}"`:""}>Sabotage</button></span></div>`).join("")}</div>${S.of.msg?`<span class="okmsg">${esc(S.of.msg)}</span>`:""}${sab.blockedThisRound?`<span class="hint">Blocked: you were caught last round. No sabotage on any team this round.</span>`:sab.caughtByTeam?`<span class="hint">This team caught you. No sabotage while you are on it.</span>`:""}</div>`}
+  if(r==="hightea"){return `<div class="panel"><span class="label">High Tea · Network with a guest</span><p class="hint">Today's guest is a program sponsor who once sat where you're sitting. You pour the tea and introduce yourself.</p><div class="memo"><p>"${esc(teaHint())}"</p></div><p class="hint">Guests share stories, not answers. Prep 3:30 · Tea 4:00 · Debrief 5:00.</p></div>`;}
   if(r==="wellness")return `<div class="panel"><span class="label">Wellness Room</span><p>Quiet in here. Take a breath before the trial. (No game effect yet.)</p></div>`;
   if(r==="conf")return `<div class="panel"><span class="label">Conference Room · Emergency button</span><p>${S.step===8?"The all-hands meeting is in session.":"The button is locked. It lights up after the trial, when the all-hands meeting is called."}</p></div>`;
   if(r==="reception")return `<div class="panel"><span class="label">Reception · Check in</span><p>The front desk prints your badge again. <b>ATTEMPT 02</b>. You only remember one.</p><span class="okmsg">Anomaly logged: WATCHER.</span></div>`;
-  return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. ${T().ct.canSabotage()?"Slip into the Breakout Room to sabotage a teammate. ":""}Gift a teammate in the Kitchen now, or in the gift window after the trial. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow({...p,st:MATE(p.n).flag()})).join("")}</div></div>`;
+  return `<div class="panel"><span class="label">All Skate · Reflect and plan</span><p>The cohort gathers here to look back on the week, look ahead at assignments and plan the day. Your team is ready to plan the trial. ${T().ct.canSabotage()?"Slip into the Breakout Room to sabotage a teammate. ":""}Gift a teammate in the Kitchen now, or in the gift window after the trial. A guest is waiting in High Tea.</p><div class="roster">${TEAM.map(p=>personRow({...p,st:MATE(p.n).boardStatus()})).join("")}</div></div>`;
 }
 /* Rook from Team Wren stands in the hallway. Walk up and press E to talk. */
 const ROOK={x:1690,y:745};
 function rookPanel(){return `<div class="panel"><span class="label">Rook · Team Wren</span><p>"Same trial as you this round. Good luck in there."</p><span class="hint">Other teams are on this floor too.</span></div>`}
-function ghostPanel(){const g=GHOSTS[S.nearGhost||0];return `<div class="panel" style="border-color:#e9ecff"><span class="label" style="color:#e9ecff">${g.n} · wandering ghost</span><p style="font-family:var(--px);color:#e9ecff">“${esc(g.line)}”</p><span class="hint">It flickers and is gone.</span></div>`}
+function ghostPanel(){const g=GHOSTS[S.nearGhost||0];return `<div class="panel" style="border-color:#e9ecff"><span class="label" style="color:#e9ecff">${g.n} · wandering ghost</span><p style="font-family:var(--px);color:#e9ecff">“${esc(ghostHint(g.n))}”</p><span class="hint">It flickers and is gone.</span></div>`}
 let W={raf:0,vx:0,vy:0,keys:{},tapT:{},last:0,ghostT:0,ghostPos:[]};
 const TAP_MS=110;   // one quick tap moves about 33px (300 px/s)
 function stopWorld(){cancelAnimationFrame(W.raf);W.raf=0}
@@ -228,7 +168,7 @@ function initWorld(){
     const mm=$("#mmme");if(mm){mm.setAttribute("cx",S.pos.x);mm.setAttribute("cy",S.pos.y)}
     const rid=roomAt(S.pos.x,S.pos.y);if(rid!==S.wroom){S.wroom=rid;S.visited[rid]=true;if(WROOMS.find(r=>r.id===rid))S.room=rid;const lab=$("#wroom");lab.textContent=RNAME[rid];lab.classList.remove("pop");void lab.offsetWidth;lab.classList.add("pop");$("#mmap").innerHTML=mmapInner()}
     /* ghosts */
-    if(t-W.ghostT>2800){W.ghostT=t;W.ghostPos.forEach((p,i)=>{if(Math.random()<.5){p.on=!p.on;if(p.on){const r=WROOMS[Math.floor(Math.random()*WROOMS.length)],sp=r.spots[Math.floor(Math.random()*r.spots.length)];p.x=sp[0];p.y=sp[1]}ghosts[i].setAttribute("opacity",p.on?".7":"0");ghosts[i].setAttribute("transform",`translate(${p.x} ${p.y})`)}})}
+    if(t-W.ghostT>2800){W.ghostT=t;W.ghostPos.forEach((p,i)=>{if(Math.random()<.5){p.on=!p.on;if(p.on){const r=WROOMS[Math.floor(Math.random()*WROOMS.length)],sp=r.spots[Math.floor(Math.random()*r.spots.length)];p.x=sp[0];p.y=sp[1]}ghosts[i].setAttribute("opacity",p.on?".7":"0");ghosts[i].setAttribute("transform",`translate(${p.x} ${p.y})`)}})} // cosmetic-ok
     let near=-1;W.ghostPos.forEach((p,i)=>{if(p.on&&Math.hypot(p.x-S.pos.x,p.y-S.pos.y)<120)near=i});S.nearGhost=near>=0?near:S.nearGhost;W.near=near;
     /* Popups close when the player walks away: a room popup when leaving the room, others after moving ~140px. */
     if(S.panel&&S.panelAt){const at=S.panelAt,away=S.panel==="room"?S.wroom!==at.room:Math.hypot(S.pos.x-at.x,S.pos.y-at.y)>140;if(away){S.panel=false;S.panelAt=null;const el=$(".wpanel");if(el)el.remove()}}
@@ -242,9 +182,8 @@ function useAction(){const mode=S.step===6&&floorOpen()?"floor":"lobby";
   if(Math.hypot(S.pos.x-ROOK.x,S.pos.y-ROOK.y)<90)return{label:"Talk",ok:true,act:"npc"};
   const r=S.wroom;
   if(r==="kitchen")return{label:"Look",ok:true,act:"room"};
-  /* "Sabotage" only if a Sabotage button inside would work: the same EP.Sabotage.check the buttons use
-     (type, hearts, Stuck, idle, blocked after a catch on any team, caught by this team). */
-  if(r==="breakout")return mode==="floor"&&MYTEAM.mates(ME).some(p=>!EP.Sabotage.check(ME,p,MYTEAM))?{label:"Sabotage",ok:true,cls:"red",act:"room"}:{label:"Inspect",ok:true,act:"room"};
+  /* "Sabotage" only if a Sabotage button inside would work (same Game.sabotageOptions check). */
+  if(r==="breakout"){const sab=mode==="floor"&&G&&ME?G.sabotageOptions(ME):null;return sab&&sab.canAny?{label:"Sabotage",ok:true,cls:"red",act:"room"}:{label:"Inspect",ok:true,act:"room"}}
   if(r==="hightea")return{label:"Network",ok:true,cls:"green",act:"room"};
   if(r==="allskate")return{label:"Reflect",ok:true,act:"room"};
   if(r==="conf")return{label:"Button",ok:true,cls:"red",act:"room"};
@@ -252,11 +191,9 @@ function useAction(){const mode=S.step===6&&floorOpen()?"floor":"lobby";
   if(r==="wellness")return{label:"Breathe",ok:true,act:"room"};
   return{label:"USE",ok:false};
 }
-function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception")S.found.id=1;S.panel=a.act==="ghost"||a.act==="npc"?a.act:"room";S.panelAt={room:S.wroom,x:S.pos.x,y:S.pos.y};render()}
+function doUse(){const a=useAction();if(!a.ok)return;if(a.act==="room"&&S.wroom==="reception"&&G&&ME)G.recordAnomaly(ME,"id");S.panel=a.act==="ghost"||a.act==="npc"?a.act:"room";S.panelAt={room:S.wroom,x:S.pos.x,y:S.pos.y};render()}
 addEventListener("keydown",e=>{if(!$("#world")||e.target.tagName==="INPUT"||BOARD.isOpen())return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){if(!e.repeat&&!W.keys[k])W.tapT[k]=performance.now();W.keys[k]=true;e.preventDefault()}if(k==="e"){if(S.panel){S.panel=false;if(!useAction().ok){render();return}}doUse()}/* E with a popup open: close it, open the new interaction */if(k==="m"&&!e.repeat)toggleMinimap()});
 addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;W.keys[k]=false});
 
-/* wandering ghosts: fade in and out at random spots; tap one for a hint */
-function ghostHop(){$$(".gwalk").forEach(el=>{if(Math.random()<.45)return;el.setAttribute("opacity","0");setTimeout(()=>{const [x,y]=GSPOTS[Math.floor(Math.random()*GSPOTS.length)];el.setAttribute("transform",`translate(${x} ${y})`);el.setAttribute("opacity",String(.5+Math.random()*.35))},900)})}
-setInterval(ghostHop,2600);setTimeout(ghostHop,400);
-document.addEventListener("click",e=>{const g=e.target.closest&&e.target.closest(".gwalk");if(!g||g.getAttribute("opacity")==="0")return;const gh=GHOSTS[+g.dataset.ghost];const w=$("#whisper");w.innerHTML=`<b>${gh.n}</b> whispers: “${esc(gh.line)}”`;w.hidden=false;clearTimeout(w._t);w._t=setTimeout(()=>w.hidden=true,6000)});
+/* legacy static-map whisper click handler */
+document.addEventListener("click",e=>{const g=e.target.closest&&e.target.closest(".gwalk");if(!g||g.getAttribute("opacity")==="0")return;const gh=GHOSTS[+g.dataset.ghost];const w=$("#whisper");w.innerHTML=`<b>${gh.n}</b> whispers: “${esc(ghostHint(gh.n))}”`;w.hidden=false;clearTimeout(w._t);w._t=setTimeout(()=>w.hidden=true,6000)});

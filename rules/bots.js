@@ -4,6 +4,7 @@ import { CharacterType } from "./CharacterType.js";
 import { Economy } from "./Economy.js";
 import { Game } from "./Game.js";
 import { Gift } from "./Gift.js";
+import { MirrorData } from "./mirrorData.js";
 import { Player } from "./Player.js";
 import { Sabotage } from "./Sabotage.js";
 import { Team } from "./Team.js";
@@ -11,6 +12,39 @@ import { Trial } from "./Trial.js";
 
 const KEYS = () => Player.KEYS;
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
+const SPLIT_CARD_WINDOW_MS = 30000;
+const SPLIT_TWIST_WINDOW_MS = 10000;
+
+/* Deterministic 32-bit FNV-1a + Murmur3 mix for bot note timing (no Math.random, no Rng draws). */
+function hashInt(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+function splitDealSignature(game, trial) {
+  return game.teams
+    .map(t => t.members.map(m => m.id + ":" + trial.cardsFor(m).map(c => c.id).join(",")).join(";"))
+    .join("|");
+}
+
+function splitTrialStart(game, trial) {
+  if (game.timer && game.timer.name === "splitBrief") {
+    return game.timer.deadline - Trial.SplitBriefTrial.TRIAL_SECONDS * 1000;
+  }
+  if (trial.twistDeadline != null) {
+    return trial.twistDeadline - Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+  }
+  return null;
+}
 
 const Bots = {
   SETTINGS: { sabotageRate: 0.5, victimAccuses: 0.9, otherAccuses: 0.25, idleAccuses: 0.05,
@@ -24,6 +58,12 @@ const Bots = {
     const spend = {};
     order.forEach((k, i) => { spend[k] = [5, 4, 3, 2, 1][i]; });
     return spend;
+  },
+  /* Pure helper for dev jump: default type "coop", fill typicalSpend if points are unspent. */
+  devBuild(type, spend) {
+    const t = type || "coop";
+    const s = spend && typeof spend === "object" && Player.spendLeft(spend) === 0 ? spend : Bots.typicalSpend(t);
+    return { type: t, spend: s };
   },
   makePlayer(id, name, type) {
     return new Player({ id, name, type, spend: Bots.typicalSpend(type), isBot: true });
@@ -50,7 +90,7 @@ const Bots = {
   openFloor(game, rng) {
     for (const team of game.teams) {
       for (const p of team.members) {
-        if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageBlockedThisRound || p.wasCaughtBy(team.id)) continue;
+        if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageBlockedThisRound || p.sabotagesThisRound > 0 || p.wasCaughtBy(team.id)) continue;
         if (!p.hearts.has(Sabotage.cost(p))) continue;
         if (rng() >= Bots.SETTINGS.sabotageRate) continue;
         const targets = team.mates(p).filter(q => !q.isStuck());
@@ -68,9 +108,9 @@ const Bots = {
       game.startWriting();
       Bots.submit(game);
       game.closeWriting();
-      Bots.vote(game, game.startVote(), rng);
+      if (!game.didRun("runTrial")) Bots.vote(game, game.startVote(), rng);
     }
-    return game.runTrial();
+    return game.didRun("runTrial") ? game.trialRanking() : game.runTrial();
   },
 
   /* Levels 5-6: every active bot submits the text "Bot answer" so tests still run the vote. */
@@ -153,26 +193,216 @@ const Bots = {
   /* Typical placement: every other point to the lowest bonus attribute, else the lowest open one. */
   allocate(p, n, final) { return Economy.allocate(p, n, final); },
 
+  /* Level 2 (Split Brief): bots post accurate card notes in 0-30s and twist note within 10s of twist,
+     keeping 1 note in reserve until the twist fires. After the twist fires, any bot (ghosted or not)
+     may use its reserved note, still capped at MAX_NOTES (3) per player. Bots never edit the board or lock in. */
+  splitBrief(game, now = game.now()) {
+    if (game.step !== "trial" || game.didRun("runTrial")) return;
+    const trial = game.round && game.round.trial;
+    if (!(trial instanceof Trial.SplitBriefTrial) || !trial.dealt || trial.ranking) return;
+    const startAt = splitTrialStart(game, trial);
+    if (startAt == null) return;
+    const sig = splitDealSignature(game, trial);
+    const twistAt = trial.twistDeadline != null ? trial.twistDeadline : startAt + Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+    const reserveCount = Trial.SplitBriefTrial.MAX_NOTES - 1;
+
+    for (const team of game.teams) {
+      const posted = new Set(trial.notesFor(team).map(n => n.posterId + "\n" + n.text));
+      const events = [];
+
+      team.members.forEach((p, memberIndex) => {
+        if (!p.isBot || !p.isActive()) return;
+        const twist = trial.twistFor(p);
+        const twistAtNote = trial.twistFired && twist
+          ? twistAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|twist") % (SPLIT_TWIST_WINDOW_MS + 1))
+          : null;
+
+        if (twistAtNote != null && !posted.has(p.id + "\n" + twist.botNote)) {
+          events.push({ p, memberIndex, at: twistAtNote, kindOrder: 0, cardIndex: -1, text: twist.botNote, isTwist: true });
+        }
+
+        const cards = trial.cardsFor(p).map((c, cardIndex) => ({
+          card: c,
+          cardIndex,
+          at: startAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|" + c.id) % (SPLIT_CARD_WINDOW_MS + 1)),
+        })).sort((a, b) => a.at - b.at || a.cardIndex - b.cardIndex);
+
+        cards.forEach((item, rank) => {
+          if (posted.has(p.id + "\n" + item.card.botNote)) return;
+          let postAt = item.at;
+          if (rank >= reserveCount) {
+            if (!trial.twistFired) return;
+            postAt = Math.max(postAt, twistAtNote != null ? twistAtNote : twistAt);
+          }
+          events.push({ p, memberIndex, at: postAt, kindOrder: 1, cardIndex: item.cardIndex, text: item.card.botNote, isTwist: false });
+        });
+      });
+
+      events.sort((a, b) => a.at - b.at || a.kindOrder - b.kindOrder || a.memberIndex - b.memberIndex || a.cardIndex - b.cardIndex);
+
+      for (const ev of events) {
+        if (now < ev.at) continue;
+        if (posted.has(ev.p.id + "\n" + ev.text)) continue;
+        if (trial.notesLeft(ev.p) <= 0) continue;
+        if (!ev.isTwist) {
+          const twist = trial.twistFor(ev.p);
+          const needsTwistSlot = !trial.twistFired || (twist && !posted.has(ev.p.id + "\n" + twist.botNote));
+          if (needsTwistSlot && trial.notesLeft(ev.p) <= 1) continue;
+        }
+        const res = trial.postNote(ev.p, ev.text);
+        if (res.ok) posted.add(ev.p.id + "\n" + ev.text);
+      }
+    }
+  },
+
+  /* Level 3 (The Mirror: Presentation Day): bots connect at 3-15s in lobby, bot setup steps run
+     on schedule with 30% hiccups (-3 attention) and auto wrap-up, bot dancers boost +1 every
+     1.5-2.5s up to 45 with no misses, bot-only teams keep their seeded random 0-100 attention,
+     and idle humans follow the same bot behavior as auto-pilot. Calls MirrorTrial and Game only. */
+  mirror(game, now = game.now()) {
+    if (game.step !== "trial" || game.didRun("runTrial")) return;
+    const trial = game.round && game.round.trial;
+    if (!(trial instanceof Trial.MirrorTrial) || trial.ranking) return;
+
+    if (trial.phase === "lobby") {
+      const elapsed = game.mirrorLobbyElapsed(now);
+      if (elapsed === null) return;
+      const dueBots = trial.botConnectTimes()
+        .filter(e => e.seconds <= elapsed)
+        .sort((a, b) => a.seconds - b.seconds || a.playerId - b.playerId);
+      for (const entry of dueBots) {
+        if (trial.phase !== "lobby" || game.didRun("runTrial")) return;
+        const st = trial.lobbyPlayerState(entry.playerId);
+        if (!st || st.connected) continue;
+        game.mirrorConnect(entry.playerId);
+      }
+      for (const team of game.teams) {
+        for (const p of team.members) {
+          if (trial.phase !== "lobby" || game.didRun("runTrial")) return;
+          if (p.isBot || p.isStuck() || !p.idle) continue;
+          const st = trial.lobbyPlayerState(p.id);
+          if (!st || st.connected) continue;
+          game.mirrorConnect(p.id);
+        }
+      }
+      return;
+    }
+
+    if (trial.phase !== "showtime") return;
+    const elapsed = game.mirrorShowtimeElapsed(now);
+    if (elapsed === null) return;
+
+    const maxSec = Trial.MirrorTrial.SHOWTIME_SECONDS;
+    const boostCap = MirrorData.dance.boostCap;
+    const activeTeams = () => game.teams.filter(
+      team => !trial.isBotOnlyTeam(team) && !trial.isTeamFailed(team) && trial.lockedAttentionFor(team) === null
+    );
+    const autoIdsFor = team => new Set(
+      team.members.filter(p => !p.isBot && !p.isStuck() && p.idle).map(p => p.id)
+    );
+
+    // Prime newly idle human dancers so DanceCrew assigns their nextBotBoostAt via seeded Rng.
+    for (const team of activeTeams()) {
+      const autoIds = autoIdsFor(team);
+      if (!autoIds.size) continue;
+      const needsPrime = trial.dancersFor(team).some(
+        d => !d.isBot && autoIds.has(d.playerId) && d.boost < boostCap && d.nextBotBoostAt === null
+      );
+      if (needsPrime) trial.advanceBotDance(team, 0, { autoPilotIds: autoIds });
+    }
+
+    // Advance all active teams in strict chronological order so Rng draws match regardless of tick size.
+    const maxIter = Math.max(1000, game.players.length * 100);
+    let guard = 0;
+    while (trial.phase === "showtime" && !trial.ranking && !game.didRun("runTrial")) {
+      if (++guard > maxIter) throw new Error("Mirror bot loop.");
+      let nextAt = Infinity;
+      const teams = activeTeams();
+      const autoByTeam = new Map();
+
+      for (const team of teams) {
+        const autoIds = autoIdsFor(team);
+        autoByTeam.set(team.id, autoIds);
+        for (const d of trial.dancersFor(team)) {
+          if ((!d.isBot && !autoIds.has(d.playerId)) || d.boost >= boostCap || d.nextBotBoostAt === null) continue;
+          if (d.nextBotBoostAt <= elapsed && d.nextBotBoostAt < nextAt) nextAt = d.nextBotBoostAt;
+        }
+        const curPid = trial.setupCurrentPlayerId(team);
+        const setupDue = trial.botSetupDueAt(team, { autoPilot: curPid !== null && autoIds.has(curPid) });
+        if (setupDue !== null && setupDue <= elapsed && setupDue < nextAt) nextAt = setupDue;
+      }
+
+      if (!Number.isFinite(nextAt)) break;
+
+      const secLeftAt = Math.max(0, maxSec - nextAt);
+      for (const team of teams) {
+        if (trial.isTeamFailed(team) || trial.lockedAttentionFor(team) !== null) continue;
+        const autoIds = autoByTeam.get(team.id);
+        const preAtt = trial.checkAttention(team, secLeftAt);
+        if (preAtt.failed) continue;
+
+        const hasDanceDue = trial.dancersFor(team).some(
+          d => (d.isBot || autoIds.has(d.playerId)) && d.boost < boostCap && d.nextBotBoostAt !== null && d.nextBotBoostAt <= nextAt
+        );
+        if (hasDanceDue) trial.advanceBotDance(team, nextAt, { autoPilotIds: autoIds });
+
+        const curPid = trial.setupCurrentPlayerId(team);
+        const setupDue = trial.botSetupDueAt(team, { autoPilot: curPid !== null && autoIds.has(curPid) });
+        if (setupDue !== null && setupDue <= nextAt) {
+          trial.advanceBotSetup(team, nextAt, { autoPilotIds: autoIds });
+          if (trial.lockedAttentionFor(team) === null && !trial.isTeamFailed(team)) {
+            trial.checkAttention(team, secLeftAt);
+          }
+        }
+      }
+    }
+  },
+
   /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
-     beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends.
-     onStart: bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends;
+       Split Brief bots post any due notes before the trial closes; Mirror bots finish any due connect/setup/dance.
+     onStart: Split Brief and Mirror initialize/process bot actions; bots submit "Bot answer" when writing opens;
+       bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     onVoteStart: bots cast their ballots when Levels 5-6 voting opens.
+     onTick: Split Brief and Mirror bots advance scheduled actions as time passes.
+     onGift: bot receiver answers an incoming gift immediately using game.rng.
      Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
   hooks: {
     beforeClose(game, name) {
       if (name === "openFloor") Bots.openFloor(game, game.rng);
       else if (name === "glitchReport") Bots.accusations(game, game.rng);
+      else if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
     },
     onStart(game, name) {
-      if (name === "giftWindow") Bots.gifts(game, game.rng);
+      if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
+      else if (name === "writing") Bots.submit(game);
+      else if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
+    },
+    onVoteStart(game, vote) {
+      Bots.vote(game, vote, game.rng);
+    },
+    onTick(game, now) {
+      Bots.splitBrief(game, now);
+      Bots.mirror(game, now);
+    },
+    onGift(game, gift) {
+      Bots.answer(game, gift, game.rng);
+    },
+    onFastForward(game, phase) {
+      if (phase === "writing") Bots.submit(game);
+      else if (phase === "vote") Bots.vote(game, game.round.trial.vote, game.rng);
+      else if (phase === "openFloor" || phase === "giftWindow") Bots.answerAll(game, game.rng);
     },
   },
 
   /* Bot votes: rank 3 players from other teams at random. */
   vote(game, vote, rng) {
     for (const p of game.players) {
-      if (!p.isBot || p.isStuck()) continue;
+      if (!p.isBot || p.isStuck() || vote.ballots.has(p)) continue;
       const pool = vote.choicesFor(p).slice();
       const ranking = [];
       while (ranking.length < 3 && pool.length) ranking.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);

@@ -1,0 +1,47 @@
+-- 1. Construction, exports, privacy, and guard rails
+PASS  SetupCrew rejects missing rng, keeps fields private, and exposes no #setup on MirrorTrial
+PASS  Round.LEVELS[2] uses mirror and MirrorParts uses no Math.random or hardcoded team names
+-- 2. Crew split (sizes 3, 4, 5, 1, 2, 6) and Stuck or Idle exclusions
+PASS  Crew split size 3 active (2 setup, 1 dance)
+PASS  Crew split size 4 active (2 setup, 2 dance)
+PASS  Crew split size 5 active (3 setup, 2 dance)
+PASS  Crew split size 6 active capped at 3 setup (3 setup, 3 dance)
+PASS  Crew split size 5 with 1 Stuck -> 4 active (2 setup, 2 dance)
+PASS  Crew split size 5 with 1 Stuck + 1 Idle -> 3 active (2 setup, 1 dance)
+PASS  Crew split size 4 with 2 Stuck -> 2 active (1 setup, 1 dance)
+PASS  Crew split size 3 with 2 Idle -> 1 active (1 setup, 0 dance)
+-- 3. Setup step split (1, 2, 3 players) and seeded slot order
+PASS  Step split for 1 Setup player(s)  -> [["cables","sound","mic","deck","qa"]]
+PASS  Step split for 2 Setup player(s)  -> [["cables","sound","mic"],["deck","qa"]]
+PASS  Step split for 3 Setup player(s)  -> [["cables","sound"],["mic","deck"],["qa"]]
+PASS  Same seed repeats setup slot order and different seeds vary  -> distinct=19
+-- 4. Step order, turn handoff, and results-based input (3-player + 2-player + 1-player)
+PASS  Cables enforces turn/step/port rules, +3 spark on miss, and advances to sound (slot 0)
+PASS  Sound feedback adds +4 and soundHeld advances to mic and hands turn to slot 1
+PASS  Mic enforces turn/range, adds +4 and regenerates on wrong tap, completes 3/4/5 rounds to deck (slot 1)
+PASS  Deck reshuffles, adds +6 on wrong file, blocks duplicate wrong pick, and advances to Q&A (slot 2)
+PASS  Q&A enforces turn, recovers 5 on right, adds 5 on wrong/timeout, and slot 2 wraps up once
+PASS  Q&A recovery clamps at 0 (3 penalty restored by 3, never negative)
+PASS  2-player Setup hands off from slot 0 to slot 1 after mic and wraps up on slot 1
+-- 5. Seeded content picks (mic, deck reshuffle, Q&A order)
+PASS  Same seed yields identical mic/deck/Q&A content picks and different seeds vary  -> distinct=15
+-- 6. Bot timing, 30% hiccup (-3), mixed human/bot handoff, and idle autopilot
+PASS  Bot setup follows milestones 4/10/16/22/28/34s, wraps up automatically, and repeats with same seed  -> penalties=9
+PASS  Bot hiccup rate across 200 seeds matches ~30% and costs 3 per hiccup  -> 306/1000 (30.6%)
+PASS  Mixed crew stops at human turn, rejects completeBotStep on non-bot, and hands off cleanly to bots
+PASS  Idle human can complete setup via autoPilot
+-- 7. MirrorTrial coordinator: showtime gate, setup actions, and bot setup
+PASS  MirrorTrial gates setup actions until startShowtime and routes full setup flow through coordinator
+-- 8. Save and load (SetupCrew direct and MirrorTrial / Trial.fromJSON)
+PASS  SetupCrew.fromJSON produces plain data and continues identically after mid-mic reload
+PASS  MirrorTrial mid-showtime save/load restores setup state and continues identically
+-- 9. Seeded Cables bag, Sound spikes & jitter, and mid-trial save/load
+PASS  SetupCrew nextCable/returnCable repeat on same seed, vary across seeds, return missed ports, and filter connected ports  -> distinct=15
+PASS  SetupCrew nextSoundSpike/nextSoundJitter stay in bounds without -0, repeat on seed, and vary  -> distinct=20
+PASS  MirrorTrial gates nextCable/sound helpers, saves/loads mid-Cables, mid-Sound, and older saves with 0 extra Game.rng draws
+-- 10. SetupCrew deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold/feedback)
+PASS  SetupCrew deadlines fire Sound hold/feedback, Mic flash hide, Deck reshuffle/spite, and Q&A timeout once at exact timestamps
+-- 11. Idle human Setup actions rejected while bot auto-pilot runs (Step 10)
+PASS  Idle human Setup actions are rejected with no penalty and no attention change, while bot auto-pilot still wraps up  -> all 10 rejected + autoPilot wrapped
+
+34 passed, 0 failed.

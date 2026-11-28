@@ -1,0 +1,26 @@
+-- 1. Construction, MAX_SCORE, score(attention) 0..7 edges, and guard rails
+PASS  MirrorTrial keeps scoring fields private, Round.LEVELS[2] uses mirror, and no Math.random or team names
+PASS  MirrorTrial.score maps 0..100 cleanly to 0..7 across all rounding and clamp boundaries  -> 21/21 edges
+-- 2. Lobby failure and attention-0 failure
+PASS  Team failing lobby scores 0 with failReason 'lobby' and stays failed
+PASS  All-failed lobby ranks cleanly with score 0 and failReason 'lobby'
+PASS  Attention hitting 0 locks team at 0 with failReason 'attention' and blocks further actions
+-- 3. Setup penalties, Q&A recoveries, and Dance averages feeding 0..7 score
+PASS  Setup penalties/recoveries and averaged Dance Crew boosts/penalties feed exact attention and 0..7 score
+PASS  Final attention clamps at 100 (score 7) and 0 (score 0)
+-- 4. Team with 0 dancers
+PASS  Team with 0 dancers scores with 0 dance boost/penalty and no NaN
+-- 5. Focus influence (rankWithInfluence) and top-half winners
+PASS  Focus influence moves close scores without deciding big gaps
+PASS  Top half win rounded up (4->2, 5->3) and Stuck/Idle excluded from Focus influence
+-- 6. Tie on score broken by exact attention
+PASS  Tie on final score breaks cleanly to higher exact attention across all seeds
+-- 7. Full tie broken by seeded random (EP.Rng)
+PASS  Full tie on score and exact attention breaks randomly via EP.Rng and repeats on same seed  -> winners=0,1
+-- 8. Bot-only teams
+PASS  Bot-only teams reuse Step 2c random attention, span 0..7, repeat on seed, and handle lobby fail / direct run  -> scores=0,1,2,3,4,5,6,7
+-- 9. Save and load (toJSON / fromJSON)
+PASS  Mid-trial save/load restores locked attentions, fail reasons, bot attentions, and produces identical ranking  -> plain
+PASS  Post-close save/load restores ranking with live teams, blocks re-run/actions, and keeps attention-0 fail
+
+15 passed, 0 failed.

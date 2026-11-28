@@ -1,7 +1,7 @@
 /* Attendance popup: "Still there?" and the missed check-in message.
    Screen code only, shared by index.html and pages/vote-test.html. The rules live in rules/Attendance.js
-   and rules/Game.js: this file only reports input to Game.activity() and draws what Game.checkAttendance() returns.
-   Pausing is decided in Game (briefings and intermissions), never here. */
+   and rules/Game.js: this file only reports input to Game.activity() and draws what Game.pollAttendance() returns.
+   Pausing and clock timing are owned by Game, never here. */
 (function (root) {
   const MOVE_THROTTLE_MS = 1000;   // mouse movement counts as input at most once per second
 
@@ -12,7 +12,7 @@
     el.hidden = true;
     document.body.appendChild(el);
     const live = () => { const G = opts.game(), ME = opts.me(); return G && ME && G.round ? { G, ME } : null; };
-    const input = () => { const l = live(); if (l) l.G.activity(l.ME, Date.now()); };
+    const input = () => { const l = live(); if (l) l.G.activity(l.ME); };
 
     const api = {
       isOpen: () => !el.hidden,
@@ -25,16 +25,19 @@
         el.dataset.kind = kind;
         el.innerHTML = `<div class="board-box" role="alertdialog" aria-modal="true" aria-labelledby="attT" style="max-width:520px">${html}<button class="btn red" id="attOk" tabindex="-1">${kind === "popup" ? "I'm here" : "OK"}</button></div>`;
         el.hidden = false;
-        el.querySelector("#attOk").onclick = api.close;
+        el.querySelector("#attOk").onclick = () => { input(); api.close(); };
       },
-      /* One check. The page runs it about once a second. */
-      tick() {
+      /* Show or hide the popup from the results returned by Game.pollAttendance(). */
+      sync(events) {
         const l = live();
-        if (!l || l.G.over) return;
-        const r = l.G.checkAttendance(Date.now()).find(x => x.player === l.ME);
+        if (!l || l.G.over) { if (api.kind() === "popup") api.close(); return; }
+        const r = Array.isArray(events) ? events.find(x => x.player === l.ME) : null;
         if (!r) { if (api.kind() === "popup") api.close(); return; }
         if (r.state === "popup") {
-          api.show("popup", `<h2 id="attT">Still there?</h2><p>Press any key, click or tap within <b>${Math.ceil(r.msLeft / 1000)}</b> seconds, or you take a glitch.</p>`);
+          const secs = Math.ceil(r.msLeft / 1000);
+          const secEl = api.kind() === "popup" ? el.querySelector("#attSec") : null;
+          if (secEl) secEl.textContent = String(secs);
+          else api.show("popup", `<h2 id="attT">Still there?</h2><p>Press any key, click or tap within <b id="attSec">${secs}</b> seconds, or you take a glitch.</p>`);
           return;
         }
         api.show("missed", `<h2 id="attT">Check-in missed</h2><p>${missedText(r, l.ME)}</p>`);
@@ -64,13 +67,12 @@
     ["keydown", "pointerdown", "touchstart", "wheel", "scroll"].forEach(ev => addEventListener(ev, answer, { capture: true, passive: true }));
     let lastMove = -Infinity;
     addEventListener("pointermove", () => {
-      const now = Date.now();
+      const now = performance.now();
       if (now - lastMove < MOVE_THROTTLE_MS) return;
       lastMove = now;
       answer();
     }, { capture: true, passive: true });
 
-    setInterval(api.tick, 1000);
     return api;
   }
 

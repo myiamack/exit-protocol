@@ -1,11 +1,11 @@
 Games: 1000  (16 players, 4 teams, top half win each trial, 1-in-3 guessing)
 
-Overall graduation:  65.9%   target about 59% (16 players, Part 4b)
+Overall graduation:  66.0%   target about 59% (16 players, Part 4b)
 Stuck:               2.9%
 
 Type          Win      Graduate   Second path
-Cooperative  68.8%    59.7%      20.8%
-Independent  74.4%    66.6%      16.3%
-Contrarian   84.0%    81.3%      13.9%
+Cooperative  68.8%    59.9%      20.8%
+Independent  75.1%    66.4%      17.2%
+Contrarian   84.3%    81.7%      13.5%
 
-Gap between types: 15.1 points  (target: 1 to 3)
+Gap between types: 15.5 points  (target: 1 to 3)

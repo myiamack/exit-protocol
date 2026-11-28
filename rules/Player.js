@@ -22,7 +22,8 @@ const SKIM_MAX = Wallet.SKIM_MAX, CASHOUT_COST = Wallet.CASHOUT_COST;
 const STATUS_KEYS = ["glitches", "idle", "attendancePending"];
 const PATH_KEYS = ["pathProgress", "pathDone", "locked"];
 const WALLET_KEYS = ["earned", "draft", "placedThisRound", "skimUsed", "cashOutUsed", "cashedOutThisRound"];
-const PART_KEYS = ["attrs", ...STATUS_KEYS, ...PATH_KEYS, ...WALLET_KEYS];
+const PART_KEYS = ["attrs", ...STATUS_KEYS, ...PATH_KEYS, ...WALLET_KEYS, "anomalies"];
+const ANOMALIES = Object.freeze(["L", "id", "loop"]);
 const FROM_JSON = Symbol();
 
 class Player {
@@ -30,6 +31,7 @@ class Player {
   #status;
   #pathTracker;
   #wallet;
+  #anomalies;
 
   /* type: a key ("coop", "indep", "contra") or a CharacterType.
      spend: { focus: n, ... } adding up to 15. Boost is added here. */
@@ -56,6 +58,7 @@ class Player {
     // Contrarian
     this.caughtBy = [];   // ids of teams that caught this player sabotaging
     this.#wallet = new Wallet(this);
+    this.#anomalies = [];
 
     this.resetRoundFlags();
   }
@@ -114,7 +117,7 @@ class Player {
   abilityChance(k) { return this.#attributes.abilityChance(k); }
   voteWeight() { return this.#attributes.voteWeight(); }
   rollAbility(k, rng) { return this.#attributes.rollAbility(k, rng); }
-  abilityLines() { return this.#attributes.abilityLines(); }
+  abilityLines(draft = null) { return this.#attributes.abilityLines(draft); }
 
   /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
   wasCaughtBy(teamId) { return this.caughtBy.includes(teamId); }
@@ -154,6 +157,7 @@ class Player {
         else if (k === "attendanceMissesThisRound") out.attendancePending = this.#status.attendancePending;
       }
     }
+    out.anomalies = this.#anomalies.slice();
     return out;
   }
   /* Load: rebuild a Player from toJSON() data, without re-running character creation. */
@@ -169,6 +173,9 @@ class Player {
     p.#status = PlayerStatus.fromJSON(p, data);
     p.#pathTracker = PathTracker.fromJSON(p, data);
     p.#wallet = Wallet.fromJSON(p, data);
+    p.#anomalies = Array.isArray(data.anomalies)
+      ? data.anomalies.filter((id, i, arr) => ANOMALIES.includes(id) && arr.indexOf(id) === i)
+      : [];
     return p;
   }
 
@@ -238,8 +245,16 @@ class Player {
   lockEnding() { this.#pathTracker.lockEnding(); }
   wins() { return this.#pathTracker.wins(); }
   ending() { return this.#pathTracker.ending(); }
+
+  recordAnomaly(id) {
+    if (!ANOMALIES.includes(id) || this.#anomalies.includes(id)) return false;
+    this.#anomalies.push(id);
+    return true;
+  }
+  anomalies() { return this.#anomalies.slice(); }
 }
 
+Player.ANOMALIES = ANOMALIES;
 Player.ABILITY = ABILITY;
 Player.TIE_ORDER = TIE_ORDER;
 Player.AT_RISK_COST = AT_RISK_COST;

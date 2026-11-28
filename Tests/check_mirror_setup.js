@@ -1,0 +1,927 @@
+/* Unit tests for Level 3 SetupCrew (direct) and MirrorTrial coordinator (setup crew).
+   Fixed seeds throughout (Rng.seeded). Never uses Math.random.
+   Run from the repo folder:  node Tests/check_mirror_setup.js */
+const fs = require("fs");
+const path = require("path");
+const EP = require("../rules/index.js");
+const { Bots, Game, MirrorData, MirrorParts, Player, Rng, Round, Team, Trial } = EP;
+const { SetupCrew } = MirrorParts;
+const { MirrorTrial } = Trial;
+
+let pass = 0, fail = 0;
+function expect(label, ok, detail) {
+  console.log((ok ? "PASS  " : "FAIL  ") + label + (detail !== undefined ? "  -> " + detail : ""));
+  ok ? pass++ : fail++;
+}
+
+function makeTeam(teamId, size, { humans = size, prefix = "P" + teamId + "_" } = {}) {
+  const members = Array.from({ length: size }, (_, i) => {
+    const p = Bots.makePlayer(teamId * 10 + i, prefix + i, "coop");
+    p.isBot = i >= humans;
+    p.setAttrsForTest({ focus: 4, collab: 4, initiative: 4, grit: 4, composure: 4 });
+    return p;
+  });
+  return new Team({ id: teamId, name: "Team " + teamId, members });
+}
+
+function plainProblem(x, pathStr = "save", seen = []) {
+  if (x === null || typeof x === "string" || typeof x === "boolean") return null;
+  if (typeof x === "number") return Number.isFinite(x) ? null : pathStr + " is " + x;
+  if (typeof x !== "object") return pathStr + " is a " + typeof x;
+  if (seen.includes(x)) return pathStr + " is a circular link";
+  const proto = Object.getPrototypeOf(x);
+  if (!Array.isArray(x) && proto !== Object.prototype) {
+    return pathStr + " is a " + (proto && proto.constructor ? proto.constructor.name : "special") + " object";
+  }
+  for (const [k, v] of Object.entries(x)) {
+    if (v === undefined) return pathStr + "." + k + " is undefined";
+    const why = plainProblem(v, pathStr + "." + k, [...seen, x]);
+    if (why) return why;
+  }
+  return null;
+}
+
+console.log("-- 1. Construction, exports, privacy, and guard rails");
+{
+  let threw = false;
+  try { new SetupCrew(); } catch (e) { threw = /rng/i.test(e.message); }
+  const sc = new SetupCrew(Rng.seeded(11));
+  const scKeys = [...Object.keys(sc), ...Object.getOwnPropertyNames(sc)];
+  const tr = new MirrorTrial(Rng.seeded(12));
+  const trKeys = [...Object.keys(tr), ...Object.getOwnPropertyNames(tr)];
+  const mirrorPartsSrc = fs.readFileSync(path.join(__dirname, "..", "rules", "MirrorParts.js"), "utf8");
+  const hasMathRandom = /Math\.random/.test(mirrorPartsSrc);
+  const hasTeamNames = /\b(kestrel|wren|finch|heron)\b/i.test(mirrorPartsSrc) || /\bTeam\s+[A-Z]\w*/.test(mirrorPartsSrc);
+
+  expect(
+    "SetupCrew rejects missing rng, keeps fields private, and exposes no #setup on MirrorTrial",
+    threw &&
+      typeof SetupCrew === "function" &&
+      scKeys.length === 0 &&
+      !trKeys.includes("setup") &&
+      !trKeys.includes("#setup") &&
+      tr.setup === undefined &&
+      !tr.setupStarted
+  );
+  expect(
+    "Round.LEVELS[2] uses mirror and MirrorParts uses no Math.random or hardcoded team names",
+    Round.LEVELS[2].trialKind === "mirror" && !hasMathRandom && !hasTeamNames
+  );
+}
+
+console.log("-- 2. Crew split (sizes 3, 4, 5, 1, 2, 6) and Stuck or Idle exclusions");
+{
+  const cases = [
+    { label: "size 3 active (2 setup, 1 dance)", size: 3, stuck: 0, idle: 0, expSetup: 2, expDance: 1 },
+    { label: "size 4 active (2 setup, 2 dance)", size: 4, stuck: 0, idle: 0, expSetup: 2, expDance: 2 },
+    { label: "size 5 active (3 setup, 2 dance)", size: 5, stuck: 0, idle: 0, expSetup: 3, expDance: 2 },
+    { label: "size 6 active capped at 3 setup (3 setup, 3 dance)", size: 6, stuck: 0, idle: 0, expSetup: 3, expDance: 3 },
+    { label: "size 5 with 1 Stuck -> 4 active (2 setup, 2 dance)", size: 5, stuck: 1, idle: 0, expSetup: 2, expDance: 2 },
+    { label: "size 5 with 1 Stuck + 1 Idle -> 3 active (2 setup, 1 dance)", size: 5, stuck: 1, idle: 1, expSetup: 2, expDance: 1 },
+    { label: "size 4 with 2 Stuck -> 2 active (1 setup, 1 dance)", size: 4, stuck: 2, idle: 0, expSetup: 1, expDance: 1 },
+    { label: "size 3 with 2 Idle -> 1 active (1 setup, 0 dance)", size: 3, stuck: 0, idle: 2, expSetup: 1, expDance: 0 },
+  ];
+
+  for (let i = 0; i < cases.length; i++) {
+    const c = cases[i];
+    const team = makeTeam(i, c.size, { humans: c.size, prefix: "Split" + i + "_" });
+    for (let s = 0; s < c.stuck; s++) team.members[c.size - 1 - s].glitches = Player.STUCK_AT;
+    for (let d = 0; d < c.idle; d++) team.members[c.size - 1 - c.stuck - d].idle = true;
+    const activeIds = team.active().map(p => p.id);
+
+    const sc = new SetupCrew(Rng.seeded(200 + i), [team]);
+    const st = sc.teamState(team);
+    const scSetupIds = st.slots.map(s => s.playerId);
+    const scDanceIds = st.danceIds;
+    const scUnion = [...scSetupIds, ...scDanceIds];
+    const scOk = scSetupIds.length === c.expSetup &&
+      scDanceIds.length === c.expDance &&
+      scUnion.length === activeIds.length &&
+      new Set(scUnion).size === activeIds.length &&
+      activeIds.every(id => scUnion.includes(id));
+
+    const tr = new MirrorTrial(Rng.seeded(300 + i));
+    tr.startLobby([team]);
+    for (const id of activeIds) tr.connect(id);
+    tr.closeDoors();
+    const deal = tr.crewFor(team);
+    const trSlots = tr.setupSlots(team);
+    const trOk = deal.setupIds.length === c.expSetup &&
+      deal.danceIds.length === c.expDance &&
+      trSlots.length === c.expSetup &&
+      JSON.stringify(trSlots.map(s => s.playerId)) === JSON.stringify(deal.setupIds);
+
+    expect("Crew split " + c.label, scOk && trOk);
+  }
+}
+
+console.log("-- 3. Setup step split (1, 2, 3 players) and seeded slot order");
+{
+  const expected = {
+    1: [["cables", "sound", "mic", "deck", "qa"]],
+    2: [["cables", "sound", "mic"], ["deck", "qa"]],
+    3: [["cables", "sound"], ["mic", "deck"], ["qa"]],
+  };
+  for (const setupCount of [1, 2, 3]) {
+    const activeNeeded = setupCount === 1 ? 1 : setupCount === 2 ? 4 : 5;
+    const team = makeTeam(0, activeNeeded, { humans: activeNeeded, prefix: "Step" + setupCount + "_" });
+    const sc = new SetupCrew(Rng.seeded(400 + setupCount), [team]);
+    const slots = sc.slotsFor(team);
+    const flat = slots.flatMap(s => s.steps);
+    expect(
+      "Step split for " + setupCount + " Setup player(s)",
+      slots.length === setupCount &&
+        JSON.stringify(slots.map(s => s.steps)) === JSON.stringify(expected[setupCount]) &&
+        JSON.stringify(flat) === JSON.stringify(MirrorData.setupSteps),
+      JSON.stringify(slots.map(s => s.steps))
+    );
+  }
+
+  const slotDeal = seed => {
+    const team = makeTeam(0, 5, { humans: 5, prefix: "Slot_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [team]);
+    return sc.slotsFor(team).map(s => s.playerId);
+  };
+  const distinct = new Set();
+  for (let s = 1; s <= 20; s++) distinct.add(JSON.stringify(slotDeal(s)));
+  expect(
+    "Same seed repeats setup slot order and different seeds vary",
+    JSON.stringify(slotDeal(77)) === JSON.stringify(slotDeal(77)) && distinct.size > 1,
+    "distinct=" + distinct.size
+  );
+}
+
+console.log("-- 4. Step order, turn handoff, and results-based input (3-player + 2-player + 1-player)");
+{
+  // 3-player Setup Crew deterministic walkthrough
+  const team = makeTeam(0, 5, { humans: 5, prefix: "Flow3_" });
+  const sc = new SetupCrew(Rng.seeded(501), [team]);
+  const slots = sc.slotsFor(team);
+  const [s0, s1, s2] = slots.map(s => s.playerId);
+  const danceId = sc.teamState(team).danceIds[0];
+
+  // Cables (slot 0)
+  const wrongTurnStart = sc.cableHit(s1, "HDMI");
+  const dancerBlocked = sc.cableHit(danceId, "HDMI");
+  const wrongStepEarly = sc.soundHeld(s0);
+  const unknownPort = sc.cableHit(s0, "DP");
+  const missCable = sc.cableMiss(s0, "HDMI");
+  const c1 = sc.cableHit(s0, "HDMI");
+  const dupPort = sc.cableHit(s0, "HDMI");
+  const c2 = sc.cableHit(s0, "USB-C");
+  const c3 = sc.cableHit(s0, "AirLink");
+  const c4 = sc.cableHit(s0, "VGA");
+  expect(
+    "Cables enforces turn/step/port rules, +3 spark on miss, and advances to sound (slot 0)",
+    !wrongTurnStart.ok && !dancerBlocked.ok && !wrongStepEarly.ok && !unknownPort.ok && !dupPort.ok &&
+      missCable.ok && missCable.spark && missCable.penaltyAdded === 3 && sc.penaltiesFor(team) === 3 &&
+      c1.ok && !c1.stepDone && c2.ok && c3.ok &&
+      c4.ok && c4.stepDone && c4.nextStep === "sound" && c4.nextPlayerId === s0 &&
+      sc.currentStep(team) === "sound" && sc.currentPlayerId(team) === s0
+  );
+
+  // Sound (slot 0) -> hands off to slot 1 on mic
+  const fb = sc.soundFeedback(s0);
+  const wrongSlotSound = sc.soundHeld(s1);
+  const soundOk = sc.soundHeld(s0);
+  const micSeq1 = sc.micSequenceFor(team);
+  expect(
+    "Sound feedback adds +4 and soundHeld advances to mic and hands turn to slot 1",
+    fb.ok && fb.feedback && fb.penaltyAdded === 4 && sc.penaltiesFor(team) === 7 &&
+      !wrongSlotSound.ok &&
+      soundOk.ok && soundOk.stepDone && soundOk.nextStep === "mic" && soundOk.nextPlayerId === s1 &&
+      sc.currentPlayerId(team) === s1 && sc.isPlayersTurn(s1) && !sc.isPlayersTurn(s0) &&
+      Array.isArray(micSeq1) && micSeq1.length === 3
+  );
+
+  // Mic (slot 1): wrong tap (+4, new sequence), then rounds 3 -> 4 -> 5
+  const oldSlotMic = sc.micTap(s0, micSeq1[0]);
+  const badMicNum = sc.micTap(s1, 5);
+  const wrongMicVal = (micSeq1[0] % 4) + 1;
+  const micWrong = sc.micTap(s1, wrongMicVal);
+  const seqAfterWrong = sc.micSequenceFor(team);
+  let r1Ok = true;
+  for (const n of seqAfterWrong) r1Ok = r1Ok && sc.micTap(s1, n).ok;
+  const seqRound2 = sc.micSequenceFor(team);
+  let r2Ok = true;
+  for (const n of seqRound2) r2Ok = r2Ok && sc.micTap(s1, n).ok;
+  const seqRound3 = sc.micSequenceFor(team);
+  let lastMicRes = null;
+  for (const n of seqRound3) lastMicRes = sc.micTap(s1, n);
+  const fileOrder = sc.deckOrderFor(team);
+  expect(
+    "Mic enforces turn/range, adds +4 and regenerates on wrong tap, completes 3/4/5 rounds to deck (slot 1)",
+    !oldSlotMic.ok && !badMicNum.ok &&
+      micWrong.ok && !micWrong.hit && micWrong.penaltyAdded === 4 && sc.penaltiesFor(team) === 11 &&
+      Array.isArray(seqAfterWrong) && seqAfterWrong.length === 3 &&
+      r1Ok && seqRound2.length === 4 &&
+      r2Ok && seqRound3.length === 5 &&
+      lastMicRes && lastMicRes.ok && lastMicRes.stepDone && lastMicRes.nextStep === "deck" &&
+      lastMicRes.nextPlayerId === s1 && Array.isArray(fileOrder) && fileOrder.length === 6
+  );
+
+  // Deck (slot 1) -> hands off to slot 2 on qa
+  const wrongFileIdx = MirrorData.files.findIndex(f => !f.correct);
+  const okFileIdx = MirrorData.files.findIndex(f => f.correct);
+  const reshuf = sc.reshuffleDeck(team);
+  const deckWrong = sc.pickFile(s1, wrongFileIdx);
+  const deckDupWrong = sc.pickFile(s1, wrongFileIdx);
+  const wrapEarly = sc.wrapUp(s2);
+  const deckOk = sc.pickFile(s1, okFileIdx);
+  const qaOrder = sc.qaOrderFor(team);
+  expect(
+    "Deck reshuffles, adds +6 on wrong file, blocks duplicate wrong pick, and advances to Q&A (slot 2)",
+    reshuf.ok && reshuf.reshuffles === 1 && reshuf.fileOrder.length === 6 &&
+      deckWrong.ok && !deckWrong.hit && deckWrong.penaltyAdded === 6 && deckWrong.reshuffleRequested &&
+      !deckDupWrong.ok && !wrapEarly.ok &&
+      sc.penaltiesFor(team) === 17 &&
+      deckOk.ok && deckOk.stepDone && deckOk.nextStep === "qa" && deckOk.nextPlayerId === s2 &&
+      sc.currentPlayerId(team) === s2 && Array.isArray(qaOrder) && qaOrder.length === 3
+  );
+
+  // Q&A (slot 2): 1 right (-5 recover), 1 wrong (+5), 1 timeout (+5), then wrapUp
+  const q1 = sc.currentQaFor(team);
+  const qaWrongTurn = sc.answerQa(s1, q1.correctIndex);
+  const qaRight = sc.answerQa(s2, q1.correctIndex); // 17 -> 12
+  const q2 = sc.currentQaFor(team);
+  const wrongOpt = (q2.correctIndex + 1) % q2.options.length;
+  const qaWrong = sc.answerQa(s2, wrongOpt);        // 12 -> 17
+  const qaTime = sc.timeoutQa(s2);                  // 17 -> 22
+  const wrapWrongPlayer = sc.wrapUp(s1);
+  const wrapOk = sc.wrapUp(s2);
+  const wrapTwice = sc.wrapUp(s2);
+  expect(
+    "Q&A enforces turn, recovers 5 on right, adds 5 on wrong/timeout, and slot 2 wraps up once",
+    !qaWrongTurn.ok &&
+      qaRight.ok && qaRight.correct && qaRight.recovered === 5 && qaRight.penalties === 12 &&
+      qaWrong.ok && !qaWrong.correct && qaWrong.penaltyAdded === 5 && qaWrong.penalties === 17 &&
+      qaTime.ok && qaTime.timeout && qaTime.penaltyAdded === 5 && sc.penaltiesFor(team) === 22 &&
+      qaTime.stepDone && qaTime.nextStep === "wrapUp" && qaTime.nextPlayerId === s2 &&
+      !wrapWrongPlayer.ok && wrapOk.ok && wrapOk.wrappedUp && sc.isWrappedUp(team) &&
+      !wrapTwice.ok && sc.currentStep(team) === null && sc.currentPlayerId(team) === null
+  );
+
+  // Q&A recovery clamps at 0 (does not turn penalties negative)
+  const smallTeam = makeTeam(1, 1, { humans: 1, prefix: "Small_" });
+  const scSmall = new SetupCrew(Rng.seeded(502), [smallTeam]);
+  const pSmall = scSmall.slotsFor(smallTeam)[0].playerId;
+  scSmall.cableMiss(pSmall, "HDMI"); // +3 penalty
+  for (const port of MirrorData.ports) scSmall.cableHit(pSmall, port);
+  scSmall.soundHeld(pSmall);
+  for (let r = 0; r < 3; r++) {
+    for (const n of scSmall.micSequenceFor(smallTeam)) scSmall.micTap(pSmall, n);
+  }
+  scSmall.pickFile(pSmall, "MEDLINE_deck_v3_CLIENT_SIGNED.pptx");
+  const curQ = scSmall.currentQaFor(smallTeam);
+  const recRes = scSmall.answerQa(pSmall, curQ.correctIndex);
+  expect(
+    "Q&A recovery clamps at 0 (3 penalty restored by 3, never negative)",
+    recRes.ok && recRes.recovered === 3 && scSmall.penaltiesFor(smallTeam) === 0
+  );
+
+  // 2-player Setup handoff check (P0: cables/sound/mic -> P1: deck/qa/wrapUp)
+  const t2 = makeTeam(2, 4, { humans: 4, prefix: "Two_" });
+  const sc2 = new SetupCrew(Rng.seeded(503), [t2]);
+  const [p2a, p2b] = sc2.slotsFor(t2).map(s => s.playerId);
+  for (const port of MirrorData.ports) sc2.cableHit(p2a, port);
+  sc2.soundHeld(p2a);
+  const stillP2aAtMic = sc2.currentPlayerId(t2) === p2a;
+  for (let r = 0; r < 3; r++) {
+    for (const n of sc2.micSequenceFor(t2)) sc2.micTap(p2a, n);
+  }
+  const handedToP2bAtDeck = sc2.currentStep(t2) === "deck" && sc2.currentPlayerId(t2) === p2b;
+  sc2.pickFile(p2b, "MEDLINE_deck_v3_CLIENT_SIGNED.pptx");
+  for (let i = 0; i < 3; i++) sc2.answerQa(p2b, sc2.currentQaFor(t2).correctIndex);
+  const wrap2 = sc2.wrapUp(p2b);
+  expect(
+    "2-player Setup hands off from slot 0 to slot 1 after mic and wraps up on slot 1",
+    stillP2aAtMic && handedToP2bAtDeck && wrap2.ok && sc2.isWrappedUp(t2)
+  );
+}
+
+console.log("-- 5. Seeded content picks (mic, deck reshuffle, Q&A order)");
+{
+  const runPicks = seed => {
+    const team = makeTeam(0, 1, { humans: 1, prefix: "Pick_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [team]);
+    const pid = sc.slotsFor(team)[0].playerId;
+    for (const port of MirrorData.ports) sc.cableHit(pid, port);
+    sc.soundHeld(pid);
+    const mic1 = sc.micSequenceFor(team);
+    for (const n of mic1) sc.micTap(pid, n);
+    const mic2 = sc.micSequenceFor(team);
+    for (const n of mic2) sc.micTap(pid, n);
+    const mic3 = sc.micSequenceFor(team);
+    for (const n of mic3) sc.micTap(pid, n);
+    const deck1 = sc.deckOrderFor(team);
+    const deck2 = sc.reshuffleDeck(team).fileOrder;
+    sc.pickFile(pid, "MEDLINE_deck_v3_CLIENT_SIGNED.pptx");
+    const qaOrder = sc.qaOrderFor(team);
+    return { mic1, mic2, mic3, deck1, deck2, qaOrder };
+  };
+  const a = runPicks(606);
+  const b = runPicks(606);
+  const varied = new Set();
+  for (let s = 1; s <= 15; s++) varied.add(JSON.stringify(runPicks(s)));
+  expect(
+    "Same seed yields identical mic/deck/Q&A content picks and different seeds vary",
+    JSON.stringify(a) === JSON.stringify(b) && varied.size > 1,
+    "distinct=" + varied.size
+  );
+}
+
+console.log("-- 6. Bot timing, 30% hiccup (-3), mixed human/bot handoff, and idle autopilot");
+{
+  // Full bot setup schedule (4, 10, 16, 22, 28, 34s)
+  const runBotSchedule = seed => {
+    const team = makeTeam(0, 5, { humans: 0, prefix: "Bot_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [team]);
+    const before = sc.advanceBotSetup(team, 3);
+    const evs = [];
+    for (const t of [4, 10, 16, 22, 28, 34]) {
+      evs.push(...sc.advanceBotSetup(team, t).events);
+    }
+    return { beforeCount: before.events.length, wrapped: sc.isWrappedUp(team), penalties: sc.penaltiesFor(team), evs };
+  };
+  const b1 = runBotSchedule(707);
+  const b2 = runBotSchedule(707);
+  const expectedSteps = ["cables", "sound", "mic", "deck", "qa", "wrapUp"];
+  const expectedTimes = [4, 10, 16, 22, 28, 34];
+  const stepsMatch = JSON.stringify(b1.evs.map(e => e.step)) === JSON.stringify(expectedSteps);
+  const timesMatch = JSON.stringify(b1.evs.map(e => e.finishedAt)) === JSON.stringify(expectedTimes);
+  const costsMatch = b1.evs.every(e => e.penaltyAdded === (e.hiccup ? 3 : 0)) && !b1.evs[5].hiccup;
+
+  expect(
+    "Bot setup follows milestones 4/10/16/22/28/34s, wraps up automatically, and repeats with same seed",
+    b1.beforeCount === 0 && b1.wrapped && stepsMatch && timesMatch && costsMatch &&
+      JSON.stringify(b1) === JSON.stringify(b2),
+    "penalties=" + b1.penalties
+  );
+
+  // Hiccup rate across 200 seeds (1,000 non-wrapUp bot steps)
+  let hiccups = 0;
+  let totalSteps = 0;
+  let badCost = false;
+  for (let s = 1; s <= 200; s++) {
+    const r = runBotSchedule(s);
+    for (let i = 0; i < 5; i++) {
+      totalSteps++;
+      if (r.evs[i].hiccup) {
+        hiccups++;
+        if (r.evs[i].penaltyAdded !== 3) badCost = true;
+      }
+    }
+  }
+  const rate = hiccups / totalSteps;
+  expect(
+    "Bot hiccup rate across 200 seeds matches ~30% and costs 3 per hiccup",
+    !badCost && hiccups > 0 && rate >= 0.2 && rate <= 0.4,
+    hiccups + "/" + totalSteps + " (" + (rate * 100).toFixed(1) + "%)"
+  );
+
+  // Mixed bot -> human -> bot handoff + autoPilot for idle human
+  const mixedTeam = makeTeam(1, 5, { humans: 1, prefix: "Mix_" }); // member 0 is human, 1..4 are bots
+  const scMix = new SetupCrew(Rng.seeded(708), [mixedTeam], { shuffleSlots: false });
+  const slotsMix = scMix.slotsFor(mixedTeam); // 3 slots: human(cables, sound), bot(mic, deck), bot(qa, wrapUp)
+  const humanId = slotsMix[0].playerId;
+  const bot1Id = slotsMix[1].playerId;
+  const bot2Id = slotsMix[2].playerId;
+
+  const noBotAtStart = scMix.advanceBotSetup(mixedTeam, 10);
+  const dueDuringHuman = scMix.botStepDueAt(mixedTeam);
+  const humanAutoBlocked = scMix.completeBotStep(humanId);
+  for (const port of MirrorData.ports) scMix.cableHit(humanId, port, { elapsedSeconds: 3 });
+  scMix.soundHeld(humanId, { elapsedSeconds: 9 });
+  const botMidRun = scMix.advanceBotSetup(mixedTeam, 22); // mic due 9+6=15, deck due 15+6=21, qa due 21+6=27
+  const dueAtQa = scMix.botStepDueAt(mixedTeam);
+  const idleWrap = scMix.advanceBotSetup(mixedTeam, 35);   // finishes qa at 27 and wrapUp at 33
+  expect(
+    "Mixed crew stops at human turn, rejects completeBotStep on non-bot, and hands off cleanly to bots",
+    noBotAtStart.events.length === 0 &&
+      dueDuringHuman === null &&
+      !humanAutoBlocked.ok &&
+      botMidRun.events.map(e => e.step).join(",") === "mic,deck" &&
+      botMidRun.currentStep === "qa" && botMidRun.currentPlayerId === bot2Id &&
+      dueAtQa === 27 &&
+      idleWrap.events.map(e => e.step).join(",") === "qa,wrapUp" && scMix.isWrappedUp(mixedTeam)
+  );
+
+  // Explicit autoPilot test on a human slot
+  const idleTeam = makeTeam(2, 1, { humans: 1, prefix: "IdleAuto_" });
+  const scIdle = new SetupCrew(Rng.seeded(709), [idleTeam]);
+  const idlePid = scIdle.slotsFor(idleTeam)[0].playerId;
+  const apRes = scIdle.advanceBotSetup(idleTeam, 40, { autoPilotIds: [idlePid] });
+  expect(
+    "Idle human can complete setup via autoPilot",
+    apRes.events.length === 6 && scIdle.isWrappedUp(idleTeam)
+  );
+}
+
+console.log("-- 7. MirrorTrial coordinator: showtime gate, setup actions, and bot setup");
+{
+  const team = makeTeam(0, 5, { humans: 2, prefix: "Coord_" });
+  team.members[4].glitches = Player.STUCK_AT; // 4 active -> 2 setup, 2 dance
+  const tr = new MirrorTrial(Rng.seeded(808));
+  tr.startLobby([team]);
+  for (const p of team.active()) tr.connect(p.id);
+  tr.closeDoors();
+
+  const slots = tr.setupSlots(team);
+  const [slot0Id, slot1Id] = slots.map(s => s.playerId);
+  const danceId = tr.crewFor(team).danceIds[0];
+  const beforeShowtime = tr.cableHit(slot0Id, "HDMI");
+  const started = tr.startShowtime();
+  const danceBlocked = tr.cableHit(danceId, "HDMI");
+  const stuckBlocked = tr.cableHit(team.members[4].id, "HDMI");
+
+  for (const port of MirrorData.ports) tr.cableHit(slot0Id, port, { elapsedSeconds: 5 });
+  tr.soundHeld(slot0Id, { elapsedSeconds: 11 });
+  for (let r = 0; r < 3; r++) {
+    for (const n of tr.micSequenceFor(team)) tr.micTap(slot0Id, n, { elapsedSeconds: 18 });
+  }
+  const atDeck = tr.setupStep(team) === "deck" && tr.setupCurrentPlayerId(team) === slot1Id;
+  tr.pickFile(slot1Id, "MEDLINE_deck_v3_CLIENT_SIGNED.pptx", { elapsedSeconds: 22 });
+  for (let i = 0; i < 3; i++) tr.answerQa(slot1Id, tr.currentQaFor(team).correctIndex);
+  const wrapped = tr.wrapUp(slot1Id);
+
+  expect(
+    "MirrorTrial gates setup actions until startShowtime and routes full setup flow through coordinator",
+    !beforeShowtime.ok &&
+      started.ok && tr.phase === "showtime" &&
+      !danceBlocked.ok && !stuckBlocked.ok &&
+      atDeck && wrapped.ok && tr.isSetupWrappedUp(team)
+  );
+}
+
+console.log("-- 8. Save and load (SetupCrew direct and MirrorTrial / Trial.fromJSON)");
+{
+  // Direct SetupCrew mid-mic save/load with synced Rng
+  const tOrig = makeTeam(0, 4, { humans: 4, prefix: "Save_" });
+  const rngA = Rng.seeded(909);
+  const scA = new SetupCrew(rngA, [tOrig]);
+  const [p0, p1] = scA.slotsFor(tOrig).map(s => s.playerId);
+  for (const port of MirrorData.ports) scA.cableHit(p0, port);
+  scA.soundHeld(p0);
+  const firstSeq = scA.micSequenceFor(tOrig);
+  scA.micTap(p0, firstSeq[0]);
+
+  const jsonA = scA.toJSON();
+  const errA = plainProblem(jsonA);
+  const rngB = Rng.seeded(0);
+  rngB.setState(rngA.getState());
+  const scB = SetupCrew.fromJSON(JSON.parse(JSON.stringify(jsonA)), { rng: rngB });
+
+  // Continue identically on both
+  for (let i = 1; i < firstSeq.length; i++) {
+    scA.micTap(p0, firstSeq[i]);
+    scB.micTap(p0, firstSeq[i]);
+  }
+  const s2A = scA.micSequenceFor(tOrig);
+  const s2B = scB.micSequenceFor(tOrig);
+  for (const n of s2A) { scA.micTap(p0, n); scB.micTap(p0, n); }
+  const s3A = scA.micSequenceFor(tOrig);
+  const s3B = scB.micSequenceFor(tOrig);
+  for (const n of s3A) { scA.micTap(p0, n); scB.micTap(p0, n); }
+  const deckA = scA.pickFile(p1, "MEDLINE_deck_v3_CLIENT_SIGNED.pptx");
+  const deckB = scB.pickFile(p1, "MEDLINE_deck_v3_CLIENT_SIGNED.pptx");
+
+  expect(
+    "SetupCrew.fromJSON produces plain data and continues identically after mid-mic reload",
+    !errA &&
+      JSON.stringify(s2A) === JSON.stringify(s2B) &&
+      JSON.stringify(s3A) === JSON.stringify(s3B) &&
+      JSON.stringify(deckA) === JSON.stringify(deckB) &&
+      JSON.stringify(scA.toJSON()) === JSON.stringify(scB.toJSON())
+  );
+
+  // MirrorTrial mid-showtime save/load through Trial.fromJSON
+  const teamsOrig = [makeTeam(0, 4, { humans: 2, prefix: "MT0_" }), makeTeam(1, 3, { humans: 0, prefix: "MT1_" })];
+  const trRngA = Rng.seeded(910);
+  const trA = new MirrorTrial(trRngA);
+  trA.startLobby(teamsOrig);
+  for (const t of teamsOrig) for (const p of t.active()) trA.connect(p.id);
+  trA.closeDoors();
+  trA.startShowtime();
+  const t0Slot0 = trA.setupSlots(teamsOrig[0])[0].playerId;
+  trA.cableHit(t0Slot0, "HDMI");
+  trA.cableMiss(t0Slot0, "USB-C");
+  trA.advanceBotSetup(teamsOrig[1], 16);
+
+  const trJson = trA.toJSON();
+  const trErr = plainProblem(trJson);
+  const trText = JSON.stringify(trJson);
+  const byIdOrig = new Map(teamsOrig.flatMap(t => t.members).map(p => [p.id, p]));
+  const playersCopy = [...byIdOrig.values()].map(p => Player.fromJSON(p.toJSON()));
+  const byIdCopy = new Map(playersCopy.map(p => [p.id, p]));
+  const teamsCopy = teamsOrig.map(t => Team.fromJSON(t.toJSON(), byIdCopy));
+  const trRngB = Rng.seeded(0);
+  trRngB.setState(trRngA.getState());
+
+  const trB = Trial.fromJSON(JSON.parse(trText), { rng: trRngB, teams: teamsCopy, byId: byIdCopy });
+  const contA = trA.advanceBotSetup(teamsOrig[1], 34);
+  const contB = trB.advanceBotSetup(teamsCopy[1], 34);
+  for (const port of ["USB-C", "AirLink", "VGA"]) {
+    trA.cableHit(t0Slot0, port);
+    trB.cableHit(t0Slot0, port);
+  }
+  const sndA = trA.soundHeld(t0Slot0);
+  const sndB = trB.soundHeld(t0Slot0);
+
+  expect(
+    "MirrorTrial mid-showtime save/load restores setup state and continues identically",
+    !trErr &&
+      trB instanceof MirrorTrial &&
+      trB.phase === "showtime" &&
+      JSON.stringify(contA) === JSON.stringify(contB) &&
+      JSON.stringify(sndA) === JSON.stringify(sndB) &&
+      JSON.stringify(trA.toJSON()) === JSON.stringify(trB.toJSON())
+  );
+}
+
+console.log("-- 9. Seeded Cables bag, Sound spikes & jitter, and mid-trial save/load");
+{
+  // (a) Direct SetupCrew Cables bag order (refill, connected filter, returnCable)
+  const drawCables = seed => {
+    const tm = makeTeam(0, 1, { humans: 1, prefix: "Cab_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [tm]);
+    const pid = sc.slotsFor(tm)[0].playerId;
+    const seq = [];
+    for (let i = 0; i < 10; i++) seq.push(sc.nextCable(tm).port);
+    sc.returnCable(tm, "VGA");
+    const afterReturn = sc.nextCable(tm).port;
+    sc.cableHit(pid, "HDMI");
+    const afterConnect = [];
+    for (let i = 0; i < 6; i++) afterConnect.push(sc.nextCable(tm).port);
+    return { seq, afterReturn, afterConnect };
+  };
+  const cabA = drawCables(1301);
+  const cabB = drawCables(1301);
+  const cabDistinct = new Set();
+  for (let s = 1; s <= 15; s++) cabDistinct.add(JSON.stringify(drawCables(s).seq));
+  expect(
+    "SetupCrew nextCable/returnCable repeat on same seed, vary across seeds, return missed ports, and filter connected ports",
+    JSON.stringify(cabA) === JSON.stringify(cabB) &&
+      cabDistinct.size > 1 &&
+      cabA.seq.every(p => MirrorData.ports.includes(p)) &&
+      cabA.afterReturn === "VGA" &&
+      cabA.afterConnect.every(p => p !== "HDMI"),
+    "distinct=" + cabDistinct.size
+  );
+
+  // (b) Direct SetupCrew Sound spikes (+8..+17, initial 12..17, later 12..20) & jitter (-2..+2, no -0)
+  const drawSound = seed => {
+    const tm = makeTeam(0, 1, { humans: 1, prefix: "Snd_" });
+    const sc = new SetupCrew(Rng.seeded(seed), [tm]);
+    const pid = sc.slotsFor(tm)[0].playerId;
+    for (const port of MirrorData.ports) sc.cableHit(pid, port);
+    const spikes = [];
+    for (let i = 0; i < 5; i++) spikes.push(sc.nextSoundSpike(tm));
+    const jitters = [];
+    for (let i = 0; i < 20; i++) jitters.push(sc.nextSoundJitter(tm).jitter);
+    return { spikes, jitters };
+  };
+  const sndA = drawSound(1302);
+  const sndB = drawSound(1302);
+  const sndDistinct = new Set();
+  let rangesOk = sndA.spikes[0].initial === true && sndA.spikes.slice(1).every(sp => !sp.initial);
+  for (let s = 1; s <= 20; s++) {
+    const r = drawSound(s);
+    sndDistinct.add(JSON.stringify(r));
+    r.spikes.forEach((sp, idx) => {
+      const minD = idx === 0 ? MirrorData.sound.spikeInitialMinTicks : MirrorData.sound.spikeIntervalMinTicks;
+      const maxD = minD + (idx === 0 ? MirrorData.sound.spikeInitialRangeTicks : MirrorData.sound.spikeIntervalRangeTicks) - 1;
+      if (!sp.ok || sp.delayTicks < minD || sp.delayTicks > maxD || sp.boost < 8 || sp.boost > 17) rangesOk = false;
+    });
+    for (const j of r.jitters) {
+      if (!Number.isInteger(j) || j < -2 || j > 2 || Object.is(j, -0)) rangesOk = false;
+    }
+  }
+  expect(
+    "SetupCrew nextSoundSpike/nextSoundJitter stay in bounds without -0, repeat on seed, and vary",
+    rangesOk && JSON.stringify(sndA) === JSON.stringify(sndB) && sndDistinct.size > 1,
+    "distinct=" + sndDistinct.size
+  );
+
+  // (c) MirrorTrial gates helpers, keeps parent Rng untouched during cable/sound draws, and saves/loads cleanly
+  const parentRng = Rng.seeded(1303);
+  const tmGate = makeTeam(0, 1, { humans: 1, prefix: "GateS_" });
+  const byIdGate = new Map(tmGate.members.map(p => [p.id, p]));
+  const stateBeforeCtor = parentRng.getState();
+  const tr = new MirrorTrial(parentRng);
+  const stateAfterCtor = parentRng.getState();
+  const blockedLobby = tr.nextCable(tmGate);
+  tr.startLobby([tmGate]);
+  tr.connect(tmGate.members[0].id);
+  tr.closeDoors();
+  const blockedReveal = tr.nextSoundSpike(tmGate);
+  tr.startShowtime();
+  const wrongStepSound = tr.nextSoundSpike(tmGate);
+
+  const stateBeforeCables = parentRng.getState();
+  tr.nextCable(tmGate);
+  tr.nextCable(tmGate);
+  tr.returnCable(tmGate, "AirLink");
+  const stateAfterCables = parentRng.getState();
+  const cabSaveJson = tr.toJSON();
+  const cabSaveErr = plainProblem(cabSaveJson);
+  const rngCabReload = Rng.seeded(0);
+  rngCabReload.setState(parentRng.getState());
+  const trCabReload = Trial.fromJSON(JSON.parse(JSON.stringify(cabSaveJson)), {
+    rng: rngCabReload,
+    teams: [tmGate],
+    byId: byIdGate,
+  });
+  const cabOrigNext = [];
+  const cabLoadNext = [];
+  for (let i = 0; i < 10; i++) {
+    cabOrigNext.push(tr.nextCable(tmGate).port);
+    cabLoadNext.push(trCabReload.nextCable(tmGate).port);
+  }
+  const stateAfterCabDraws = parentRng.getState();
+
+  // Advance both identically to sound step, draw 1 spike + 3 jitters, reload again, and continue identically
+  const pidGate = tr.setupCurrentPlayerId(tmGate);
+  for (const port of MirrorData.ports) {
+    tr.cableHit(pidGate, port);
+    trCabReload.cableHit(pidGate, port);
+  }
+  const stateBeforeSound = parentRng.getState();
+  tr.nextSoundSpike(tmGate);
+  trCabReload.nextSoundSpike(tmGate);
+  for (let i = 0; i < 3; i++) {
+    tr.nextSoundJitter(tmGate);
+    trCabReload.nextSoundJitter(tmGate);
+  }
+  const stateAfterSound = parentRng.getState();
+  const sndSaveJson = tr.toJSON();
+  const sndSaveErr = plainProblem(sndSaveJson);
+  const rngSndReload = Rng.seeded(0);
+  rngSndReload.setState(parentRng.getState());
+  const trSndReload = Trial.fromJSON(JSON.parse(JSON.stringify(sndSaveJson)), {
+    rng: rngSndReload,
+    teams: [tmGate],
+    byId: byIdGate,
+  });
+  const sndOrigCont = [tr.nextSoundSpike(tmGate), tr.nextSoundJitter(tmGate), tr.nextSoundSpike(tmGate), tr.nextSoundJitter(tmGate)];
+  const sndLoadCont = [trSndReload.nextSoundSpike(tmGate), trSndReload.nextSoundJitter(tmGate), trSndReload.nextSoundSpike(tmGate), trSndReload.nextSoundJitter(tmGate)];
+  const stateAfterSoundCont = parentRng.getState();
+
+  // Older save missing seedRngState, cables.bag, and sound.spikesRolled still loads with 0 parent Rng draws
+  const oldSndJson = JSON.parse(JSON.stringify(sndSaveJson));
+  delete oldSndJson.seedRngState;
+  delete oldSndJson.lobby.seedRngState;
+  delete oldSndJson.setup.seedRngState;
+  for (const td of oldSndJson.setup.teams) {
+    if (td.cables) delete td.cables.bag;
+    if (td.sound) delete td.sound.spikesRolled;
+  }
+  const rngOld = Rng.seeded(0);
+  rngOld.setState(parentRng.getState());
+  const trOld = Trial.fromJSON(oldSndJson, { rng: rngOld, teams: [tmGate], byId: byIdGate });
+  const oldLoadDrawsOk = rngOld.getState() === parentRng.getState();
+  const oldSpike = trOld.nextSoundSpike(tmGate);
+  const oldJitter = trOld.nextSoundJitter(tmGate);
+
+  expect(
+    "MirrorTrial gates nextCable/sound helpers, saves/loads mid-Cables, mid-Sound, and older saves with 0 extra Game.rng draws",
+    !blockedLobby.ok && !blockedReveal.ok && !wrongStepSound.ok &&
+      !cabSaveErr && !sndSaveErr &&
+      stateBeforeCtor === stateAfterCtor &&
+      stateBeforeCables === stateAfterCables &&
+      stateBeforeCables === stateAfterCabDraws &&
+      stateBeforeSound === stateAfterSound &&
+      stateBeforeSound === stateAfterSoundCont &&
+      JSON.stringify(cabOrigNext) === JSON.stringify(cabLoadNext) &&
+      JSON.stringify(sndOrigCont) === JSON.stringify(sndLoadCont) &&
+      oldLoadDrawsOk && oldSpike.ok && oldSpike.initial === true && oldJitter.ok
+  );
+}
+
+console.log("-- 10. SetupCrew deadlines (Q&A timeout, deck reshuffle, mic flash hide, sound hold/feedback)");
+{
+  const tm = makeTeam(0, 1, { humans: 1, prefix: "Dead_" });
+  const rngSc = Rng.seeded(1401);
+  const sc = new SetupCrew(rngSc, [tm]);
+  const pid = sc.slotsFor(tm)[0].playerId;
+  const activeSet = new Set([pid]);
+  const tickMs = MirrorData.timers.tickMs;
+  const t0 = 50000;
+  sc.beginShowtime(t0);
+
+  // Cables -> Sound arms nextTickAt & spikeAt
+  for (const port of MirrorData.ports) sc.cableHit(pid, port, { now: t0, elapsedSeconds: 0 });
+  const vSnd0 = sc.setupViewFor(tm, t0);
+  const nextSndAt = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: t0 });
+  const idleBlockedSnd = sc.nextDeadline(tm, { activeHumanIds: new Set(), now: t0 });
+
+  // Sound feedback via soundAdjust(10) loop
+  let fbRes = null;
+  for (let i = 0; i < 6; i++) {
+    fbRes = sc.soundAdjust(pid, 10, { now: t0 });
+    if (fbRes.feedback) break;
+  }
+  const vAfterFb = sc.setupViewFor(tm, t0);
+
+  // Hold sound in green zone (70..85) for 12 ticks (3.0s) via tickDeadlines
+  let curT = t0;
+  for (let step = 0; step < 80; step++) {
+    const curSt = sc.teamState(tm);
+    if (curSt.currentStep !== "sound") break;
+    if (curSt.sound.level < 74) sc.soundAdjust(pid, curSt.sound.level <= 68 ? 10 : 5, { now: curT });
+    else if (curSt.sound.level > 85) sc.soundAdjust(pid, -10, { now: curT });
+    curT += tickMs;
+    sc.tickDeadlines(tm, curT, { activeHumanIds: activeSet });
+  }
+  const stAfterHold = sc.teamState(tm);
+  const micArmed = stAfterHold.currentStep === "mic" && stAfterHold.mic.flashing === true &&
+    stAfterHold.mic.hideAt === curT + MirrorData.mic.flashRound1Ticks * tickMs;
+
+  // Mic tap rejected while flashing, accepted once hideAt reached
+  const earlyTap = sc.micTap(pid, stAfterHold.mic.sequence[0], { now: stAfterHold.mic.hideAt - 1 });
+  sc.tickDeadlines(tm, stAfterHold.mic.hideAt, { activeHumanIds: activeSet });
+  const vMicHidden = sc.setupViewFor(tm, stAfterHold.mic.hideAt);
+  let micNow = stAfterHold.mic.hideAt;
+  for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    const seq = sc.micSequenceFor(tm);
+    for (const n of seq) sc.micTap(pid, n, { now: micNow });
+    const nextSt = sc.teamState(tm);
+    if (nextSt.currentStep === "mic" && nextSt.mic.flashing) {
+      micNow = nextSt.mic.hideAt;
+      sc.tickDeadlines(tm, micNow, { activeHumanIds: activeSet });
+    }
+  }
+
+  // Deck reshuffle at 8 ticks (2.0s) and spite reshuffle at 2 ticks (0.5s) after wrong file
+  const stDeck0 = sc.teamState(tm);
+  const deckDue0 = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: micNow });
+  const rngBeforeAutoDeck = rngSc.getState();
+  sc.tickDeadlines(tm, deckDue0, { activeHumanIds: activeSet });
+  const rngAfterAutoDeck = rngSc.getState();
+  const stDeck1 = sc.teamState(tm);
+  const wrongIdx = MirrorData.files.findIndex(f => !f.correct);
+  sc.pickFile(pid, wrongIdx, { now: deckDue0 });
+  const spiteDue = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: deckDue0 });
+  sc.tickDeadlines(tm, spiteDue, { activeHumanIds: activeSet });
+  const stDeck2 = sc.teamState(tm);
+  sc.pickFile(pid, MirrorData.files.findIndex(f => f.correct), { now: spiteDue });
+
+  // Q&A timeout at 29 ticks (7.25s)
+  const stQa0 = sc.teamState(tm);
+  const qaDue0 = sc.nextDeadline(tm, { activeHumanIds: activeSet, now: spiteDue });
+  sc.tickDeadlines(tm, qaDue0 - 1, { activeHumanIds: activeSet });
+  const noToBefore = sc.teamState(tm).qa.timeouts === 0;
+  const toEv = sc.tickDeadlines(tm, qaDue0, { activeHumanIds: activeSet });
+  const stQa1 = sc.teamState(tm);
+
+  // Older-save compatibility: strip Step 3b deadline & Sound Check fields, reload, and lazily arm deadline
+  const oldSetupJson = JSON.parse(JSON.stringify(sc.toJSON()));
+  delete oldSetupJson.showtimeStartAt;
+  for (const td of oldSetupJson.teams) {
+    if (td.sound) {
+      delete td.sound.level;
+      delete td.sound.holdTicks;
+      delete td.sound.nextTickAt;
+      delete td.sound.spikeAt;
+      delete td.sound.spikeBoost;
+    }
+    if (td.mic) {
+      delete td.mic.flashing;
+      delete td.mic.hideAt;
+    }
+    if (td.deck) delete td.deck.nextReshuffleAt;
+    if (td.qa) delete td.qa.itemDeadlineAt;
+  }
+  const scOldReload = SetupCrew.fromJSON(oldSetupJson, { rng: Rng.seeded(1401) });
+  const oldReloadQaDue = scOldReload.nextDeadline(tm, { activeHumanIds: activeSet, now: qaDue0 });
+
+  expect(
+    "SetupCrew deadlines fire Sound hold/feedback, Mic flash hide, Deck reshuffle/spite, and Q&A timeout once at exact timestamps",
+    vSnd0.sound.level === 45 && nextSndAt === t0 + tickMs && idleBlockedSnd === null &&
+      fbRes && fbRes.feedback && vAfterFb.sound.level === 45 && vAfterFb.sound.feedbacks === 1 &&
+      micArmed && !earlyTap.ok && !vMicHidden.mic.flashing &&
+      stDeck0.currentStep === "deck" && deckDue0 === micNow + MirrorData.deck.reshuffleTicks * tickMs &&
+      rngBeforeAutoDeck === rngAfterAutoDeck &&
+      stDeck1.deck.reshuffles === 1 &&
+      spiteDue === deckDue0 + MirrorData.deck.wrongReshuffleTicks * tickMs &&
+      stDeck2.deck.reshuffles === 2 &&
+      stQa0.currentStep === "qa" && qaDue0 === spiteDue + MirrorData.qa.countdownTicks * tickMs &&
+      noToBefore && toEv.events.some(e => e.kind === "qaTimeout") &&
+      stQa1.qa.timeouts === 1 && stQa1.qa.index === 1 &&
+      oldReloadQaDue === qaDue0 + MirrorData.qa.countdownTicks * tickMs &&
+      scOldReload.teamState(tm).qa.itemDeadlineAt === oldReloadQaDue
+  );
+}
+
+console.log("-- 11. Idle human Setup actions rejected while bot auto-pilot runs (Step 10)");
+{
+  const makeGameAtShowtime = seed => {
+    const clock = { now: 10000 };
+    const t0 = makeTeam(0, 4, { humans: 2, prefix: "IdleSetup_" });
+    const t1 = makeTeam(1, 4, { humans: 0, prefix: "BotOpp_" });
+    const g = new Game({ teams: [t0, t1], rng: Rng.seeded(seed), clock: () => clock.now, hooks: Bots.hooks });
+    g.start();
+    g.startNextRound(); g.advance(); g.advance(); g.closeSop();
+    g.endTrial(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+    g.computeEarnings(); g.placeAllRemaining(); g.finishRound();
+    g.startNextRound(); g.advance(); g.advance(); g.closeSplitBrief();
+    g.endTrial(); g.endGlitchReport(); g.advance(); g.advance(); g.lockIn(); g.advance();
+    g.computeEarnings(); g.placeAllRemaining(); g.finishRound();
+    g.startNextRound(); g.advance(); g.advance();
+    for (const p of t0.active()) g.mirrorConnect(p);
+    for (const p of t1.active()) g.mirrorConnect(p);
+    clock.now += 1000;
+    g.tick(clock.now);
+    return { g, clock, t0, t1, tr: g.round.trial };
+  };
+
+  let ctx = null;
+  for (let s = 1; s <= 60; s++) {
+    const probe = makeGameAtShowtime(s);
+    const slots = probe.tr.setupSlots(probe.t0);
+    if (slots.length === 2) {
+      const p0 = probe.t0.members.find(m => m.id === slots[0].playerId);
+      const p1 = probe.t0.members.find(m => m.id === slots[1].playerId);
+      if (p0 && p1 && !p0.isBot && !p1.isBot) { ctx = probe; break; }
+    }
+  }
+
+  const { g, clock, t0, tr } = ctx;
+  const slots = tr.setupSlots(t0);
+  const p0 = t0.members.find(m => m.id === slots[0].playerId);
+  const p1 = t0.members.find(m => m.id === slots[1].playerId);
+
+  const checkIdleNoEffect = (label, player, fn) => {
+    const penBefore = tr.setupPenalties(t0);
+    const attBefore = g.mirrorAttention(t0, clock.now);
+    player.idle = true;
+    const res = fn();
+    player.idle = false;
+    const penAfter = tr.setupPenalties(t0);
+    const attAfter = g.mirrorAttention(t0, clock.now);
+    return { label, ok: res && res.ok === false && !!res.reason && penAfter === penBefore && attAfter === attBefore };
+  };
+
+  const results = [];
+  results.push(checkIdleNoEffect("cableHit", p0, () => g.mirrorCableHit(p0, "HDMI")));
+  results.push(checkIdleNoEffect("cableMiss", p0, () => g.mirrorCableMiss(p0, "HDMI")));
+  for (const port of MirrorData.ports) g.mirrorCableHit(p0, port);
+
+  results.push(checkIdleNoEffect("soundAdjust", p0, () => g.mirrorSoundAdjust(p0, 10)));
+  results.push(checkIdleNoEffect("soundFeedback", p0, () => g.mirrorSoundFeedback(p0)));
+  results.push(checkIdleNoEffect("soundHeld", p0, () => g.mirrorSoundHeld(p0)));
+  g.mirrorSoundHeld(p0);
+
+  const vMic = g.mirrorSetupView(p0, clock.now);
+  if (vMic && vMic.mic.flashing && vMic.mic.hideAt !== null) {
+    clock.now = vMic.mic.hideAt;
+    g.tick(clock.now);
+  }
+  results.push(checkIdleNoEffect("micTap", p0, () => g.mirrorMicTap(p0, tr.micSequenceFor(t0)[0])));
+  for (let r = 0; r < MirrorData.mic.roundLengths.length; r++) {
+    const sv = g.mirrorSetupView(p0, clock.now);
+    if (sv && sv.mic.flashing && sv.mic.hideAt !== null && clock.now < sv.mic.hideAt) {
+      clock.now = sv.mic.hideAt;
+      g.tick(clock.now);
+    }
+    for (const n of tr.micSequenceFor(t0)) g.mirrorMicTap(p0, n);
+  }
+
+  const wrongFile = MirrorData.files.find(f => !f.correct).name;
+  results.push(checkIdleNoEffect("pickFile", p1, () => g.mirrorPickFile(p1, wrongFile)));
+  g.mirrorPickFile(p1, MirrorData.files.find(f => f.correct).name);
+
+  results.push(checkIdleNoEffect("answerQa", p1, () => g.mirrorAnswerQa(p1, 0)));
+  results.push(checkIdleNoEffect("timeoutQa", p1, () => g.mirrorTimeoutQa(p1)));
+  for (let i = 0; i < MirrorData.qaItems.length; i++) {
+    g.mirrorAnswerQa(p1, tr.currentQaFor(t0).correctIndex);
+  }
+
+  results.push(checkIdleNoEffect("wrapUp", p1, () => g.mirrorWrapUp(p1)));
+
+  // Direct SetupCrew rejects idle Player object with no penalty
+  const scDirect = new SetupCrew(Rng.seeded(1501), [makeTeam(2, 1, { humans: 1, prefix: "DirIdle_" })]);
+  const dirPid = scDirect.slotsFor(2)[0].playerId;
+  const dirPlayer = new Player({ id: dirPid, name: "DirIdle", type: "coop", spend: Bots.typicalSpend("coop") });
+  dirPlayer.idle = true;
+  const dirIdleRes = scDirect.cableMiss(dirPlayer, "HDMI");
+  const dirNoPen = scDirect.penaltiesFor(2) === 0;
+
+  // Bot auto-pilot still wraps up for idle p1
+  p0.idle = true;
+  p1.idle = true;
+  for (let s = 0; s < 10 && !g.didRun("runTrial"); s++) {
+    clock.now += 1000;
+    g.tick(clock.now);
+  }
+
+  const allRejected = results.every(r => r.ok);
+  const failedNames = results.filter(r => !r.ok).map(r => r.label).join(",");
+  expect(
+    "Idle human Setup actions are rejected with no penalty and no attention change, while bot auto-pilot still wraps up",
+    allRejected && !dirIdleRes.ok && dirNoPen && tr.isSetupWrappedUp(t0) && g.didRun("runTrial"),
+    failedNames || "all 10 rejected + autoPilot wrapped"
+  );
+}
+
+console.log("\n" + pass + " passed, " + fail + " failed.");
+process.exit(fail ? 1 : 0);

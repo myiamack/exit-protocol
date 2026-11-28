@@ -401,10 +401,12 @@ class Attributes {
     return rng() < this.abilityChance(k);
   }
   /* Lines for this player's own screen only. Never show them for other players. */
-  abilityLines() {
+  abilityLines(draft = null) {
     return KEYS.map(k => {
-      const v = this.abilityValue(k), a = ABILITY[k];
-      const amount = k === "initiative" ? "x" + this.voteWeight().toFixed(1) : Math.round(v * a.per * 100) + "%";
+      const add = draft && typeof draft === "object" ? (draft[k] || 0) : 0;
+      const v = Math.max(0, Math.min(10, this.#attrs[k] + add));
+      const a = ABILITY[k];
+      const amount = k === "initiative" ? "x" + (1 + v / 10).toFixed(1) : Math.round(v * a.per * 100) + "%";
       return { key: k, value: v, text: a.name + " " + v + ": " + amount + " " + a.what };
     });
   }
@@ -604,7 +606,8 @@ const SKIM_MAX = Wallet.SKIM_MAX, CASHOUT_COST = Wallet.CASHOUT_COST;
 const STATUS_KEYS = ["glitches", "idle", "attendancePending"];
 const PATH_KEYS = ["pathProgress", "pathDone", "locked"];
 const WALLET_KEYS = ["earned", "draft", "placedThisRound", "skimUsed", "cashOutUsed", "cashedOutThisRound"];
-const PART_KEYS = ["attrs", ...STATUS_KEYS, ...PATH_KEYS, ...WALLET_KEYS];
+const PART_KEYS = ["attrs", ...STATUS_KEYS, ...PATH_KEYS, ...WALLET_KEYS, "anomalies"];
+const ANOMALIES = Object.freeze(["L", "id", "loop"]);
 const FROM_JSON = Symbol();
 
 class Player {
@@ -612,6 +615,7 @@ class Player {
   #status;
   #pathTracker;
   #wallet;
+  #anomalies;
 
   /* type: a key ("coop", "indep", "contra") or a CharacterType.
      spend: { focus: n, ... } adding up to 15. Boost is added here. */
@@ -638,6 +642,7 @@ class Player {
     // Contrarian
     this.caughtBy = [];   // ids of teams that caught this player sabotaging
     this.#wallet = new Wallet(this);
+    this.#anomalies = [];
 
     this.resetRoundFlags();
   }
@@ -696,7 +701,7 @@ class Player {
   abilityChance(k) { return this.#attributes.abilityChance(k); }
   voteWeight() { return this.#attributes.voteWeight(); }
   rollAbility(k, rng) { return this.#attributes.rollAbility(k, rng); }
-  abilityLines() { return this.#attributes.abilityLines(); }
+  abilityLines(draft = null) { return this.#attributes.abilityLines(draft); }
 
   /* Caught by this team: no sabotage while on it. Switching teams allows sabotage again. */
   wasCaughtBy(teamId) { return this.caughtBy.includes(teamId); }
@@ -736,6 +741,7 @@ class Player {
         else if (k === "attendanceMissesThisRound") out.attendancePending = this.#status.attendancePending;
       }
     }
+    out.anomalies = this.#anomalies.slice();
     return out;
   }
   /* Load: rebuild a Player from toJSON() data, without re-running character creation. */
@@ -751,6 +757,9 @@ class Player {
     p.#status = PlayerStatus.fromJSON(p, data);
     p.#pathTracker = PathTracker.fromJSON(p, data);
     p.#wallet = Wallet.fromJSON(p, data);
+    p.#anomalies = Array.isArray(data.anomalies)
+      ? data.anomalies.filter((id, i, arr) => ANOMALIES.includes(id) && arr.indexOf(id) === i)
+      : [];
     return p;
   }
 
@@ -820,8 +829,16 @@ class Player {
   lockEnding() { this.#pathTracker.lockEnding(); }
   wins() { return this.#pathTracker.wins(); }
   ending() { return this.#pathTracker.ending(); }
+
+  recordAnomaly(id) {
+    if (!ANOMALIES.includes(id) || this.#anomalies.includes(id)) return false;
+    this.#anomalies.push(id);
+    return true;
+  }
+  anomalies() { return this.#anomalies.slice(); }
 }
 
+Player.ANOMALIES = ANOMALIES;
 Player.ABILITY = ABILITY;
 Player.TIE_ORDER = TIE_ORDER;
 Player.AT_RISK_COST = AT_RISK_COST;
@@ -844,6 +861,7 @@ class Team {
     this.members = [];
     this.won = null;   // trial result this round: true, false, or null (not set)
     this.trialWins = 0;   // trials won so far this game (Progress board)
+    this.trialResults = {};   // level number -> boolean (trial won/lost per level)
     members.forEach(p => this.add(p));
   }
   add(p) { p.teamId = this.id; this.members.push(p); }
@@ -855,12 +873,13 @@ class Team {
   resetRound() { this.won = null; }
 
   /* Save (Part 13): members by player id. */
-  toJSON() { return { id: this.id, name: this.name, members: this.members.map(p => p.id), won: this.won, trialWins: this.trialWins }; }
+  toJSON() { return { id: this.id, name: this.name, members: this.members.map(p => p.id), won: this.won, trialWins: this.trialWins, trialResults: { ...this.trialResults } }; }
   /* Load. byId: player id -> Player. Members keep their saved order. */
   static fromJSON(data, byId) {
     const t = new Team({ id: data.id, name: data.name, members: data.members.map(id => byId.get(id)) });
     t.won = data.won;
     t.trialWins = data.trialWins;
+    t.trialResults = data.trialResults ? { ...data.trialResults } : {};
     return t;
   }
 }
@@ -1055,8 +1074,8 @@ const Round = (() => {
 // Package A order. Trial activities stay in their original levels.
 const LEVELS = [
   { n: 1, name: "Boot Up",    trialName: "SOP mini-game",                attr: "grit",       cost: 2, judged: false, trialKind: "sop" },
-  { n: 2, name: "Sprint 1",   trialName: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "auto" },
-  { n: 3, name: "The Mirror", trialName: "Q&A gauntlet",                 attr: "focus",      cost: 3, judged: false, trialKind: "auto" },
+  { n: 2, name: "Sprint 1",   trialName: "Prioritize against a timer",   attr: "collab",     cost: 3, judged: false, trialKind: "splitBrief" },
+  { n: 3, name: "The Mirror", trialName: "Presentation Day",             attr: "focus",      cost: 3, judged: false, trialKind: "mirror" },
   { n: 4, name: "Geek Week",  trialName: "Testing challenge",            attr: "initiative", cost: 4, judged: false, trialKind: "auto" },
   { n: 5, name: "Sprint 2",   trialName: "Fix the broken team",          attr: "composure",  cost: 4, judged: true,  trialKind: "judged" },
   { n: 6, name: "Sprint 3",   trialName: "Final build and dream speech", attr: "composure",  cost: 5, judged: true,  trialKind: "judged" },
@@ -1076,11 +1095,13 @@ class Round {
     this.stepIndex = 0;
     this.trial = null;
     this.sabotages = [];    // { actor, target, drain, cost }
-    this.accusations = [];  // { accuser, target, correct }
+    this.accusations = [];  // { accuser, target, correct, safe }
     this.gifts = [];        // { giver, receiver, pts, cost, refused, cancelled }
     this.completed = new Set();   // one-time Game actions already run this round
     this.sopBoards = {};
     this.sopResults = {};
+    this.trialPayments = {};
+    this.sopTimedOut = false;
     this.earnings = {};
     this.quietHearts = [];
     this.gritBonus = [];
@@ -1130,13 +1151,13 @@ class Round {
     const out = {
       n: this.n, stepIndex: this.stepIndex, completed: [...this.completed],
       sabotages: this.sabotages.map(s => ({ ...s, actor: s.actor.id, target: s.target.id })),
-      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id })),
+      accusations: this.accusations.map(a => ({ ...a, accuser: a.accuser.id, target: a.target.id, safe: !!a.safe })),
       gifts: this.gifts.map(g => ({ ...g, giver: g.giver.id, receiver: g.receiver.id })),
     };
     if (this.trial && typeof this.trial === "object") out.trialState = this.trial.toJSON();
     if (this.quietHearts) out.quietHearts = this.quietHearts.map(id);
     if (this.gritBonus) out.gritBonus = this.gritBonus.map(id);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "trialPayments", "sopTimedOut", "earnings", "done"]) if (this[k] !== undefined) out[k] = JSON.parse(JSON.stringify(this[k]));
     return out;
   }
   /* Load. trialFromJSON rebuilds the trial (passed in so Round does not need to know the Trial class). */
@@ -1146,13 +1167,13 @@ class Round {
     r.stepIndex = data.stepIndex;
     r.completed = new Set(data.completed);
     r.sabotages = data.sabotages.map(s => ({ ...s, actor: P(s.actor), target: P(s.target) }));
-    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target) }));
+    r.accusations = data.accusations.map(a => ({ ...a, accuser: P(a.accuser), target: P(a.target), safe: a.safe !== undefined ? !!a.safe : false }));
     r.gifts = data.gifts.map(g => ({ ...g, giver: P(g.giver), receiver: P(g.receiver) }));
     const ts = data.trialState || (data.trial && typeof data.trial === "object" ? data.trial : null);
     if (ts) r.trial = trialFromJSON(ts);
     if (data.quietHearts) r.quietHearts = data.quietHearts.map(P);
     if (data.gritBonus) r.gritBonus = data.gritBonus.map(P);
-    for (const k of ["sopBoards", "sopResults", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
+    for (const k of ["sopBoards", "sopResults", "mirrorResults", "trialPayments", "sopTimedOut", "earnings", "done"]) if (data[k] !== undefined) r[k] = JSON.parse(JSON.stringify(data[k]));
     return r;
   }
 }
@@ -1243,16 +1264,2942 @@ class Vote {
 return Vote;
 })();
 
+/* ---------- rules/scenarios.js ---------- */
+const Scenarios = (() => {
+/* Plain scenario data for Level 2 (Split Brief). No game behavior. */
+
+const MEDLINE_SPRINT_1 = {
+  id: "medline-sprint-1",
+  title: "Medline Sprint 1 Demo",
+  tasks: [
+    { id: "A", name: "Build the login page", days: 3 },
+    { id: "B", name: "Write the client status report", days: 1 },
+    { id: "C", name: "Import Medline data", days: 2 },
+    { id: "D", name: "Build the dashboard", days: 2 },
+  ],
+  cards: [
+    {
+      id: "deadline",
+      title: "Deadline",
+      text: "Demo is in 4 work days. Only finished tasks count.",
+      botNote: "Demo in 4 work days. Only finished tasks count.",
+    },
+    {
+      id: "must-have",
+      title: "Must-have",
+      text: "Client: 'We must see the dashboard at the demo.'",
+      botNote: "Client must see the dashboard (D) at the demo.",
+    },
+    {
+      id: "blocker",
+      title: "Blocker",
+      text: "The dashboard needs real data. Data import must finish first.",
+      botNote: "Dashboard needs real data. Data import (C) must finish first.",
+    },
+    {
+      id: "scope",
+      title: "Scope",
+      text: "Login is not in scope for Sprint 1.",
+      botNote: "Login page (A) is not in scope for Sprint 1.",
+    },
+    {
+      id: "red-herring",
+      title: "Red herring",
+      text: "Marketing loves long status reports. Do one if you can.",
+      botNote: "Marketing wants long status reports if we have time.",
+    },
+  ],
+  preTwistAnswer: ["C", "D"],
+  twist: {
+    id: "twist",
+    title: "Ghosted Teammate",
+    text: "Data vendor is down. Import can't start this sprint. Client will accept the dashboard with sample data. Send them a status report after the dashboard explaining the change.",
+    botNote: "Vendor down: skip import, do dashboard with sample data then status report.",
+  },
+  postTwistAnswer: ["D", "B"],
+};
+
+const Scenarios = {
+  MEDLINE_SPRINT_1,
+};
+return Scenarios;
+})();
+
+/* ---------- rules/mirrorData.js ---------- */
+const MirrorData = (() => {
+/* Plain data module for Level 3 (The Mirror: Presentation Day). No logic, no classes, no hardcoded team names.
+   Numbers and flavor copy follow Hannah Ziegler's reference implementation (commit cdf3eff). */
+
+const MirrorData = {
+  // Four rack cable ports; machines are bound to the live teams at run time.
+  ports: ["HDMI", "USB-C", "AirLink", "VGA"],
+
+  // Six shared-drive files; only the client-signed v3 deck is valid.
+  files: [
+    { name: "MEDLINE_deck_v1_draft.pptx", correct: false },
+    { name: "MEDLINE_deck_v2_client_comments.pptx", correct: false },
+    { name: "MEDLINE_deck_v3_CLIENT_SIGNED.pptx", correct: true },
+    { name: "MEDLINE_budget_v3.xlsx", correct: false },
+    { name: "team_retro_cat_video.mp4", correct: false },
+    { name: "DO_NOT_OPEN.exe", correct: false },
+  ],
+
+  // Three Medline rapid-fire Q&A items, copied verbatim from cdf3eff.
+  qaItems: [
+    {
+      question: "The client asks: \u201cSo what is the difference between an Incident and a Problem?\u201d In the dry run that answer was muddy. What do you do?",
+      options: [
+        "Read the definition off the tablet, word for word.",
+        "Give a one-line plain-English answer, then a real example from the Medline data.",
+        "Say you will follow up by email and move on.",
+      ],
+      correctIndex: 1,
+      why: "Plain language plus a real example is what landed with Medline.",
+    },
+    {
+      question: "A teammate freezes mid-answer and the room goes quiet. What is your move?",
+      options: [
+        "Step in with one sentence that hands them an easy next line.",
+        "Wait it out. They will find their place.",
+        "Take over the rest of the answer yourself.",
+      ],
+      correctIndex: 0,
+      why: "A quiet hand-off keeps them in the presentation and keeps the room with you.",
+    },
+    {
+      question: "Medline leans in: \u201cYour timeline slipped twice already. Why should we trust the new date?\u201d",
+      options: [
+        "Repeat the new date, louder, and move on.",
+        "Own the slips in one sentence, then show the two guardrails that hold the date.",
+        "Blame the vendor and promise to escalate.",
+      ],
+      correctIndex: 1,
+      why: "Owning the miss and showing the guardrails is what rebuilt trust in the dry run.",
+    },
+  ],
+
+  // Canonical order of the 5 sequential Setup Crew steps.
+  setupSteps: ["cables", "sound", "mic", "deck", "qa"],
+
+  // Sequential step split by Setup Crew player count (1 to 3 slots).
+  setupSplits: {
+    1: [["cables", "sound", "mic", "deck", "qa"]],
+    2: [["cables", "sound", "mic"], ["deck", "qa"]],
+    3: [["cables", "sound"], ["mic", "deck"], ["qa"]],
+  },
+
+  timers: {
+    tickMs: 250,          // screen update interval in milliseconds (4 ticks per second)
+    lobbySeconds: 30,     // lobby doors-open countdown duration in seconds
+    lobbyTicks: 120,      // lobby doors-open countdown duration in 250ms ticks
+    revealSeconds: 1,     // CREW LOCKED reveal pause duration in seconds
+    revealTicks: 4,       // CREW LOCKED reveal pause duration in 250ms ticks
+    showtimeSeconds: 75,  // showtime timer duration in seconds (also denominator for base attention)
+  },
+
+  scoring: {
+    attentionMin: 0,      // minimum audience attention (0 ends the trial with score 0)
+    attentionMax: 100,    // maximum/full audience attention
+    maxScore: 7,          // maximum Level 3 base trial score (0 to 7)
+    maxSetupCrew: 3,      // maximum active players dealt to Setup Crew
+  },
+
+  lobby: {
+    signalBandWidth: 14,      // width of the green signal-grab target band out of 100
+    signalZoneMin: 10,        // minimum left offset for the green target band
+    signalZonePadding: 20,    // combined left/right margin keeping the green band off both edges
+    signalStartSpeedMin: 7,   // minimum starting sweep speed per tick
+    signalStartSpeedRange: 4, // random speed spread above minimum (7 to 10)
+    signalMissSpeedUp: 2,     // speed added to a player's tile on each missed grab
+    signalMaxSpeed: 16,       // maximum sweep speed per tick after misses
+    botConnectMinSeconds: 3,  // earliest seconds after lobby start a bot connects
+    botConnectMaxSeconds: 15, // latest seconds after lobby start a bot connects
+  },
+
+  cables: {
+    travelTicks: 11,     // ticks a cable slides on the belt before reaching the plug frame (2.75s)
+    hitWindowTicks: 2,   // +/- tick window around the plug frame for a valid cable plug
+    spawnGapInitial: 6,  // ticks between cable spawns while 0 machines are connected
+    spawnGapMid: 5,      // ticks between cable spawns after 1 or 2 machines connect
+    spawnGapFast: 4,     // ticks between cable spawns after 3 or more machines connect
+    wrongPenalty: 3,     // attention lost on a wrong machine click (spark)
+  },
+
+  sound: {
+    start: 45,                    // starting sound level and drift rest point
+    min: 0,                       // minimum sound meter value
+    max: 110,                     // maximum sound meter value
+    greenMin: 70,                 // lower bound of the green sound hold zone
+    greenMax: 85,                 // upper bound of the green sound hold zone
+    holdSeconds: 3,               // consecutive seconds in the green zone required to lock sound
+    holdTicks: 12,                // consecutive ticks in the green zone required to lock sound (3.0s)
+    feedbackAt: 100,              // sound level that triggers feedback reset and penalty
+    feedbackPenalty: 4,           // attention lost when sound hits feedback
+    controls: [-10, 5, 10],       // mixer gain control buttons
+    driftStep: 2,                 // per-tick drift step back toward the starting level
+    jitterHalf: 1.7,              // half-range of random per-tick sound jitter
+    spikeInitialMinTicks: 12,     // minimum ticks before the first crowd spike (3.0s)
+    spikeInitialRangeTicks: 6,    // random tick spread for the first crowd spike (12 to 17 ticks)
+    spikeIntervalMinTicks: 12,    // minimum ticks between later crowd spikes (3.0s)
+    spikeIntervalRangeTicks: 9,   // random tick spread between later crowd spikes (12 to 20 ticks)
+    spikeBoostMin: 8,             // minimum level jump when the crowd whoops
+    spikeBoostRange: 10,          // random spread added to a crowd spike (+8 to +17)
+  },
+
+  mic: {
+    count: 4,                // number of mic buttons (MIC 1 to MIC 4)
+    roundLengths: [3, 4, 5], // sequence lengths across the 3 mic memory rounds
+    flashRound1Ticks: 9,     // ticks the sequence flashes on round 1 (2.25s)
+    flashBaseTicks: 6,       // base ticks added to sequence length on later or retry flashes
+    wrongPenalty: 4,         // attention lost on a wrong mic tap
+  },
+
+  deck: {
+    reshuffleTicks: 8,       // ticks between automatic drive reshuffles (2.0s)
+    wrongReshuffleTicks: 2,  // ticks before spite reshuffle after clicking a wrong file (0.5s)
+    wrongPenalty: 6,         // attention lost on clicking a wrong file
+  },
+
+  qa: {
+    countdownTicks: 29, // ticks allowed per Q&A question before timeout (7.25s)
+    lowWarningTicks: 8, // ticks left when the Q&A bar switches to low warning
+    rightRecover: 5,    // maximum lost attention penalty points restored by a right answer
+    wrongPenalty: 5,    // attention lost on a wrong answer or timeout
+  },
+
+  dance: {
+    arrows: ["left", "up", "right", "down"],                                   // four rhythm lane arrow directions
+    arrowGlyphs: { left: "\u2190", up: "\u2191", right: "\u2192", down: "\u2193" }, // glyphs for rhythm notes and pad buttons
+    boostCap: 45,            // maximum attention boost per dancer
+    travelTicks: 10,         // ticks a note slides across the lane toward the hit frame (2.5s)
+    perfectWindowTicks: 1,   // inner hit tolerance (+/- 1 tick) for PERFECT
+    goodWindowTicks: 2,      // outer hit tolerance (+/- 2 ticks) for good
+    perfectBoost: 3,         // dance boost gained on a PERFECT hit
+    goodBoost: 2,            // dance boost gained on a good hit
+    strayPenalty: 1,         // attention penalty on an off-beat stray press
+    missPenalty: 2,          // attention penalty on a missed note
+    gapInitialTicks: 6,      // ticks between spawned notes before tempo ramps
+    gapMidTicks: 5,          // ticks between spawned notes after tempoRampMidNotes
+    gapFastTicks: 4,         // ticks between spawned notes after tempoRampFastNotes
+    tempoRampMidNotes: 20,   // spawned note count threshold for the first tempo speed-up
+    tempoRampFastNotes: 40,  // spawned note count threshold for the second tempo speed-up
+    maxConsecutiveSame: 2,   // maximum identical arrows allowed in a row
+    stumbleTicks: 3,         // ticks the dancer avatar displays stumble after a miss or stray
+    choreoLength: 64,        // number of moves in a choreography sequence
+  },
+
+  bots: {
+    // Set milestone timings (ticks/seconds into showtime) when a bot setup crew advances.
+    setupMilestones: [
+      { step: "cables", ticks: 16, seconds: 4, label: "connected every machine" },
+      { step: "sound", ticks: 40, seconds: 10, label: "locked the house sound" },
+      { step: "mic", ticks: 64, seconds: 16, label: "cleared the mic check" },
+      { step: "deck", ticks: 88, seconds: 22, label: "pulled up the signed deck" },
+      { step: "qa", ticks: 112, seconds: 28, label: "survived the Q&A" },
+      { step: "wrapUp", ticks: 136, seconds: 34, label: "wrapped up" },
+    ],
+    setupHiccupChance: 0.3, // 30% chance of a hiccup on each bot setup step
+    setupHiccupPenalty: 3,  // attention lost when a bot setup step hits a hiccup
+    danceBoostStep: 1,      // boost added each bot dancer interval
+    danceMinSeconds: 1.5,   // fastest bot dancer +1 boost interval in seconds (6 ticks)
+    danceMaxSeconds: 2.5,   // slowest bot dancer +1 boost interval in seconds (10 ticks)
+  },
+
+  flavor: {
+    danceMoves: [
+      "does the spreadsheet shuffle",
+      "hits the debugger dab",
+      "moonwalks past the projector",
+      "does the merge-conflict wiggle",
+      "spins like a loading icon",
+    ],
+    glitchReasons: [
+      "a wifi hiccup",
+      "a frozen screen",
+      "a cat on the keyboard",
+      "a VPN drop",
+      "a headset firmware update",
+      "an untimely system update",
+    ],
+    statusMessages: {
+      lobbyJoined: "{name} is in the call.",
+      lobbyAllIn: "Everyone is in. {setupCount} on setup, {danceCount} on dance. Showtime.",
+      lobbyMiss: "{name} lost the signal ({reason}). The sweep comes back faster.",
+      doorsFailed: "The doors closed with you still outside. The client presented to an empty chair.",
+      doorsPartial: "Doors closed. {lost} never made it in. {setupCount} on setup, {danceCount} on dance.",
+      doorsAllIn: "Everyone made it. {setupCount} on setup, {danceCount} on dance.",
+      dancePerfect: "PERFECT. the crowd is with you",
+      danceGood: "good. {move}",
+      danceStray: "off beat. the crowd winces (attention \u22121)",
+      danceMiss: "a missed note. the crowd dips (attention \u22122)",
+      danceBotMove: "{name} {move}",
+      botSetupStep: "setup crew: {label}",
+      botSetupHiccup: "setup crew: {label}, after a hiccup (attention \u22123)",
+      cableConnected: "{machine} is on the projector. {left} to go.",
+      cableAllConnected: "{machine} is on the projector. Every machine is live. Sound check next.",
+      cableSpark: "Spark. {machine} takes {port} and there is no {port} cable in the frame (attention \u22123).",
+      cableMissed: "the {port} cable slid past the frame. back on the belt.",
+      soundSpike: "The crowd whoops and the level jumps. Pull it back.",
+      soundFeedback: "FEEDBACK. The front row covers its ears. Back to 45 (attention \u22124).",
+      soundLocked: "Steady. Sound locked at {level}. Mic check, round 1 of 3.",
+      micTapOk: "Mic {mic} checks out. {left} to go.",
+      micNextRound: "Round {round} of 3. Watch the flash.",
+      micDone: "Mic check complete. Every channel is clean. Grab the deck.",
+      micWrong: "Feedback squeal (attention \u22124). New order for round {round}, watch closely.",
+      deckGrabbed: "The deck is up. Medline is watching. Questions coming in hot.",
+      deckWrong: "{file} is not the deck. The drive reshuffles out of spite (attention \u22126).",
+      qaRight: "Land it. {why}",
+      qaWrong: "The room cools. {why}",
+      qaTimeout: "You hesitate and the room cools (attention \u22125).",
+    },
+  },
+};
+return MirrorData;
+})();
+
+/* ---------- rules/MirrorParts.js ---------- */
+const MirrorParts = (() => {
+/* Private parts of MirrorTrial (Level 3: The Mirror: Presentation Day).
+   Rule code only. No screen code. No moving tiles or per-tick motion.
+   Outside code calls MirrorTrial, never these classes directly. */
+
+const idOf = x => (x && typeof x === "object" ? x.id : x);
+const SEED_MIX = 0x9E3779B9;
+
+function deriveSeedRng(rng) {
+  if (Rng.canSave(rng)) return Rng.seeded((rng.getState() ^ SEED_MIX) >>> 0);
+  // Test-only 1-draw fallback for non-saveable RNGs; real games always use a saveable Rng.
+  return Rng.seeded((Math.floor(rng() * 4294967296) ^ SEED_MIX) >>> 0);
+}
+
+/* Lobby state for Presentation Day: active players per team (Team.active()),
+   connect and miss results, tile speed-up, bot connect delays, and doors-close lockout. */
+class MirrorLobby {
+  #rng;
+  #seedRng;
+  #started = false;
+  #closed = false;
+  #teams = new Map();       // teamId -> { teamId, order: playerId[], players: Map<playerId, rec>, failed: bool }
+  #playerIndex = new Map(); // playerId -> { teamId, rec }
+
+  constructor(rng, teams = null, { seedRng = null } = {}) {
+    if (typeof rng !== "function") throw new Error("MirrorLobby requires a seeded rng.");
+    this.#rng = rng;
+    this.#seedRng = typeof seedRng === "function" ? seedRng : deriveSeedRng(rng);
+    if (teams !== null) this.start(teams);
+  }
+
+  get started() { return this.#started; }
+  get closed() { return this.#closed; }
+
+  #lookupPlayer(playerOrId) {
+    const id = idOf(playerOrId);
+    if (id === null || id === undefined) return null;
+    return this.#playerIndex.get(id) || null;
+  }
+
+  /* Initialize lobby rosters using Team.active() (Stuck and Idle players are excluded). */
+  start(teams) {
+    if (this.#started) throw new Error("Mirror lobby already started.");
+    this.#started = true;
+
+    const L = MirrorData.lobby;
+    const speedMin = L.signalStartSpeedMin;
+    const speedRange = L.signalStartSpeedRange;
+    const zoneMin = L.signalZoneMin;
+    const zoneRange = 100 - L.signalBandWidth - L.signalZonePadding;
+    const botMin = L.botConnectMinSeconds;
+    const botMax = L.botConnectMaxSeconds;
+
+    for (const team of teams) {
+      const active = team.active();
+      const ts = { teamId: team.id, order: [], players: new Map(), failed: false };
+      for (const p of active) {
+        const speed = speedMin + Math.floor(this.#rng() * speedRange);
+        const zone = zoneMin + Math.floor(this.#rng() * zoneRange);
+        const botConnectAt = p.isBot ? botMin + Math.floor(this.#rng() * (botMax - botMin + 1)) : null;
+        const cursorPos = Math.floor(this.#seedRng() * 100);
+        const cursorDir = this.#seedRng() < 0.5 ? -1 : 1;
+        const rec = {
+          playerId: p.id,
+          name: p.name,
+          isBot: !!p.isBot,
+          connected: false,
+          misses: 0,
+          speed,
+          zone,
+          botConnectAt,
+          cursorPos,
+          cursorDir,
+        };
+        ts.order.push(p.id);
+        ts.players.set(p.id, rec);
+        this.#playerIndex.set(p.id, { teamId: team.id, rec });
+      }
+      this.#teams.set(team.id, ts);
+    }
+    return this.state();
+  }
+
+  /* Record a successful signal grab reported by the screen. */
+  connect(playerId) {
+    const entry = this.#lookupPlayer(playerId);
+    const why = (!this.#started ? "Lobby has not started." : null) ||
+      (this.#closed ? "Lobby doors are closed." : null) ||
+      (!entry ? "Player is not active in this lobby." : null) ||
+      (entry.rec.connected ? "Player is already connected." : null);
+    if (why) return { ok: false, reason: why };
+    entry.rec.connected = true;
+    return {
+      ok: true,
+      playerId: entry.rec.playerId,
+      teamId: entry.teamId,
+      connected: true,
+      teamAllConnected: this.isTeamConnected(entry.teamId),
+      allConnected: this.allConnected(),
+    };
+  }
+
+  /* Record a missed signal grab reported by the screen and raise tile speed up to the cap. */
+  miss(playerId) {
+    const entry = this.#lookupPlayer(playerId);
+    const why = (!this.#started ? "Lobby has not started." : null) ||
+      (this.#closed ? "Lobby doors are closed." : null) ||
+      (!entry ? "Player is not active in this lobby." : null) ||
+      (entry.rec.connected ? "Player is already connected." : null);
+    if (why) return { ok: false, reason: why };
+    const L = MirrorData.lobby;
+    entry.rec.misses += 1;
+    entry.rec.speed = Math.min(L.signalMaxSpeed, entry.rec.speed + L.signalMissSpeedUp);
+    const reasons = MirrorData.flavor.glitchReasons;
+    const glitchReason = reasons[Math.floor(this.#rng() * reasons.length)];
+    return {
+      ok: true,
+      playerId: entry.rec.playerId,
+      teamId: entry.teamId,
+      misses: entry.rec.misses,
+      speed: entry.rec.speed,
+      glitchReason,
+    };
+  }
+
+  /* Close lobby doors: any team with an active player not connected is marked failed. */
+  closeDoors() {
+    if (!this.#started) throw new Error("Lobby has not started.");
+    if (this.#closed) {
+      return {
+        ok: false,
+        alreadyClosed: true,
+        failedTeams: this.failedTeamIds(),
+        passedTeams: this.passedTeamIds(),
+      };
+    }
+    this.#closed = true;
+    const results = [];
+    for (const ts of this.#teams.values()) {
+      const connectedIds = ts.order.filter(id => ts.players.get(id).connected);
+      const missingIds = ts.order.filter(id => !ts.players.get(id).connected);
+      ts.failed = ts.order.length === 0 || missingIds.length > 0;
+      results.push({ teamId: ts.teamId, failed: ts.failed, connectedIds, missingIds });
+    }
+    return {
+      ok: true,
+      closed: true,
+      failedTeams: this.failedTeamIds(),
+      passedTeams: this.passedTeamIds(),
+      results,
+    };
+  }
+
+  teamIds() { return [...this.#teams.keys()]; }
+  hasPlayer(playerId) { return !!this.#lookupPlayer(playerId); }
+
+  playerState(playerId) {
+    const entry = this.#lookupPlayer(playerId);
+    return entry ? { ...entry.rec, teamId: entry.teamId } : null;
+  }
+
+  cursorStartOf(playerId) {
+    const entry = this.#lookupPlayer(playerId);
+    return entry ? { pos: entry.rec.cursorPos, dir: entry.rec.cursorDir } : null;
+  }
+
+  playersForTeam(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return [];
+    return ts.order.map(id => ({ ...ts.players.get(id), teamId: ts.teamId }));
+  }
+
+  connectedIds(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.order.filter(id => ts.players.get(id).connected) : [];
+  }
+
+  missingIds(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.order.filter(id => !ts.players.get(id).connected) : [];
+  }
+
+  botConnectTimeOf(playerId) {
+    const entry = this.#lookupPlayer(playerId);
+    return entry ? entry.rec.botConnectAt : null;
+  }
+
+  botConnectTimes(teamOrId = null) {
+    const tids = teamOrId === null || teamOrId === undefined ? [...this.#teams.keys()] : [idOf(teamOrId)];
+    const out = [];
+    for (const tid of tids) {
+      const ts = this.#teams.get(tid);
+      if (!ts) continue;
+      for (const id of ts.order) {
+        const rec = ts.players.get(id);
+        if (rec.isBot) out.push({ playerId: rec.playerId, teamId: ts.teamId, seconds: rec.botConnectAt });
+      }
+    }
+    return out;
+  }
+
+  isTeamConnected(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return !!ts && ts.order.length > 0 && ts.order.every(id => ts.players.get(id).connected);
+  }
+
+  allConnected() {
+    if (!this.#teams.size) return false;
+    for (const ts of this.#teams.values()) {
+      if (ts.order.length === 0 || !ts.order.every(id => ts.players.get(id).connected)) return false;
+    }
+    return true;
+  }
+
+  isTeamFailed(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return !!ts && ts.failed;
+  }
+
+  failedTeamIds() {
+    return [...this.#teams.values()].filter(ts => ts.failed).map(ts => ts.teamId);
+  }
+
+  passedTeamIds() {
+    return [...this.#teams.values()].filter(ts => !ts.failed).map(ts => ts.teamId);
+  }
+
+  teamState(teamOrId) {
+    const tid = idOf(teamOrId);
+    const ts = this.#teams.get(tid);
+    if (!ts) return null;
+    return {
+      teamId: ts.teamId,
+      closed: this.#closed,
+      failed: ts.failed,
+      allConnected: this.isTeamConnected(tid),
+      players: this.playersForTeam(tid),
+    };
+  }
+
+  state() {
+    return {
+      started: this.#started,
+      closed: this.#closed,
+      allConnected: this.allConnected(),
+      teams: [...this.#teams.keys()].map(tid => this.teamState(tid)),
+    };
+  }
+
+  toJSON() {
+    return {
+      started: this.#started,
+      closed: this.#closed,
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
+      teams: [...this.#teams.values()].map(ts => ({
+        teamId: ts.teamId,
+        failed: ts.failed,
+        players: ts.order.map(id => ({ ...ts.players.get(id) })),
+      })),
+    };
+  }
+
+  static fromJSON(data, { rng, seedRng = null } = {}) {
+    if (!data || typeof data !== "object") throw new Error("Invalid MirrorLobby save data.");
+    let useSeedRng = typeof seedRng === "function" ? seedRng : null;
+    if (!useSeedRng && typeof data.seedRngState === "number") {
+      useSeedRng = Rng.seeded(0);
+      useSeedRng.setState(data.seedRngState);
+    }
+    const lobby = new MirrorLobby(rng, null, { seedRng: useSeedRng });
+    lobby.#started = !!data.started;
+    lobby.#closed = !!data.closed;
+    for (const td of (data.teams || [])) {
+      const ts = { teamId: td.teamId, order: [], players: new Map(), failed: !!td.failed };
+      for (const pd of (td.players || [])) {
+        const rec = {
+          playerId: pd.playerId,
+          name: pd.name,
+          isBot: !!pd.isBot,
+          connected: !!pd.connected,
+          misses: pd.misses || 0,
+          speed: pd.speed,
+          zone: pd.zone,
+          botConnectAt: pd.botConnectAt ?? null,
+          cursorPos: typeof pd.cursorPos === "number" ? pd.cursorPos : 0,
+          cursorDir: pd.cursorDir === -1 ? -1 : 1,
+        };
+        ts.order.push(rec.playerId);
+        ts.players.set(rec.playerId, rec);
+        lobby.#playerIndex.set(rec.playerId, { teamId: ts.teamId, rec });
+      }
+      lobby.#teams.set(ts.teamId, ts);
+    }
+    return lobby;
+  }
+}
+
+/* Setup Crew state for Presentation Day: seeded slot order, 1/2/3 player step splits,
+   sequential step turns, results-based step actions, seeded content picks, penalties/recovery,
+   bot setup schedule/hiccups, and wrap-up. Outside code calls MirrorTrial only. */
+class SetupCrew {
+  #rng;
+  #seedRng;
+  #started = false;
+  #showtimeStartAt = null;
+  #teams = new Map();       // teamId -> team setup state
+  #playerIndex = new Map(); // playerId -> { teamId, slotIndex, name, isBot }
+
+  constructor(rng, entries = null, options = {}) {
+    if (typeof rng !== "function") throw new Error("SetupCrew requires a seeded rng.");
+    this.#rng = rng;
+    this.#seedRng = options && typeof options.seedRng === "function"
+      ? options.seedRng
+      : deriveSeedRng(rng);
+    if (entries !== null) this.start(entries, options);
+  }
+
+  get started() { return this.#started; }
+  get showtimeStartAt() { return this.#showtimeStartAt; }
+
+  beginShowtime(now = null) {
+    this.#showtimeStartAt = typeof now === "number" && Number.isFinite(now) ? now : null;
+  }
+
+  #msFromElapsed(elapsedSeconds, now = null) {
+    if (typeof now === "number" && Number.isFinite(now)) return now;
+    if (this.#showtimeStartAt !== null && typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      return this.#showtimeStartAt + Math.round(elapsedSeconds * 1000);
+    }
+    return null;
+  }
+
+  #elapsedFromMs(at) {
+    if (this.#showtimeStartAt !== null && typeof at === "number" && Number.isFinite(at)) {
+      return Math.max(0, (at - this.#showtimeStartAt) / 1000);
+    }
+    return null;
+  }
+
+  static crewSize(activeCount) {
+    if (activeCount <= 0) return 0;
+    return Math.min(MirrorData.scoring.maxSetupCrew, Math.ceil(activeCount / 2));
+  }
+
+  static splitSteps(slotCount) {
+    const groups = MirrorData.setupSplits[slotCount];
+    return groups ? groups.map(g => g.slice()) : [];
+  }
+
+  static botStepDuration(step) {
+    const ms = MirrorData.bots.setupMilestones;
+    const idx = ms.findIndex(m => m.step === step);
+    if (idx < 0) return null;
+    return idx === 0 ? ms[0].seconds : ms[idx].seconds - ms[idx - 1].seconds;
+  }
+
+  static botMilestoneLabel(step) {
+    const found = MirrorData.bots.setupMilestones.find(m => m.step === step);
+    return found ? found.label : step;
+  }
+
+  #shuffle(list, rng = this.#rng) {
+    const out = list.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  #lookupPlayer(playerOrId) {
+    const id = idOf(playerOrId);
+    if (id === null || id === undefined) return null;
+    return this.#playerIndex.get(id) || null;
+  }
+
+  #currentStep(ts) {
+    if (ts.wrappedUp) return null;
+    if (ts.stepIndex < MirrorData.setupSteps.length) return MirrorData.setupSteps[ts.stepIndex];
+    return "wrapUp";
+  }
+
+  #ownerSlot(ts, step) {
+    if (!step) return null;
+    if (step === "wrapUp") return ts.slots[ts.slots.length - 1] || null;
+    return ts.slots.find(s => s.steps.includes(step)) || null;
+  }
+
+  #currentPlayerId(ts) {
+    const slot = this.#ownerSlot(ts, this.#currentStep(ts));
+    return slot ? slot.playerId : null;
+  }
+
+  #makeMicSequence(length) {
+    return Array.from({ length }, () => 1 + Math.floor(this.#rng() * MirrorData.mic.count));
+  }
+
+  #makeFileOrder() {
+    return this.#shuffle(MirrorData.files.map((_, i) => i));
+  }
+
+  #makeQaOrder() {
+    return this.#shuffle(MirrorData.qaItems.map((_, i) => i));
+  }
+
+  #rollSoundSpike(ts) {
+    const S = MirrorData.sound;
+    const initial = ts.sound.spikesRolled === 0;
+    const delayTicks = initial
+      ? S.spikeInitialMinTicks + Math.floor(this.#seedRng() * S.spikeInitialRangeTicks)
+      : S.spikeIntervalMinTicks + Math.floor(this.#seedRng() * S.spikeIntervalRangeTicks);
+    const boost = S.spikeBoostMin + Math.floor(this.#seedRng() * S.spikeBoostRange);
+    ts.sound.spikesRolled += 1;
+    return { initial, delayTicks, boost, spikesRolled: ts.sound.spikesRolled };
+  }
+
+  #rollSoundJitter() {
+    const half = MirrorData.sound.jitterHalf;
+    const raw = Math.round(this.#seedRng() * (half * 2) - half);
+    return raw === 0 ? 0 : raw;
+  }
+
+  #clearStepDeadlines(ts) {
+    ts.sound.nextTickAt = null;
+    ts.sound.spikeAt = null;
+    ts.mic.hideAt = null;
+    ts.mic.flashing = false;
+    ts.deck.nextReshuffleAt = null;
+    ts.qa.itemDeadlineAt = null;
+  }
+
+  #armSound(ts, now) {
+    const S = MirrorData.sound;
+    const tickMs = MirrorData.timers.tickMs;
+    ts.sound.level = S.start;
+    ts.sound.holdTicks = 0;
+    ts.sound.lockedLevel = null;
+    ts.sound.spikesTriggered = 0;
+    const slot = this.#ownerSlot(ts, "sound");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot) {
+      ts.sound.nextTickAt = now + tickMs;
+      const sp = this.#rollSoundSpike(ts);
+      ts.sound.spikeAt = now + sp.delayTicks * tickMs;
+      ts.sound.spikeBoost = sp.boost;
+    } else {
+      ts.sound.nextTickAt = null;
+      ts.sound.spikeAt = null;
+      ts.sound.spikeBoost = 0;
+    }
+  }
+
+  #armMicFlash(ts, now, { isFirstRound = false } = {}) {
+    const M = MirrorData.mic;
+    const tickMs = MirrorData.timers.tickMs;
+    const slot = this.#ownerSlot(ts, "mic");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot && ts.mic.sequence) {
+      const durTicks = isFirstRound ? M.flashRound1Ticks : (M.flashBaseTicks + ts.mic.sequence.length);
+      ts.mic.hideAt = now + durTicks * tickMs;
+      ts.mic.flashing = true;
+    } else {
+      ts.mic.hideAt = null;
+      ts.mic.flashing = false;
+    }
+  }
+
+  #armDeck(ts, now) {
+    const D = MirrorData.deck;
+    const tickMs = MirrorData.timers.tickMs;
+    const slot = this.#ownerSlot(ts, "deck");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot) {
+      ts.deck.nextReshuffleAt = now + D.reshuffleTicks * tickMs;
+    } else {
+      ts.deck.nextReshuffleAt = null;
+    }
+  }
+
+  #armQaItem(ts, now) {
+    const Q = MirrorData.qa;
+    const tickMs = MirrorData.timers.tickMs;
+    const slot = this.#ownerSlot(ts, "qa");
+    if (typeof now === "number" && Number.isFinite(now) && slot && !slot.isBot) {
+      ts.qa.itemDeadlineAt = now + Q.countdownTicks * tickMs;
+    } else {
+      ts.qa.itemDeadlineAt = null;
+    }
+  }
+
+  #enterStep(ts, step, now = null) {
+    this.#clearStepDeadlines(ts);
+    if (step === "sound") {
+      this.#armSound(ts, now);
+    } else if (step === "mic") {
+      ts.mic.round = 0;
+      ts.mic.index = 0;
+      ts.mic.done = false;
+      ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[0]);
+      this.#armMicFlash(ts, now, { isFirstRound: true });
+    } else if (step === "deck") {
+      ts.deck.fileOrder = this.#makeFileOrder();
+      ts.deck.filesTried = [];
+      ts.deck.grabbed = false;
+      ts.deck.reshuffles = 0;
+      this.#armDeck(ts, now);
+    } else if (step === "qa") {
+      ts.qa.order = this.#makeQaOrder();
+      ts.qa.index = 0;
+      ts.qa.done = false;
+      this.#armQaItem(ts, now);
+    }
+  }
+
+  #advanceStep(ts, elapsedSeconds = null, now = null) {
+    if (ts.stepIndex < MirrorData.setupSteps.length) {
+      ts.completedSteps.push(MirrorData.setupSteps[ts.stepIndex]);
+    }
+    ts.stepIndex += 1;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      ts.stepStartedAt = elapsedSeconds;
+    }
+    const next = this.#currentStep(ts);
+    const stepNow = this.#msFromElapsed(elapsedSeconds, now);
+    if (next) this.#enterStep(ts, next, stepNow);
+  }
+
+  #inactivePlayerWhy(playerOrId, opts) {
+    if (opts && opts.isStuck) return "Stuck players cannot act.";
+    if (opts && opts.isIdle) return "Idle players cannot act.";
+    if (opts && opts.isInactive) return "Inactive players cannot act.";
+    if (playerOrId && typeof playerOrId === "object") {
+      if (typeof playerOrId.isStuck === "function" && playerOrId.isStuck()) return "Stuck players cannot act.";
+      if (playerOrId.idle) return "Idle players cannot act.";
+      if (typeof playerOrId.isActive === "function" && !playerOrId.isActive()) return "Inactive players cannot act.";
+    }
+    return null;
+  }
+
+  #checkTurn(playerOrId, expectedStep, opts = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return { ok: false, reason: "Player is not on the Setup Crew." };
+    if (!entry.isBot) {
+      const inactiveWhy = this.#inactivePlayerWhy(playerOrId, opts);
+      if (inactiveWhy) return { ok: false, reason: inactiveWhy };
+    }
+    const ts = this.#teams.get(entry.teamId);
+    if (ts.wrappedUp) return { ok: false, reason: "Setup is already wrapped up." };
+    const curStep = this.#currentStep(ts);
+    if (curStep !== expectedStep) {
+      return { ok: false, reason: "Current step is " + curStep + ", not " + expectedStep + "." };
+    }
+    if (this.#currentPlayerId(ts) !== entry.playerId) {
+      return { ok: false, reason: "It is not your turn." };
+    }
+    return { ok: true, ts, entry };
+  }
+
+  /* Initialize Setup Crew from Team objects (active players only) or { teamId, players, danceIds } deals. */
+  start(entries, { shuffleSlots = true } = {}) {
+    if (this.#started) throw new Error("Setup already started.");
+    this.#started = true;
+
+    for (const item of entries) {
+      let teamId;
+      let setupPlayers;
+      let danceIds;
+      if (item && typeof item.active === "function") {
+        teamId = item.id;
+        const active = item.active();
+        if (!active.length) continue;
+        const pool = shuffleSlots ? this.#shuffle(active) : active.slice();
+        const count = SetupCrew.crewSize(pool.length);
+        setupPlayers = pool.slice(0, count);
+        danceIds = pool.slice(count).map(p => p.id);
+      } else {
+        teamId = item.teamId;
+        const list = (item.players || []).slice();
+        if (!list.length) continue;
+        if (list.length > MirrorData.scoring.maxSetupCrew) {
+          throw new Error("Setup Crew cannot exceed " + MirrorData.scoring.maxSetupCrew + " players.");
+        }
+        setupPlayers = shuffleSlots ? this.#shuffle(list) : list;
+        danceIds = (item.danceIds || []).slice();
+      }
+
+      const split = SetupCrew.splitSteps(setupPlayers.length);
+      const slots = setupPlayers.map((p, slotIndex) => {
+        const playerId = p.playerId !== undefined ? p.playerId : p.id;
+        const name = p.name !== undefined ? p.name : String(playerId);
+        const isBot = !!p.isBot;
+        return { slotIndex, playerId, name, isBot, steps: split[slotIndex] };
+      });
+
+      const ts = {
+        teamId,
+        slots,
+        danceIds,
+        stepIndex: 0,
+        wrappedUp: false,
+        penalties: 0,
+        penaltiesAdded: 0,
+        qaRecovered: 0,
+        stepStartedAt: 0,
+        botHiccups: 0,
+        completedSteps: [],
+        cables: { connected: [], sparks: 0, bag: [] },
+        sound: {
+          locked: false,
+          feedbacks: 0,
+          spikesRolled: 0,
+          level: MirrorData.sound.start,
+          holdTicks: 0,
+          nextTickAt: null,
+          spikeAt: null,
+          spikeBoost: 0,
+          spikesTriggered: 0,
+          lockedLevel: null,
+        },
+        mic: { round: 0, index: 0, sequence: null, done: false, wrongs: 0, hideAt: null, flashing: false },
+        deck: { fileOrder: null, filesTried: [], grabbed: false, reshuffles: 0, nextReshuffleAt: null },
+        qa: { order: null, index: 0, right: 0, wrong: 0, timeouts: 0, done: false, itemDeadlineAt: null },
+      };
+
+      this.#teams.set(teamId, ts);
+      for (const slot of slots) {
+        this.#playerIndex.set(slot.playerId, {
+          teamId,
+          slotIndex: slot.slotIndex,
+          playerId: slot.playerId,
+          name: slot.name,
+          isBot: slot.isBot,
+        });
+      }
+    }
+    return this.state();
+  }
+
+  /* Step 1 (cables): record a matched cable connection reported by the screen. */
+  cableHit(playerOrId, port, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "cables", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    if (!MirrorData.ports.includes(port)) return { ok: false, reason: "Unknown cable port." };
+    if (ts.cables.connected.includes(port)) return { ok: false, reason: "Port is already connected." };
+    ts.cables.connected.push(port);
+    const remaining = MirrorData.ports.length - ts.cables.connected.length;
+    const stepDone = remaining === 0;
+    if (stepDone) this.#advanceStep(ts, elapsedSeconds, now);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "cables",
+      hit: true,
+      port,
+      connected: ts.cables.connected.slice(),
+      remaining,
+      stepDone,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+      penalties: ts.penalties,
+    };
+  }
+
+  /* Step 1 (cables): record a wrong cable click (spark) costing 3 attention. */
+  cableMiss(playerOrId, port = null, opts = {}) {
+    const chk = this.#checkTurn(playerOrId, "cables", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    if (port !== null && port !== undefined) {
+      if (!MirrorData.ports.includes(port)) return { ok: false, reason: "Unknown cable port." };
+      if (ts.cables.connected.includes(port)) return { ok: false, reason: "Port is already connected." };
+    }
+    ts.cables.sparks += 1;
+    const penaltyAdded = MirrorData.cables.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "cables",
+      hit: false,
+      spark: true,
+      port: port ?? null,
+      penaltyAdded,
+      penalties: ts.penalties,
+      remaining: MirrorData.ports.length - ts.cables.connected.length,
+      stepDone: false,
+      nextStep: "cables",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 2 (sound): apply a mixer gain button (-10, +5, +10); feedback at 100 resets to 45 (-4 attention). */
+  soundAdjust(playerOrId, delta, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "sound", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    const S = MirrorData.sound;
+    if (!S.controls.includes(delta)) return { ok: false, reason: "Invalid sound control." };
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    if (at !== null && !entry.isBot) {
+      const tickMs = MirrorData.timers.tickMs;
+      if (ts.sound.nextTickAt === null) ts.sound.nextTickAt = at + tickMs;
+      if (ts.sound.spikeAt === null) {
+        const sp = this.#rollSoundSpike(ts);
+        ts.sound.spikeAt = at + sp.delayTicks * tickMs;
+        ts.sound.spikeBoost = sp.boost;
+      }
+    }
+    ts.sound.level = Math.max(S.min, Math.min(S.max, ts.sound.level + delta));
+    if (ts.sound.level >= S.feedbackAt) {
+      ts.sound.feedbacks += 1;
+      const penaltyAdded = S.feedbackPenalty;
+      ts.penalties += penaltyAdded;
+      ts.penaltiesAdded += penaltyAdded;
+      ts.sound.level = S.start;
+      ts.sound.holdTicks = 0;
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step: "sound",
+        delta,
+        level: ts.sound.level,
+        holdTicks: 0,
+        feedback: true,
+        penaltyAdded,
+        penalties: ts.penalties,
+        stepDone: false,
+        nextStep: "sound",
+        nextPlayerId: this.#currentPlayerId(ts),
+      };
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "sound",
+      delta,
+      level: ts.sound.level,
+      holdTicks: ts.sound.holdTicks,
+      feedback: false,
+      penaltyAdded: 0,
+      penalties: ts.penalties,
+      stepDone: false,
+      nextStep: "sound",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 2 (sound): record that sound held steady in the green zone for 3 seconds. */
+  soundHeld(playerOrId, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "sound", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    ts.sound.locked = true;
+    ts.sound.lockedLevel = ts.sound.level;
+    ts.sound.nextTickAt = null;
+    ts.sound.spikeAt = null;
+    this.#advanceStep(ts, elapsedSeconds, now);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "sound",
+      hit: true,
+      locked: true,
+      level: ts.sound.lockedLevel,
+      stepDone: true,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+      micSequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
+      penalties: ts.penalties,
+    };
+  }
+
+  /* Step 2 (sound): record feedback overshoot costing 4 attention. */
+  soundFeedback(playerOrId, opts = {}) {
+    const chk = this.#checkTurn(playerOrId, "sound", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    ts.sound.feedbacks += 1;
+    ts.sound.level = MirrorData.sound.start;
+    ts.sound.holdTicks = 0;
+    const penaltyAdded = MirrorData.sound.feedbackPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "sound",
+      hit: false,
+      feedback: true,
+      penaltyAdded,
+      penalties: ts.penalties,
+      stepDone: false,
+      nextStep: "sound",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 1 (cables): draw the next needed port from the seeded spawn bag (refilling lazily). */
+  nextCable(teamOrId) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "cables") return { ok: false, reason: "Cables step is not active." };
+    const needed = MirrorData.ports.filter(p => !ts.cables.connected.includes(p));
+    if (!needed.length) return { ok: false, reason: "All cables are already connected." };
+    if (!ts.cables.bag.length) ts.cables.bag = this.#shuffle(needed.concat(needed), this.#seedRng);
+    let chosen = null;
+    while (ts.cables.bag.length) {
+      const candidate = ts.cables.bag.pop();
+      if (needed.includes(candidate)) { chosen = candidate; break; }
+    }
+    if (!chosen) {
+      ts.cables.bag = this.#shuffle(needed.concat(needed), this.#seedRng);
+      chosen = ts.cables.bag.pop() || needed[0];
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      port: chosen,
+      remainingInBag: ts.cables.bag.length,
+    };
+  }
+
+  /* Step 1 (cables): push a missed cable port back into the spawn bag. */
+  returnCable(teamOrId, port) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "cables") return { ok: false, reason: "Cables step is not active." };
+    if (!MirrorData.ports.includes(port)) return { ok: false, reason: "Unknown cable port." };
+    if (ts.cables.connected.includes(port)) return { ok: false, reason: "Port is already connected." };
+    ts.cables.bag.push(port);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      port,
+      remainingInBag: ts.cables.bag.length,
+    };
+  }
+
+  /* Step 2 (sound): roll the next crowd spike delay (in ticks) and boost (+8 to +17). */
+  nextSoundSpike(teamOrId) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "sound") return { ok: false, reason: "Sound step is not active." };
+    return { ok: true, teamId: ts.teamId, ...this.#rollSoundSpike(ts) };
+  }
+
+  /* Step 2 (sound): roll one per-tick sound meter jitter from seeded Rng. */
+  nextSoundJitter(teamOrId) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "sound") return { ok: false, reason: "Sound step is not active." };
+    return { ok: true, teamId: ts.teamId, jitter: this.#rollSoundJitter() };
+  }
+
+  /* Step 3 (mic): record a mic tap against the seeded sequence across rounds of lengths 3, 4, 5. */
+  micTap(playerOrId, micNumber, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "mic", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    if (!Number.isInteger(micNumber) || micNumber < 1 || micNumber > MirrorData.mic.count) {
+      return { ok: false, reason: "Invalid mic number." };
+    }
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    if (ts.mic.flashing) {
+      if (at !== null && ts.mic.hideAt !== null && at >= ts.mic.hideAt) {
+        ts.mic.flashing = false;
+        ts.mic.hideAt = null;
+      } else {
+        return { ok: false, reason: "Watch the sequence before tapping." };
+      }
+    }
+    const expected = ts.mic.sequence[ts.mic.index];
+    if (micNumber === expected) {
+      ts.mic.index += 1;
+      if (ts.mic.index === ts.mic.sequence.length) {
+        if (ts.mic.round >= MirrorData.mic.roundLengths.length - 1) {
+          ts.mic.done = true;
+          ts.mic.flashing = false;
+          ts.mic.hideAt = null;
+          this.#advanceStep(ts, elapsedSeconds, now);
+          return {
+            ok: true,
+            teamId: ts.teamId,
+            playerId: entry.playerId,
+            step: "mic",
+            hit: true,
+            micNumber,
+            round: ts.mic.round,
+            roundDone: true,
+            stepDone: true,
+            nextStep: this.#currentStep(ts),
+            nextPlayerId: this.#currentPlayerId(ts),
+            fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+            penalties: ts.penalties,
+          };
+        }
+        ts.mic.round += 1;
+        ts.mic.index = 0;
+        ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[ts.mic.round]);
+        this.#armMicFlash(ts, at, { isFirstRound: false });
+        return {
+          ok: true,
+          teamId: ts.teamId,
+          playerId: entry.playerId,
+          step: "mic",
+          hit: true,
+          micNumber,
+          round: ts.mic.round,
+          index: 0,
+          sequence: ts.mic.sequence.slice(),
+          roundDone: true,
+          stepDone: false,
+          nextStep: "mic",
+          nextPlayerId: this.#currentPlayerId(ts),
+          penalties: ts.penalties,
+        };
+      }
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step: "mic",
+        hit: true,
+        micNumber,
+        round: ts.mic.round,
+        index: ts.mic.index,
+        remaining: ts.mic.sequence.length - ts.mic.index,
+        roundDone: false,
+        stepDone: false,
+        nextStep: "mic",
+        nextPlayerId: this.#currentPlayerId(ts),
+        penalties: ts.penalties,
+      };
+    }
+
+    ts.mic.wrongs += 1;
+    ts.mic.index = 0;
+    const penaltyAdded = MirrorData.mic.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    ts.mic.sequence = this.#makeMicSequence(MirrorData.mic.roundLengths[ts.mic.round]);
+    this.#armMicFlash(ts, at, { isFirstRound: false });
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "mic",
+      hit: false,
+      micNumber,
+      round: ts.mic.round,
+      index: 0,
+      sequence: ts.mic.sequence.slice(),
+      penaltyAdded,
+      penalties: ts.penalties,
+      roundDone: false,
+      stepDone: false,
+      nextStep: "mic",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 4 (deck): record a file click by index or name. Wrong file costs 6 attention. */
+  pickFile(playerOrId, fileIndexOrName, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "deck", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    let idx = -1;
+    if (typeof fileIndexOrName === "string") {
+      idx = MirrorData.files.findIndex(f => f.name === fileIndexOrName);
+    } else if (Number.isInteger(fileIndexOrName) && fileIndexOrName >= 0 && fileIndexOrName < MirrorData.files.length) {
+      idx = fileIndexOrName;
+    }
+    if (idx < 0) return { ok: false, reason: "Unknown deck file." };
+    if (ts.deck.filesTried.includes(idx)) return { ok: false, reason: "File was already tried." };
+
+    const file = MirrorData.files[idx];
+    if (file.correct) {
+      ts.deck.grabbed = true;
+      ts.deck.nextReshuffleAt = null;
+      this.#advanceStep(ts, elapsedSeconds, now);
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step: "deck",
+        hit: true,
+        fileIndex: idx,
+        fileName: file.name,
+        stepDone: true,
+        nextStep: this.#currentStep(ts),
+        nextPlayerId: this.#currentPlayerId(ts),
+        qaOrder: ts.qa.order ? ts.qa.order.slice() : null,
+        penalties: ts.penalties,
+      };
+    }
+
+    ts.deck.filesTried.push(idx);
+    const penaltyAdded = MirrorData.deck.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    if (at !== null && !entry.isBot) {
+      ts.deck.nextReshuffleAt = at + MirrorData.deck.wrongReshuffleTicks * MirrorData.timers.tickMs;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "deck",
+      hit: false,
+      fileIndex: idx,
+      fileName: file.name,
+      penaltyAdded,
+      penalties: ts.penalties,
+      reshuffleRequested: true,
+      stepDone: false,
+      nextStep: "deck",
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 4 (deck): generate a seeded reshuffle of the 6 deck files. */
+  reshuffleDeck(teamOrId, { elapsedSeconds = null, now = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "deck") return { ok: false, reason: "Deck step is not active." };
+    ts.deck.fileOrder = this.#makeFileOrder();
+    ts.deck.reshuffles += 1;
+    const at = this.#msFromElapsed(elapsedSeconds, now);
+    const slot = this.#ownerSlot(ts, "deck");
+    if (at !== null && slot && !slot.isBot) {
+      ts.deck.nextReshuffleAt = at + MirrorData.deck.reshuffleTicks * MirrorData.timers.tickMs;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      fileOrder: ts.deck.fileOrder.slice(),
+      reshuffles: ts.deck.reshuffles,
+    };
+  }
+
+  /* Step 5 (qa): record a multiple-choice answer. Right restores up to 5 penalty points; wrong costs 5. */
+  answerQa(playerOrId, answerIndex, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "qa", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    const itemIndex = ts.qa.order[ts.qa.index];
+    const item = MirrorData.qaItems[itemIndex];
+    if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex >= item.options.length) {
+      return { ok: false, reason: "Invalid Q&A option." };
+    }
+    const correct = answerIndex === item.correctIndex;
+    let penaltyAdded = 0;
+    let recovered = 0;
+    if (correct) {
+      ts.qa.right += 1;
+      recovered = Math.min(ts.penalties, MirrorData.qa.rightRecover);
+      ts.penalties -= recovered;
+      ts.qaRecovered += recovered;
+    } else {
+      ts.qa.wrong += 1;
+      penaltyAdded = MirrorData.qa.wrongPenalty;
+      ts.penalties += penaltyAdded;
+      ts.penaltiesAdded += penaltyAdded;
+    }
+    ts.qa.index += 1;
+    const stepDone = ts.qa.index >= ts.qa.order.length;
+    if (stepDone) {
+      ts.qa.done = true;
+      ts.qa.itemDeadlineAt = null;
+      this.#advanceStep(ts, elapsedSeconds, now);
+    } else {
+      this.#armQaItem(ts, this.#msFromElapsed(elapsedSeconds, now));
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "qa",
+      hit: correct,
+      correct,
+      itemIndex,
+      answerIndex,
+      why: item.why,
+      recovered,
+      penaltyAdded,
+      penalties: ts.penalties,
+      qaIndex: ts.qa.index,
+      remaining: ts.qa.order.length - ts.qa.index,
+      stepDone,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Step 5 (qa): record a question timeout costing 5 attention. */
+  timeoutQa(playerOrId, opts = {}) {
+    const { elapsedSeconds = null, now = null } = opts;
+    const chk = this.#checkTurn(playerOrId, "qa", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    const itemIndex = ts.qa.order[ts.qa.index];
+    ts.qa.timeouts += 1;
+    const penaltyAdded = MirrorData.qa.wrongPenalty;
+    ts.penalties += penaltyAdded;
+    ts.penaltiesAdded += penaltyAdded;
+    ts.qa.index += 1;
+    const stepDone = ts.qa.index >= ts.qa.order.length;
+    if (stepDone) {
+      ts.qa.done = true;
+      ts.qa.itemDeadlineAt = null;
+      this.#advanceStep(ts, elapsedSeconds, now);
+    } else {
+      this.#armQaItem(ts, this.#msFromElapsed(elapsedSeconds, now));
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "qa",
+      hit: false,
+      timeout: true,
+      itemIndex,
+      recovered: 0,
+      penaltyAdded,
+      penalties: ts.penalties,
+      qaIndex: ts.qa.index,
+      remaining: ts.qa.order.length - ts.qa.index,
+      stepDone,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+    };
+  }
+
+  /* Last Setup slot wraps up the presentation after Q&A completes. */
+  wrapUp(playerOrId, opts = {}) {
+    const chk = this.#checkTurn(playerOrId, "wrapUp", opts);
+    if (!chk.ok) return chk;
+    const { ts, entry } = chk;
+    ts.wrappedUp = true;
+    ts.stepIndex = MirrorData.setupSteps.length + 1;
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step: "wrapUp",
+      wrappedUp: true,
+      penalties: ts.penalties,
+      penaltiesAdded: ts.penaltiesAdded,
+      qaRecovered: ts.qaRecovered,
+    };
+  }
+
+  /* Bot or autoPilot human completes the current setup step with a seeded 30% hiccup (-3 attention). */
+  completeBotStep(playerOrId, { elapsedSeconds = null, autoPilot = false } = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return { ok: false, reason: "Player is not on the Setup Crew." };
+    const ts = this.#teams.get(entry.teamId);
+    if (ts.wrappedUp) return { ok: false, reason: "Setup is already wrapped up." };
+    if (this.#currentPlayerId(ts) !== entry.playerId) return { ok: false, reason: "It is not your turn." };
+    if (!entry.isBot && !autoPilot) return { ok: false, reason: "Player is not a bot." };
+
+    const step = this.#currentStep(ts);
+    const duration = SetupCrew.botStepDuration(step);
+    const finishedAt = (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds))
+      ? elapsedSeconds
+      : ts.stepStartedAt + duration;
+    const label = SetupCrew.botMilestoneLabel(step);
+
+    if (step === "wrapUp") {
+      ts.wrappedUp = true;
+      ts.stepIndex = MirrorData.setupSteps.length + 1;
+      ts.stepStartedAt = finishedAt;
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        playerId: entry.playerId,
+        step,
+        label,
+        hiccup: false,
+        penaltyAdded: 0,
+        penalties: ts.penalties,
+        finishedAt,
+        nextStep: null,
+        nextPlayerId: null,
+        wrappedUp: true,
+      };
+    }
+
+    const hiccup = this.#rng() < MirrorData.bots.setupHiccupChance;
+    const penaltyAdded = hiccup ? MirrorData.bots.setupHiccupPenalty : 0;
+    if (hiccup) {
+      ts.botHiccups += 1;
+      ts.penalties += penaltyAdded;
+      ts.penaltiesAdded += penaltyAdded;
+    }
+
+    this.#clearStepDeadlines(ts);
+    if (step === "cables") ts.cables.connected = MirrorData.ports.slice();
+    else if (step === "sound") ts.sound.locked = true;
+    else if (step === "mic") ts.mic.done = true;
+    else if (step === "deck") ts.deck.grabbed = true;
+    else if (step === "qa") {
+      ts.qa.index = ts.qa.order ? ts.qa.order.length : MirrorData.qaItems.length;
+      ts.qa.done = true;
+    }
+
+    const stepNow = this.#msFromElapsed(finishedAt, null);
+    this.#advanceStep(ts, finishedAt, stepNow);
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: entry.playerId,
+      step,
+      label,
+      hiccup,
+      penaltyAdded,
+      penalties: ts.penalties,
+      finishedAt,
+      nextStep: this.#currentStep(ts),
+      nextPlayerId: this.#currentPlayerId(ts),
+      wrappedUp: false,
+    };
+  }
+
+  /* Advance any due bot (or autoPilot human) setup steps up to elapsedSeconds. */
+  advanceBotSetup(teamOrId, elapsedSeconds, { autoPilotIds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Setup Crew." };
+    if (typeof elapsedSeconds !== "number" || !Number.isFinite(elapsedSeconds)) {
+      return { ok: false, reason: "Invalid elapsedSeconds." };
+    }
+    const isAuto = id => !!(autoPilotIds && (autoPilotIds instanceof Set
+      ? autoPilotIds.has(id)
+      : Array.isArray(autoPilotIds) && autoPilotIds.includes(id)));
+
+    const events = [];
+    while (!ts.wrappedUp) {
+      const step = this.#currentStep(ts);
+      const slot = this.#ownerSlot(ts, step);
+      if (!slot) break;
+      const auto = isAuto(slot.playerId);
+      if (!slot.isBot && !auto) break;
+      const dueAt = ts.stepStartedAt + SetupCrew.botStepDuration(step);
+      if (elapsedSeconds < dueAt) break;
+      const ev = this.completeBotStep(slot.playerId, { elapsedSeconds: dueAt, autoPilot: auto });
+      if (!ev.ok) break;
+      events.push(ev);
+    }
+
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      events,
+      currentStep: this.#currentStep(ts),
+      currentPlayerId: this.#currentPlayerId(ts),
+      wrappedUp: ts.wrappedUp,
+      penalties: ts.penalties,
+    };
+  }
+
+  teamIds() { return [...this.#teams.keys()]; }
+  hasPlayer(playerOrId) { return !!this.#lookupPlayer(playerOrId); }
+
+  slotsFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.slots.map(s => ({ ...s, steps: s.steps.slice() })) : [];
+  }
+
+  danceIdsFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.danceIds.slice() : [];
+  }
+
+  slotOf(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return null;
+    const ts = this.#teams.get(entry.teamId);
+    const slot = ts ? ts.slots[entry.slotIndex] : null;
+    return slot ? { teamId: entry.teamId, ...slot, steps: slot.steps.slice() } : null;
+  }
+
+  currentStep(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? this.#currentStep(ts) : null;
+  }
+
+  currentPlayerId(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? this.#currentPlayerId(ts) : null;
+  }
+
+  isPlayersTurn(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return false;
+    const ts = this.#teams.get(entry.teamId);
+    return !!ts && !ts.wrappedUp && this.#currentPlayerId(ts) === entry.playerId;
+  }
+
+  isWrappedUp(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return !!ts && ts.wrappedUp;
+  }
+
+  penaltiesFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.penalties : 0;
+  }
+
+  micSequenceFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts && ts.mic.sequence ? ts.mic.sequence.slice() : null;
+  }
+
+  deckOrderFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts && ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null;
+  }
+
+  qaOrderFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts && ts.qa.order ? ts.qa.order.slice() : null;
+  }
+
+  currentQaFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || this.#currentStep(ts) !== "qa" || !ts.qa.order || ts.qa.index >= ts.qa.order.length) {
+      return null;
+    }
+    const itemIndex = ts.qa.order[ts.qa.index];
+    const item = MirrorData.qaItems[itemIndex];
+    return {
+      index: ts.qa.index,
+      total: ts.qa.order.length,
+      itemIndex,
+      question: item.question,
+      options: item.options.slice(),
+      correctIndex: item.correctIndex,
+      why: item.why,
+    };
+  }
+
+  botStepDueAt(teamOrId, { autoPilot = false } = {}) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || ts.wrappedUp) return null;
+    const step = this.#currentStep(ts);
+    const slot = this.#ownerSlot(ts, step);
+    if (!slot || (!slot.isBot && !autoPilot)) return null;
+    return ts.stepStartedAt + SetupCrew.botStepDuration(step);
+  }
+
+  #isActiveHumanTurn(ts, activeHumanIds) {
+    if (!ts || ts.wrappedUp) return false;
+    const step = this.#currentStep(ts);
+    const slot = this.#ownerSlot(ts, step);
+    if (!slot || slot.isBot || slot.playerId === null || slot.playerId === undefined) return false;
+    if (activeHumanIds === null || activeHumanIds === undefined) return true;
+    return activeHumanIds instanceof Set
+      ? activeHumanIds.has(slot.playerId)
+      : Array.isArray(activeHumanIds) && activeHumanIds.includes(slot.playerId);
+  }
+
+  /* Next rules deadline (ms) for a non-idle human on Sound, Mic, Deck, or Q&A, or null. */
+  nextDeadline(teamOrId, { activeHumanIds = null, now = null } = {}) {
+    if (!this.#started) return null;
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!this.#isActiveHumanTurn(ts, activeHumanIds)) return null;
+    const step = this.#currentStep(ts);
+    const tickMs = MirrorData.timers.tickMs;
+    const hasNow = typeof now === "number" && Number.isFinite(now);
+    if (step === "sound") {
+      if (ts.sound.nextTickAt === null && hasNow) {
+        ts.sound.nextTickAt = now + tickMs;
+        if (ts.sound.spikeAt === null) {
+          const sp = this.#rollSoundSpike(ts);
+          ts.sound.spikeAt = now + sp.delayTicks * tickMs;
+          ts.sound.spikeBoost = sp.boost;
+        }
+      }
+      return ts.sound.nextTickAt;
+    }
+    if (step === "mic") {
+      return ts.mic.flashing ? ts.mic.hideAt : null;
+    }
+    if (step === "deck") {
+      if (ts.deck.nextReshuffleAt === null && hasNow) {
+        ts.deck.nextReshuffleAt = now + MirrorData.deck.reshuffleTicks * tickMs;
+      }
+      return ts.deck.nextReshuffleAt;
+    }
+    if (step === "qa") {
+      if (ts.qa.itemDeadlineAt === null && hasNow) {
+        ts.qa.itemDeadlineAt = now + MirrorData.qa.countdownTicks * tickMs;
+      }
+      return ts.qa.itemDeadlineAt;
+    }
+    return null;
+  }
+
+  /* Advance all passed SetupCrew deadlines up to now for a non-idle human turn. */
+  tickDeadlines(teamOrId, now, { activeHumanIds = null, elapsedSeconds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Setup has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Setup Crew." };
+    if (typeof now !== "number" || !Number.isFinite(now)) {
+      return { ok: false, reason: "Invalid timestamp." };
+    }
+    if (!this.#isActiveHumanTurn(ts, activeHumanIds)) {
+      return { ok: true, teamId: ts.teamId, events: [] };
+    }
+
+    const events = [];
+    const tickMs = MirrorData.timers.tickMs;
+    const S = MirrorData.sound;
+    const D = MirrorData.deck;
+    let guard = 0;
+
+    while (!ts.wrappedUp && this.#isActiveHumanTurn(ts, activeHumanIds)) {
+      if (++guard > 2000) throw new Error("Setup deadline loop.");
+      const dueAt = this.nextDeadline(ts.teamId, { activeHumanIds, now });
+      if (dueAt === null || dueAt > now) break;
+      const step = this.#currentStep(ts);
+      const pid = this.#currentPlayerId(ts);
+      const elAt = this.#elapsedFromMs(dueAt);
+      const el = elAt !== null ? elAt : elapsedSeconds;
+
+      if (step === "sound") {
+        ts.sound.nextTickAt = dueAt + tickMs;
+        if (ts.sound.spikeAt !== null && dueAt >= ts.sound.spikeAt) {
+          ts.sound.level = Math.min(S.max, ts.sound.level + ts.sound.spikeBoost);
+          ts.sound.spikesTriggered += 1;
+          const sp = this.#rollSoundSpike(ts);
+          ts.sound.spikeAt = dueAt + sp.delayTicks * tickMs;
+          ts.sound.spikeBoost = sp.boost;
+          events.push({ kind: "soundSpike", at: dueAt, teamId: ts.teamId, playerId: pid, level: ts.sound.level });
+        }
+        const drift = ts.sound.level > S.start ? -S.driftStep : ts.sound.level < S.start ? S.driftStep : 0;
+        const jitter = this.#rollSoundJitter();
+        ts.sound.level = Math.max(S.min, Math.min(S.max, ts.sound.level + drift + jitter));
+        if (ts.sound.level >= S.feedbackAt) {
+          ts.sound.feedbacks += 1;
+          const penaltyAdded = S.feedbackPenalty;
+          ts.penalties += penaltyAdded;
+          ts.penaltiesAdded += penaltyAdded;
+          ts.sound.level = S.start;
+          ts.sound.holdTicks = 0;
+          events.push({
+            kind: "soundFeedback",
+            at: dueAt,
+            teamId: ts.teamId,
+            playerId: pid,
+            penaltyAdded,
+            penalties: ts.penalties,
+          });
+        } else if (ts.sound.level >= S.greenMin && ts.sound.level <= S.greenMax) {
+          ts.sound.holdTicks += 1;
+          if (ts.sound.holdTicks >= S.holdTicks) {
+            ts.sound.locked = true;
+            ts.sound.lockedLevel = ts.sound.level;
+            ts.sound.nextTickAt = null;
+            ts.sound.spikeAt = null;
+            this.#advanceStep(ts, el, dueAt);
+            events.push({
+              kind: "soundHeld",
+              at: dueAt,
+              teamId: ts.teamId,
+              playerId: pid,
+              level: ts.sound.lockedLevel,
+              nextStep: this.#currentStep(ts),
+              nextPlayerId: this.#currentPlayerId(ts),
+            });
+          }
+        } else {
+          ts.sound.holdTicks = 0;
+        }
+      } else if (step === "mic") {
+        ts.mic.flashing = false;
+        ts.mic.hideAt = null;
+        events.push({ kind: "micHide", at: dueAt, teamId: ts.teamId, playerId: pid });
+      } else if (step === "deck") {
+        ts.deck.fileOrder = this.#shuffle(MirrorData.files.map((_, i) => i), this.#seedRng);
+        ts.deck.reshuffles += 1;
+        ts.deck.nextReshuffleAt = dueAt + D.reshuffleTicks * tickMs;
+        events.push({
+          kind: "deckReshuffle",
+          at: dueAt,
+          teamId: ts.teamId,
+          playerId: pid,
+          fileOrder: ts.deck.fileOrder.slice(),
+          reshuffles: ts.deck.reshuffles,
+        });
+      } else if (step === "qa") {
+        const res = this.timeoutQa(pid, { elapsedSeconds: el, now: dueAt });
+        events.push({
+          kind: "qaTimeout",
+          at: dueAt,
+          teamId: ts.teamId,
+          playerId: pid,
+          penaltyAdded: res.penaltyAdded,
+          penalties: res.penalties,
+          stepDone: res.stepDone,
+          nextStep: res.nextStep,
+          nextPlayerId: res.nextPlayerId,
+        });
+      } else {
+        break;
+      }
+    }
+
+    return { ok: true, teamId: ts.teamId, events };
+  }
+
+  /* Read-only snapshot of Setup step state for screen rendering. */
+  setupViewFor(teamOrId, now = null) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return null;
+    const tickMs = MirrorData.timers.tickMs;
+    const S = MirrorData.sound;
+    const Q = MirrorData.qa;
+    const hasNow = typeof now === "number" && Number.isFinite(now);
+
+    const isFlashing = Boolean(
+      ts.mic.flashing && (ts.mic.hideAt === null || !hasNow || now < ts.mic.hideAt)
+    );
+    const micSeqLen = ts.mic.sequence ? ts.mic.sequence.length : 0;
+    const micSecsLeft = isFlashing && ts.mic.hideAt !== null && hasNow
+      ? Math.max(0, (ts.mic.hideAt - now) / 1000)
+      : 0;
+
+    const totalQaMs = Q.countdownTicks * tickMs;
+    const qaMsLeft = ts.qa.itemDeadlineAt !== null && hasNow
+      ? Math.max(0, Math.min(totalQaMs, ts.qa.itemDeadlineAt - now))
+      : totalQaMs;
+    const qaTicksLeft = Math.max(0, Math.min(Q.countdownTicks, Math.ceil(qaMsLeft / tickMs)));
+
+    return {
+      teamId: ts.teamId,
+      currentStep: this.#currentStep(ts),
+      currentPlayerId: this.#currentPlayerId(ts),
+      wrappedUp: ts.wrappedUp,
+      sound: {
+        level: ts.sound.level,
+        holdTicks: ts.sound.holdTicks,
+        holdSeconds: (ts.sound.holdTicks * tickMs) / 1000,
+        holdTargetSeconds: S.holdSeconds,
+        holdProgress: Math.min(1, ts.sound.holdTicks / S.holdTicks),
+        inZone: ts.sound.level >= S.greenMin && ts.sound.level <= S.greenMax,
+        locked: ts.sound.locked,
+        lockedLevel: ts.sound.lockedLevel,
+        feedbacks: ts.sound.feedbacks,
+        spikesTriggered: ts.sound.spikesTriggered,
+      },
+      mic: {
+        round: ts.mic.round,
+        index: ts.mic.index,
+        length: micSeqLen,
+        flashing: isFlashing,
+        sequence: isFlashing && ts.mic.sequence ? ts.mic.sequence.slice() : null,
+        tappedMics: ts.mic.sequence ? ts.mic.sequence.slice(0, ts.mic.index) : [],
+        done: ts.mic.done,
+        wrongs: ts.mic.wrongs,
+        hideAt: ts.mic.hideAt,
+        secondsLeft: micSecsLeft,
+      },
+      deck: {
+        fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+        filesTried: ts.deck.filesTried.slice(),
+        grabbed: ts.deck.grabbed,
+        reshuffles: ts.deck.reshuffles,
+        nextReshuffleAt: ts.deck.nextReshuffleAt,
+      },
+      qa: {
+        index: ts.qa.index,
+        total: ts.qa.order ? ts.qa.order.length : 0,
+        itemIndex: (ts.qa.order && ts.qa.index < ts.qa.order.length) ? ts.qa.order[ts.qa.index] : null,
+        right: ts.qa.right,
+        wrong: ts.qa.wrong,
+        timeouts: ts.qa.timeouts,
+        done: ts.qa.done,
+        itemDeadlineAt: ts.qa.itemDeadlineAt,
+        secondsLeft: qaMsLeft / 1000,
+        ticksLeft: qaTicksLeft,
+        lowWarning: qaMsLeft <= Q.lowWarningTicks * tickMs,
+        pct: Math.round((qaMsLeft / totalQaMs) * 100),
+      },
+    };
+  }
+
+  teamState(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return null;
+    return {
+      teamId: ts.teamId,
+      currentStep: this.#currentStep(ts),
+      currentPlayerId: this.#currentPlayerId(ts),
+      slots: ts.slots.map(s => ({ ...s, steps: s.steps.slice() })),
+      danceIds: ts.danceIds.slice(),
+      stepIndex: ts.stepIndex,
+      wrappedUp: ts.wrappedUp,
+      penalties: ts.penalties,
+      penaltiesAdded: ts.penaltiesAdded,
+      qaRecovered: ts.qaRecovered,
+      stepStartedAt: ts.stepStartedAt,
+      botHiccups: ts.botHiccups,
+      completedSteps: ts.completedSteps.slice(),
+      cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks, bag: ts.cables.bag.slice() },
+      sound: {
+        locked: ts.sound.locked,
+        feedbacks: ts.sound.feedbacks,
+        spikesRolled: ts.sound.spikesRolled,
+        level: ts.sound.level,
+        holdTicks: ts.sound.holdTicks,
+        nextTickAt: ts.sound.nextTickAt,
+        spikeAt: ts.sound.spikeAt,
+        spikeBoost: ts.sound.spikeBoost,
+        spikesTriggered: ts.sound.spikesTriggered,
+        lockedLevel: ts.sound.lockedLevel,
+      },
+      mic: {
+        round: ts.mic.round,
+        index: ts.mic.index,
+        sequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
+        done: ts.mic.done,
+        wrongs: ts.mic.wrongs,
+        hideAt: ts.mic.hideAt,
+        flashing: ts.mic.flashing,
+      },
+      deck: {
+        fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+        filesTried: ts.deck.filesTried.slice(),
+        grabbed: ts.deck.grabbed,
+        reshuffles: ts.deck.reshuffles,
+        nextReshuffleAt: ts.deck.nextReshuffleAt,
+      },
+      qa: {
+        order: ts.qa.order ? ts.qa.order.slice() : null,
+        index: ts.qa.index,
+        right: ts.qa.right,
+        wrong: ts.qa.wrong,
+        timeouts: ts.qa.timeouts,
+        done: ts.qa.done,
+        itemDeadlineAt: ts.qa.itemDeadlineAt,
+      },
+    };
+  }
+
+  state() {
+    return {
+      started: this.#started,
+      teams: [...this.#teams.keys()].map(id => this.teamState(id)),
+    };
+  }
+
+  toJSON() {
+    return {
+      started: this.#started,
+      showtimeStartAt: this.#showtimeStartAt,
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
+      teams: [...this.#teams.values()].map(ts => ({
+        teamId: ts.teamId,
+        slots: ts.slots.map(s => ({ ...s, steps: s.steps.slice() })),
+        danceIds: ts.danceIds.slice(),
+        stepIndex: ts.stepIndex,
+        wrappedUp: ts.wrappedUp,
+        penalties: ts.penalties,
+        penaltiesAdded: ts.penaltiesAdded,
+        qaRecovered: ts.qaRecovered,
+        stepStartedAt: ts.stepStartedAt,
+        botHiccups: ts.botHiccups,
+        completedSteps: ts.completedSteps.slice(),
+        cables: { connected: ts.cables.connected.slice(), sparks: ts.cables.sparks, bag: ts.cables.bag.slice() },
+        sound: {
+          locked: ts.sound.locked,
+          feedbacks: ts.sound.feedbacks,
+          spikesRolled: ts.sound.spikesRolled,
+          level: ts.sound.level,
+          holdTicks: ts.sound.holdTicks,
+          nextTickAt: ts.sound.nextTickAt,
+          spikeAt: ts.sound.spikeAt,
+          spikeBoost: ts.sound.spikeBoost,
+          spikesTriggered: ts.sound.spikesTriggered,
+          lockedLevel: ts.sound.lockedLevel,
+        },
+        mic: {
+          round: ts.mic.round,
+          index: ts.mic.index,
+          sequence: ts.mic.sequence ? ts.mic.sequence.slice() : null,
+          done: ts.mic.done,
+          wrongs: ts.mic.wrongs,
+          hideAt: ts.mic.hideAt,
+          flashing: ts.mic.flashing,
+        },
+        deck: {
+          fileOrder: ts.deck.fileOrder ? ts.deck.fileOrder.slice() : null,
+          filesTried: ts.deck.filesTried.slice(),
+          grabbed: ts.deck.grabbed,
+          reshuffles: ts.deck.reshuffles,
+          nextReshuffleAt: ts.deck.nextReshuffleAt,
+        },
+        qa: {
+          order: ts.qa.order ? ts.qa.order.slice() : null,
+          index: ts.qa.index,
+          right: ts.qa.right,
+          wrong: ts.qa.wrong,
+          timeouts: ts.qa.timeouts,
+          done: ts.qa.done,
+          itemDeadlineAt: ts.qa.itemDeadlineAt,
+        },
+      })),
+    };
+  }
+
+  static fromJSON(data, { rng, seedRng = null } = {}) {
+    if (!data || typeof data !== "object") throw new Error("Invalid SetupCrew save data.");
+    let useSeedRng = typeof seedRng === "function" ? seedRng : null;
+    if (!useSeedRng && typeof data.seedRngState === "number") {
+      useSeedRng = Rng.seeded(0);
+      useSeedRng.setState(data.seedRngState);
+    }
+    const sc = new SetupCrew(rng, null, { seedRng: useSeedRng });
+    sc.#started = !!data.started;
+    sc.#showtimeStartAt = typeof data.showtimeStartAt === "number" ? data.showtimeStartAt : null;
+    for (const td of (data.teams || [])) {
+      const ts = {
+        teamId: td.teamId,
+        slots: (td.slots || []).map(s => ({
+          slotIndex: s.slotIndex,
+          playerId: s.playerId,
+          name: s.name,
+          isBot: !!s.isBot,
+          steps: (s.steps || []).slice(),
+        })),
+        danceIds: (td.danceIds || []).slice(),
+        stepIndex: td.stepIndex || 0,
+        wrappedUp: !!td.wrappedUp,
+        penalties: td.penalties || 0,
+        penaltiesAdded: td.penaltiesAdded || 0,
+        qaRecovered: td.qaRecovered || 0,
+        stepStartedAt: td.stepStartedAt || 0,
+        botHiccups: td.botHiccups || 0,
+        completedSteps: (td.completedSteps || []).slice(),
+        cables: {
+          connected: ((td.cables && td.cables.connected) || []).slice(),
+          sparks: (td.cables && td.cables.sparks) || 0,
+          bag: ((td.cables && td.cables.bag) || []).slice(),
+        },
+        sound: {
+          locked: !!(td.sound && td.sound.locked),
+          feedbacks: (td.sound && td.sound.feedbacks) || 0,
+          spikesRolled: (td.sound && td.sound.spikesRolled) || 0,
+          level: (td.sound && typeof td.sound.level === "number") ? td.sound.level : MirrorData.sound.start,
+          holdTicks: (td.sound && td.sound.holdTicks) || 0,
+          nextTickAt: (td.sound && typeof td.sound.nextTickAt === "number") ? td.sound.nextTickAt : null,
+          spikeAt: (td.sound && typeof td.sound.spikeAt === "number") ? td.sound.spikeAt : null,
+          spikeBoost: (td.sound && td.sound.spikeBoost) || 0,
+          spikesTriggered: (td.sound && td.sound.spikesTriggered) || 0,
+          lockedLevel: (td.sound && typeof td.sound.lockedLevel === "number") ? td.sound.lockedLevel : null,
+        },
+        mic: {
+          round: (td.mic && td.mic.round) || 0,
+          index: (td.mic && td.mic.index) || 0,
+          sequence: td.mic && Array.isArray(td.mic.sequence) ? td.mic.sequence.slice() : null,
+          done: !!(td.mic && td.mic.done),
+          wrongs: (td.mic && td.mic.wrongs) || 0,
+          hideAt: (td.mic && typeof td.mic.hideAt === "number") ? td.mic.hideAt : null,
+          flashing: !!(td.mic && td.mic.flashing),
+        },
+        deck: {
+          fileOrder: td.deck && Array.isArray(td.deck.fileOrder) ? td.deck.fileOrder.slice() : null,
+          filesTried: ((td.deck && td.deck.filesTried) || []).slice(),
+          grabbed: !!(td.deck && td.deck.grabbed),
+          reshuffles: (td.deck && td.deck.reshuffles) || 0,
+          nextReshuffleAt: (td.deck && typeof td.deck.nextReshuffleAt === "number") ? td.deck.nextReshuffleAt : null,
+        },
+        qa: {
+          order: td.qa && Array.isArray(td.qa.order) ? td.qa.order.slice() : null,
+          index: (td.qa && td.qa.index) || 0,
+          right: (td.qa && td.qa.right) || 0,
+          wrong: (td.qa && td.qa.wrong) || 0,
+          timeouts: (td.qa && td.qa.timeouts) || 0,
+          done: !!(td.qa && td.qa.done),
+          itemDeadlineAt: (td.qa && typeof td.qa.itemDeadlineAt === "number") ? td.qa.itemDeadlineAt : null,
+        },
+      };
+      sc.#teams.set(ts.teamId, ts);
+      for (const slot of ts.slots) {
+        sc.#playerIndex.set(slot.playerId, {
+          teamId: ts.teamId,
+          slotIndex: slot.slotIndex,
+          playerId: slot.playerId,
+          name: slot.name,
+          isBot: slot.isBot,
+        });
+      }
+    }
+    return sc;
+  }
+}
+
+/* Dance Crew state for Presentation Day: dancer roster taken from SetupCrew's crew split,
+   seeded per-dancer note charts & tempo ramp, hit judging, miss deadlines, idle gating,
+   averaged boosts and penalties across dancers, bot dance boost timing, and toJSON/fromJSON.
+   Outside code calls MirrorTrial only. */
+class DanceCrew {
+  #rng;
+  #seedRng;
+  #started = false;
+  #showtimeStartAt = null;
+  #teams = new Map();       // teamId -> { teamId, order: playerId[], dancers: Map<playerId, rec> }
+  #playerIndex = new Map(); // playerId -> { teamId, rec }
+
+  constructor(rng, entries = null, options = {}) {
+    if (typeof rng !== "function") throw new Error("DanceCrew requires a seeded rng.");
+    this.#rng = rng;
+    this.#seedRng = options && typeof options.seedRng === "function"
+      ? options.seedRng
+      : deriveSeedRng(rng);
+    if (entries !== null) this.start(entries, options);
+  }
+
+  get started() { return this.#started; }
+  get showtimeStartAt() { return this.#showtimeStartAt; }
+
+  #lookupPlayer(playerOrId) {
+    const id = idOf(playerOrId);
+    if (id === null || id === undefined) return null;
+    return this.#playerIndex.get(id) || null;
+  }
+
+  #rollBotInterval() {
+    const tickSec = MirrorData.timers.tickMs / 1000;
+    const minTicks = Math.round(MirrorData.bots.danceMinSeconds / tickSec);
+    const maxTicks = Math.round(MirrorData.bots.danceMaxSeconds / tickSec);
+    return (minTicks + Math.floor(this.#rng() * (maxTicks - minTicks + 1))) * tickSec;
+  }
+
+  #rollChartSeed() {
+    return (Math.floor(this.#seedRng() * 0x100000000) | 0);
+  }
+
+  #makeEmptyChart(seedState = null) {
+    return {
+      notes: [],
+      nextNoteTick: 0,
+      spawnedCount: 0,
+      nextId: 1,
+      lastDirs: [],
+      rngState: typeof seedState === "number" ? (seedState | 0) : this.#rollChartSeed(),
+    };
+  }
+
+  #cloneChart(chart) {
+    return {
+      notes: chart.notes.map(n => ({ ...n })),
+      nextNoteTick: chart.nextNoteTick,
+      spawnedCount: chart.spawnedCount,
+      nextId: chart.nextId,
+      lastDirs: chart.lastDirs.slice(),
+      rngState: chart.rngState,
+    };
+  }
+
+  #noteGapTicks(spawnedCount) {
+    const D = MirrorData.dance;
+    if (spawnedCount > D.tempoRampFastNotes) return D.gapFastTicks;
+    if (spawnedCount > D.tempoRampMidNotes) return D.gapMidTicks;
+    return D.gapInitialTicks;
+  }
+
+  #nextArrowDir(lastDirs, rngFn) {
+    const D = MirrorData.dance;
+    const arrows = D.arrows;
+    const maxSame = D.maxConsecutiveSame;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const dir = arrows[Math.floor(rngFn() * arrows.length)];
+      const n = lastDirs.length;
+      if (n >= maxSame && lastDirs.slice(n - maxSame).every(prev => prev === dir)) continue;
+      return dir;
+    }
+    const last = lastDirs[lastDirs.length - 1];
+    return arrows.find(dir => dir !== last) || arrows[0];
+  }
+
+  #spawnOnChart(chart, upToTick) {
+    if (chart.nextNoteTick > upToTick) return;
+    const r = Rng.seeded(0);
+    r.setState(chart.rngState);
+    const maxSame = MirrorData.dance.maxConsecutiveSame;
+    while (chart.nextNoteTick <= upToTick) {
+      const spawnT = chart.nextNoteTick;
+      const dir = this.#nextArrowDir(chart.lastDirs, r);
+      chart.lastDirs.push(dir);
+      if (chart.lastDirs.length > maxSame) chart.lastDirs.shift();
+      chart.notes.push({ id: chart.nextId++, dir, t0: spawnT, judged: null, judgedAt: null });
+      chart.spawnedCount += 1;
+      chart.nextNoteTick = spawnT + this.#noteGapTicks(chart.spawnedCount);
+    }
+    chart.rngState = r.getState();
+  }
+
+  #spawnUpTo(rec, upToTick) {
+    this.#spawnOnChart(rec.chart, upToTick);
+  }
+
+  #pruneJudged(chart, currentTick) {
+    chart.notes = chart.notes.filter(n => !n.judged || currentTick - n.judgedAt <= 2);
+  }
+
+  #resumeChartFromIdle(chart, atTick) {
+    chart.notes = chart.notes.filter(n => !n.judged && this.#missTickOf(n.t0) > atTick);
+    const nextTick = Math.ceil(atTick);
+    if (chart.nextNoteTick < nextTick) chart.nextNoteTick = nextTick;
+  }
+
+  #missTickOf(t0) {
+    const D = MirrorData.dance;
+    return t0 + D.travelTicks + D.goodWindowTicks + 1;
+  }
+
+  #tickFromOpts(elapsedSeconds, now) {
+    const tickMs = MirrorData.timers.tickMs;
+    if (typeof now === "number" && Number.isFinite(now) && this.#showtimeStartAt !== null) {
+      return Math.max(0, (now - this.#showtimeStartAt) / tickMs);
+    }
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      return Math.max(0, elapsedSeconds * (1000 / tickMs));
+    }
+    return 0;
+  }
+
+  #isIdlePlayer(playerOrId, opts) {
+    return !!(opts && opts.isIdle) || !!(playerOrId && typeof playerOrId === "object" && playerOrId.idle);
+  }
+
+  #isActiveHumanDancer(rec, activeHumanIds) {
+    if (!rec || rec.isBot) return false;
+    if (activeHumanIds === null || activeHumanIds === undefined) return true;
+    return activeHumanIds instanceof Set
+      ? activeHumanIds.has(rec.playerId)
+      : Array.isArray(activeHumanIds) && activeHumanIds.includes(rec.playerId);
+  }
+
+  beginShowtime(now = null) {
+    this.#showtimeStartAt = typeof now === "number" && Number.isFinite(now) ? now : null;
+    for (const ts of this.#teams.values()) {
+      for (const pid of ts.order) {
+        const rec = ts.dancers.get(pid);
+        if (rec && !rec.isBot && rec.chart.spawnedCount === 0) {
+          this.#spawnUpTo(rec, 0);
+        }
+      }
+    }
+  }
+
+  #makeDancerRecord(p) {
+    const playerId = p.playerId !== undefined ? p.playerId : p.id;
+    const name = p.name !== undefined ? p.name : String(playerId);
+    const isBot = !!p.isBot;
+    return {
+      playerId,
+      name,
+      isBot,
+      boost: 0,
+      penalties: 0,
+      combo: 0,
+      maxCombo: 0,
+      perfects: 0,
+      goods: 0,
+      misses: 0,
+      strays: 0,
+      botBoosts: 0,
+      lastActionAt: 0,
+      lastBotAt: 0,
+      nextBotBoostAt: isBot ? this.#rollBotInterval() : null,
+      lastMove: "",
+      stumbleUntilTick: 0,
+      wasIdle: false,
+      chart: this.#makeEmptyChart(),
+    };
+  }
+
+  #checkDancer(playerOrId) {
+    if (!this.#started) return { ok: false, reason: "Dance Crew has not started." };
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return { ok: false, reason: "Player is not on the Dance Crew." };
+    return { ok: true, ts: this.#teams.get(entry.teamId), rec: entry.rec };
+  }
+
+  /* Initialize Dance Crew strictly from SetupCrew's crew split (or pre-split entries). */
+  start(source, options = {}) {
+    if (this.#started) throw new Error("Dance Crew already started.");
+
+    if (source instanceof SetupCrew) {
+      if (!source.started) throw new Error("SetupCrew must be started before DanceCrew.");
+      const teams = Array.isArray(options) ? options : (options && options.teams) || null;
+      const playerLookup = !Array.isArray(options) && options ? options.playerLookup || null : null;
+      const playerById = new Map();
+      if (Array.isArray(teams)) {
+        for (const t of teams) {
+          for (const p of (t.members || [])) playerById.set(p.id, p);
+        }
+      }
+      const resolvePlayer = pid =>
+        (playerLookup && playerLookup(pid)) ||
+        playerById.get(pid) ||
+        { playerId: pid, name: String(pid), isBot: false };
+
+      for (const teamId of source.teamIds()) {
+        const danceIds = source.danceIdsFor(teamId);
+        const ts = { teamId, order: [], dancers: new Map() };
+        for (const pid of danceIds) {
+          const rec = this.#makeDancerRecord(resolvePlayer(pid));
+          ts.order.push(rec.playerId);
+          ts.dancers.set(rec.playerId, rec);
+          this.#playerIndex.set(rec.playerId, { teamId, rec });
+        }
+        this.#teams.set(teamId, ts);
+      }
+    } else if (Array.isArray(source)) {
+      if (source.some(item => item && typeof item.active === "function")) {
+        throw new Error("DanceCrew uses SetupCrew's crew split; pass a SetupCrew instance or pre-split dancer entries.");
+      }
+      for (const item of source) {
+        if (!item || item.teamId === undefined || item.teamId === null) {
+          throw new Error("DanceCrew requires a SetupCrew instance or pre-split dancer entries.");
+        }
+        const ts = { teamId: item.teamId, order: [], dancers: new Map() };
+        for (const p of (item.players || [])) {
+          const rec = this.#makeDancerRecord(p);
+          ts.order.push(rec.playerId);
+          ts.dancers.set(rec.playerId, rec);
+          this.#playerIndex.set(rec.playerId, { teamId: item.teamId, rec });
+        }
+        this.#teams.set(item.teamId, ts);
+      }
+    } else {
+      throw new Error("DanceCrew requires a SetupCrew instance or pre-split dancer entries.");
+    }
+
+    this.#started = true;
+    return this.state();
+  }
+
+  /* Judge an arrow press ("left" | "up" | "right" | "down") against the dancer's seeded note schedule. */
+  press(playerOrId, dir, opts = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
+    const D = MirrorData.dance;
+    if (!D.arrows.includes(dir)) {
+      return { ok: false, reason: "Invalid arrow." };
+    }
+    const { rec } = chk;
+    const { elapsedSeconds = null, now = null } = opts;
+    const atTick = this.#tickFromOpts(elapsedSeconds, now);
+    const elSec = (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds))
+      ? elapsedSeconds
+      : (atTick * MirrorData.timers.tickMs) / 1000;
+    if (rec.wasIdle) {
+      this.#resumeChartFromIdle(rec.chart, atTick);
+      rec.wasIdle = false;
+    }
+    this.#spawnUpTo(rec, Math.floor(atTick));
+
+    let best = null;
+    let bd = Infinity;
+    for (const n of rec.chart.notes) {
+      if (n.judged || n.dir !== dir) continue;
+      const d = Math.abs(atTick - (n.t0 + D.travelTicks));
+      if (d < bd) {
+        bd = d;
+        best = n;
+      }
+    }
+
+    if (best && bd <= D.goodWindowTicks) {
+      const quality = bd <= D.perfectWindowTicks ? "perfect" : "good";
+      best.judged = quality;
+      best.judgedAt = atTick;
+      rec.lastMove = dir;
+      rec.stumbleUntilTick = 0;
+      this.#pruneJudged(rec.chart, atTick);
+      const res = this.noteHit(playerOrId, quality, { elapsedSeconds: elSec });
+      return { ...res, hit: true, stray: false, dir, noteId: best.id };
+    }
+
+    rec.stumbleUntilTick = atTick + D.stumbleTicks;
+    this.#pruneJudged(rec.chart, atTick);
+    const res = this.strayPress(playerOrId, { elapsedSeconds: elSec });
+    return { ...res, hit: false, stray: true, dir, noteId: null };
+  }
+
+  /* Record a note hit ("perfect" +3 or "good" +2), capped at 45 boost per dancer. */
+  noteHit(playerOrId, quality, opts = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
+    if (quality !== "perfect" && quality !== "good") {
+      return { ok: false, reason: "Hit quality must be perfect or good." };
+    }
+    const { elapsedSeconds = null } = opts;
+    const { ts, rec } = chk;
+    const D = MirrorData.dance;
+    const rawGain = quality === "perfect" ? D.perfectBoost : D.goodBoost;
+    const before = rec.boost;
+    rec.boost = Math.min(D.boostCap, rec.boost + rawGain);
+    const boostAdded = rec.boost - before;
+    rec.combo += 1;
+    if (rec.combo > rec.maxCombo) rec.maxCombo = rec.combo;
+    if (quality === "perfect") rec.perfects += 1;
+    else rec.goods += 1;
+    if (rec.boost >= D.boostCap) rec.nextBotBoostAt = null;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      rec.lastActionAt = elapsedSeconds;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      quality,
+      boostAdded,
+      boost: rec.boost,
+      capped: rec.boost >= D.boostCap,
+      combo: rec.combo,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Record a missed note costing 2 attention (averaged across dancers) and resetting combo. */
+  noteMiss(playerOrId, opts = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
+    const { elapsedSeconds = null } = opts;
+    const { ts, rec } = chk;
+    const penaltyAdded = MirrorData.dance.missPenalty;
+    rec.penalties += penaltyAdded;
+    rec.misses += 1;
+    rec.combo = 0;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      rec.lastActionAt = elapsedSeconds;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      miss: true,
+      penaltyAdded,
+      penalties: rec.penalties,
+      combo: 0,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Record an off-beat stray key press costing 1 attention (averaged across dancers) and resetting combo. */
+  strayPress(playerOrId, opts = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    if (this.#isIdlePlayer(playerOrId, opts)) {
+      return { ok: false, reason: "Idle players cannot act." };
+    }
+    const { elapsedSeconds = null } = opts;
+    const { ts, rec } = chk;
+    const penaltyAdded = MirrorData.dance.strayPenalty;
+    rec.penalties += penaltyAdded;
+    rec.strays += 1;
+    rec.combo = 0;
+    if (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds)) {
+      rec.lastActionAt = elapsedSeconds;
+    }
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      stray: true,
+      penaltyAdded,
+      penalties: rec.penalties,
+      combo: 0,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Bot or autoPilot dancer gains +1 boost (up to 45), no misses, then schedules next 1.5..2.5s tick. */
+  applyBotBoost(playerOrId, { elapsedSeconds = null, autoPilot = false } = {}) {
+    const chk = this.#checkDancer(playerOrId);
+    if (!chk.ok) return chk;
+    const { ts, rec } = chk;
+    if (!rec.isBot && !autoPilot) return { ok: false, reason: "Player is not a bot." };
+    const cap = MirrorData.dance.boostCap;
+    if (rec.boost >= cap) return { ok: false, reason: "Dancer boost is already at cap." };
+
+    const at = (typeof elapsedSeconds === "number" && Number.isFinite(elapsedSeconds))
+      ? elapsedSeconds
+      : (rec.nextBotBoostAt !== null ? rec.nextBotBoostAt : rec.lastActionAt + this.#rollBotInterval());
+    const before = rec.boost;
+    rec.boost = Math.min(cap, rec.boost + MirrorData.bots.danceBoostStep);
+    const boostAdded = rec.boost - before;
+    rec.botBoosts += 1;
+    rec.lastBotAt = at;
+    const moves = MirrorData.flavor.danceMoves;
+    const move = moves[(rec.botBoosts - 1) % moves.length];
+    rec.nextBotBoostAt = rec.boost >= cap ? null : at + this.#rollBotInterval();
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      playerId: rec.playerId,
+      at,
+      boostAdded,
+      boost: rec.boost,
+      capped: rec.boost >= cap,
+      move,
+      nextBoostAt: rec.nextBotBoostAt,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Advance all due bot (or autoPilot human) dancer boosts on a team up to elapsedSeconds. */
+  advanceBotDance(teamOrId, elapsedSeconds, { autoPilotIds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Dance Crew has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Dance Crew." };
+    if (typeof elapsedSeconds !== "number" || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
+      return { ok: false, reason: "Invalid elapsedSeconds." };
+    }
+    const isAuto = id => !!(autoPilotIds && (autoPilotIds instanceof Set
+      ? autoPilotIds.has(id)
+      : Array.isArray(autoPilotIds) && autoPilotIds.includes(id)));
+    const cap = MirrorData.dance.boostCap;
+
+    const events = [];
+    for (const pid of ts.order) {
+      const rec = ts.dancers.get(pid);
+      const auto = isAuto(pid);
+      if ((!rec.isBot && !auto) || rec.boost >= cap) continue;
+      if (rec.nextBotBoostAt === null) {
+        rec.nextBotBoostAt = rec.lastActionAt + this.#rollBotInterval();
+      }
+      while (rec.boost < cap && rec.nextBotBoostAt !== null && elapsedSeconds >= rec.nextBotBoostAt) {
+        const ev = this.applyBotBoost(pid, { elapsedSeconds: rec.nextBotBoostAt, autoPilot: auto });
+        if (!ev.ok) break;
+        events.push(ev);
+      }
+    }
+    events.sort((a, b) => a.at - b.at);
+
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      events,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Next miss deadline (ms) among active non-idle human dancers on a team, or null. */
+  nextDeadline(teamOrId, { activeHumanIds = null, includeSpawns = false } = {}) {
+    if (!this.#started || this.#showtimeStartAt === null) return null;
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return null;
+    const tickMs = MirrorData.timers.tickMs;
+    let earliest = Infinity;
+    for (const pid of ts.order) {
+      const rec = ts.dancers.get(pid);
+      if (!this.#isActiveHumanDancer(rec, activeHumanIds)) continue;
+      let minT0 = null;
+      for (const n of rec.chart.notes) {
+        if (!n.judged && (minT0 === null || n.t0 < minT0)) minT0 = n.t0;
+      }
+      if (minT0 === null) minT0 = rec.chart.nextNoteTick;
+      const dueAt = this.#showtimeStartAt + this.#missTickOf(minT0) * tickMs;
+      if (dueAt < earliest) earliest = dueAt;
+      if (includeSpawns) {
+        const spawnAt = this.#showtimeStartAt + rec.chart.nextNoteTick * tickMs;
+        if (spawnAt < earliest) earliest = spawnAt;
+      }
+    }
+    return Number.isFinite(earliest) ? earliest : null;
+  }
+
+  /* Spawn notes and record any missed-note deadlines up to now for active non-idle human dancers. */
+  tickDeadlines(teamOrId, now, { activeHumanIds = null } = {}) {
+    if (!this.#started) return { ok: false, reason: "Dance Crew has not started." };
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return { ok: false, reason: "Team is not in Dance Crew." };
+    if (typeof now !== "number" || !Number.isFinite(now)) {
+      return { ok: false, reason: "Invalid timestamp." };
+    }
+    if (this.#showtimeStartAt === null) {
+      return {
+        ok: true,
+        teamId: ts.teamId,
+        events: [],
+        avgBoost: this.avgBoostFor(ts.teamId),
+        avgPenalties: this.avgPenaltiesFor(ts.teamId),
+      };
+    }
+
+    const tickMs = MirrorData.timers.tickMs;
+    const D = MirrorData.dance;
+    const currentTick = Math.max(0, (now - this.#showtimeStartAt) / tickMs);
+    const events = [];
+
+    for (const pid of ts.order) {
+      const rec = ts.dancers.get(pid);
+      if (!rec || rec.isBot) continue;
+      if (!this.#isActiveHumanDancer(rec, activeHumanIds)) {
+        // Idle human dancers follow bot auto-pilot and receive no -2 missed notes.
+        rec.wasIdle = true;
+        rec.chart.notes = rec.chart.notes.filter(n => !n.judged && this.#missTickOf(n.t0) > currentTick);
+        continue;
+      }
+      if (rec.wasIdle) {
+        this.#resumeChartFromIdle(rec.chart, currentTick);
+        rec.wasIdle = false;
+      }
+      this.#spawnUpTo(rec, Math.floor(currentTick));
+      for (const n of rec.chart.notes) {
+        if (n.judged) continue;
+        const missTick = this.#missTickOf(n.t0);
+        if (missTick <= currentTick) {
+          n.judged = "miss";
+          n.judgedAt = missTick;
+          rec.stumbleUntilTick = missTick + D.stumbleTicks;
+          const missRes = this.noteMiss(pid, { elapsedSeconds: (missTick * tickMs) / 1000 });
+          events.push({
+            kind: "danceMiss",
+            at: this.#showtimeStartAt + missTick * tickMs,
+            teamId: ts.teamId,
+            playerId: pid,
+            noteId: n.id,
+            dir: n.dir,
+            penaltyAdded: missRes.penaltyAdded,
+            penalties: missRes.penalties,
+          });
+        }
+      }
+      this.#pruneJudged(rec.chart, currentTick);
+    }
+
+    return {
+      ok: true,
+      teamId: ts.teamId,
+      events,
+      avgBoost: this.avgBoostFor(ts.teamId),
+      avgPenalties: this.avgPenaltiesFor(ts.teamId),
+    };
+  }
+
+  /* Read-only snapshot of a dancer's rhythm lane and note schedule at clock now. */
+  danceViewFor(playerOrId, now = null) {
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return null;
+    const { teamId, rec } = entry;
+    const D = MirrorData.dance;
+    const tickMs = MirrorData.timers.tickMs;
+    const hasNow = typeof now === "number" && Number.isFinite(now) && this.#showtimeStartAt !== null;
+    const currentTick = hasNow ? Math.max(0, (now - this.#showtimeStartAt) / tickMs) : 0;
+
+    const preview = this.#cloneChart(rec.chart);
+    if (!rec.isBot && hasNow && rec.wasIdle) {
+      this.#resumeChartFromIdle(preview, currentTick);
+    }
+    if (!rec.isBot && hasNow) {
+      this.#spawnOnChart(preview, Math.floor(currentTick));
+    }
+    const visibleNotes = [];
+    for (const n of preview.notes) {
+      if (n.judged && currentTick - n.judgedAt > 2) continue;
+      const progress = (currentTick - n.t0) / D.travelTicks;
+      const leftPct = Math.max(-6, (1 - progress) * 100);
+      let zone;
+      if (n.judged) {
+        zone = "judged";
+      } else {
+        const diff = Math.abs(currentTick - (n.t0 + D.travelTicks));
+        zone = diff <= D.perfectWindowTicks ? "perfect" : diff <= D.goodWindowTicks ? "good" : "incoming";
+      }
+      visibleNotes.push({
+        id: n.id,
+        dir: n.dir,
+        t0: n.t0,
+        judged: n.judged,
+        judgedAt: n.judgedAt,
+        progress,
+        leftPct,
+        zone,
+      });
+    }
+
+    return {
+      teamId,
+      playerId: rec.playerId,
+      name: rec.name,
+      isBot: rec.isBot,
+      tick: currentTick,
+      elapsedSeconds: (currentTick * tickMs) / 1000,
+      boost: rec.boost,
+      boostCap: D.boostCap,
+      penalties: rec.penalties,
+      combo: rec.combo,
+      maxCombo: rec.maxCombo,
+      perfects: rec.perfects,
+      goods: rec.goods,
+      misses: rec.misses,
+      strays: rec.strays,
+      hits: rec.perfects + rec.goods,
+      spawnedCount: preview.spawnedCount,
+      gapTicks: this.#noteGapTicks(preview.spawnedCount),
+      nextNoteTick: preview.nextNoteTick,
+      notes: visibleNotes,
+      stumbling: currentTick < rec.stumbleUntilTick,
+      lastMove: rec.lastMove,
+    };
+  }
+
+  teamIds() { return [...this.#teams.keys()]; }
+  hasPlayer(playerOrId) { return !!this.#lookupPlayer(playerOrId); }
+
+  dancerIdsFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    return ts ? ts.order.slice() : [];
+  }
+
+  dancersFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts) return [];
+    return ts.order.map(id => {
+      const rec = ts.dancers.get(id);
+      return { ...rec, teamId: ts.teamId, chart: this.#cloneChart(rec.chart) };
+    });
+  }
+
+  dancerState(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    if (!entry) return null;
+    return { ...entry.rec, teamId: entry.teamId, chart: this.#cloneChart(entry.rec.chart) };
+  }
+
+  boostFor(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    return entry ? entry.rec.boost : 0;
+  }
+
+  penaltiesForPlayer(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    return entry ? entry.rec.penalties : 0;
+  }
+
+  avgBoostFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || ts.order.length === 0) return 0;
+    let total = 0;
+    for (const id of ts.order) total += ts.dancers.get(id).boost;
+    return total / ts.order.length;
+  }
+
+  avgPenaltiesFor(teamOrId) {
+    const ts = this.#teams.get(idOf(teamOrId));
+    if (!ts || ts.order.length === 0) return 0;
+    let total = 0;
+    for (const id of ts.order) total += ts.dancers.get(id).penalties;
+    return total / ts.order.length;
+  }
+
+  botNextBoostAt(playerOrId) {
+    const entry = this.#lookupPlayer(playerOrId);
+    return entry ? entry.rec.nextBotBoostAt : null;
+  }
+
+  botNextBoostsFor(teamOrId = null) {
+    const tids = teamOrId === null || teamOrId === undefined ? [...this.#teams.keys()] : [idOf(teamOrId)];
+    const out = [];
+    for (const tid of tids) {
+      const ts = this.#teams.get(tid);
+      if (!ts) continue;
+      for (const id of ts.order) {
+        const rec = ts.dancers.get(id);
+        if (rec.isBot) out.push({ playerId: rec.playerId, teamId: ts.teamId, seconds: rec.nextBotBoostAt });
+      }
+    }
+    return out;
+  }
+
+  teamState(teamOrId) {
+    const tid = idOf(teamOrId);
+    const ts = this.#teams.get(tid);
+    if (!ts) return null;
+    return {
+      teamId: ts.teamId,
+      dancerIds: ts.order.slice(),
+      dancers: this.dancersFor(tid),
+      avgBoost: this.avgBoostFor(tid),
+      avgPenalties: this.avgPenaltiesFor(tid),
+    };
+  }
+
+  state() {
+    return {
+      started: this.#started,
+      teams: [...this.#teams.keys()].map(id => this.teamState(id)),
+    };
+  }
+
+  toJSON() {
+    return {
+      started: this.#started,
+      showtimeStartAt: this.#showtimeStartAt,
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
+      teams: [...this.#teams.values()].map(ts => ({
+        teamId: ts.teamId,
+        dancers: ts.order.map(id => {
+          const rec = ts.dancers.get(id);
+          return {
+            playerId: rec.playerId,
+            name: rec.name,
+            isBot: rec.isBot,
+            boost: rec.boost,
+            penalties: rec.penalties,
+            combo: rec.combo,
+            maxCombo: rec.maxCombo,
+            perfects: rec.perfects,
+            goods: rec.goods,
+            misses: rec.misses,
+            strays: rec.strays,
+            botBoosts: rec.botBoosts,
+            lastActionAt: rec.lastActionAt,
+            lastBotAt: rec.lastBotAt,
+            nextBotBoostAt: rec.nextBotBoostAt,
+            lastMove: rec.lastMove,
+            stumbleUntilTick: rec.stumbleUntilTick,
+            wasIdle: !!rec.wasIdle,
+            chart: {
+              ...this.#cloneChart(rec.chart),
+              gapTicks: this.#noteGapTicks(rec.chart.spawnedCount),
+            },
+          };
+        }),
+      })),
+    };
+  }
+
+  static fromJSON(data, { rng, seedRng = null } = {}) {
+    if (!data || typeof data !== "object") throw new Error("Invalid DanceCrew save data.");
+    let useSeedRng = typeof seedRng === "function" ? seedRng : null;
+    if (!useSeedRng && typeof data.seedRngState === "number") {
+      useSeedRng = Rng.seeded(0);
+      useSeedRng.setState(data.seedRngState);
+    }
+    const dc = new DanceCrew(rng, null, { seedRng: useSeedRng });
+    dc.#started = !!data.started;
+    dc.#showtimeStartAt = typeof data.showtimeStartAt === "number" ? data.showtimeStartAt : null;
+    for (const td of (data.teams || [])) {
+      const ts = { teamId: td.teamId, order: [], dancers: new Map() };
+      for (const d of (td.dancers || [])) {
+        const savedChart = d.chart && typeof d.chart === "object" ? d.chart : null;
+        const chart = savedChart ? {
+          notes: Array.isArray(savedChart.notes)
+            ? savedChart.notes.map(n => ({
+                id: n.id,
+                dir: n.dir,
+                t0: n.t0,
+                judged: n.judged || null,
+                judgedAt: typeof n.judgedAt === "number" ? n.judgedAt : null,
+              }))
+            : [],
+          nextNoteTick: typeof savedChart.nextNoteTick === "number" ? savedChart.nextNoteTick : 0,
+          spawnedCount: typeof savedChart.spawnedCount === "number" ? savedChart.spawnedCount : 0,
+          nextId: typeof savedChart.nextId === "number" ? savedChart.nextId : 1,
+          lastDirs: Array.isArray(savedChart.lastDirs) ? savedChart.lastDirs.slice() : [],
+          rngState: typeof savedChart.rngState === "number" ? (savedChart.rngState | 0) : dc.#rollChartSeed(),
+        } : dc.#makeEmptyChart();
+        const rec = {
+          playerId: d.playerId,
+          name: d.name,
+          isBot: !!d.isBot,
+          boost: d.boost || 0,
+          penalties: d.penalties || 0,
+          combo: d.combo || 0,
+          maxCombo: d.maxCombo || 0,
+          perfects: d.perfects || 0,
+          goods: d.goods || 0,
+          misses: d.misses || 0,
+          strays: d.strays || 0,
+          botBoosts: d.botBoosts || 0,
+          lastActionAt: d.lastActionAt || 0,
+          lastBotAt: d.lastBotAt || 0,
+          nextBotBoostAt: d.nextBotBoostAt ?? null,
+          lastMove: typeof d.lastMove === "string" ? d.lastMove : "",
+          stumbleUntilTick: typeof d.stumbleUntilTick === "number" ? d.stumbleUntilTick : 0,
+          wasIdle: !!d.wasIdle,
+          chart,
+        };
+        ts.order.push(rec.playerId);
+        ts.dancers.set(rec.playerId, rec);
+        dc.#playerIndex.set(rec.playerId, { teamId: ts.teamId, rec });
+      }
+      dc.#teams.set(ts.teamId, ts);
+    }
+    return dc;
+  }
+}
+
+const MirrorParts = { MirrorLobby, SetupCrew, DanceCrew };
+return MirrorParts;
+})();
+
 /* ---------- rules/Trial.js ---------- */
 const Trial = (() => {
 /* Trial: ranks the teams for one round. Top half win.
    Every trial takes the round and the teams and returns a ranked list (best first).
    Winners = half the teams, rounded up: 4 teams -> 2, 5 teams -> 3, 7 teams -> 4.
    Subclasses only decide the order:
-     SopTrial    Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
-     AutoTrial   Levels 2-4  random whole number 0 to 7 + influence (placeholder until those mini-games exist)
+     SopTrial        Level 1     SOP score (steps in the right place + 1 if the endless step is left out) + influence, ties random
+     SplitBriefTrial Level 2     Split Brief score (0 to 5) + influence, ties by post-twist lock-in order then random
+     MirrorTrial     Level 3     Presentation Day coordinator (lobby, setup crew, dance crew), attention score 0 to 7 + influence
+     AutoTrial       Level 4     random whole number 0 to 7 + influence (placeholder until those mini-games exist)
    Light influence (Levels 1 to 4): 0.5 x (team's average in the tested attribute minus all teams' average).
-     JudgedTrial Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
+     JudgedTrial     Levels 5-6  submissions to a prompt, then player Vote: points, then most first places, then random
    Rule code only. No screen code. Works in the browser and in Node. */
 
 
@@ -1275,6 +4222,10 @@ class Trial {
     this.ranking = order.map((r, i) => {
       r.team.won = i < w;
       if (r.team.won) r.team.trialWins += 1;
+      if (round && round.n) {
+        if (!r.team.trialResults) r.team.trialResults = {};
+        r.team.trialResults[round.n] = r.team.won;
+      }
       return { ...r, place: i + 1, won: r.team.won };
     });
     return this.ranking;
@@ -1312,14 +4263,14 @@ class Trial {
     return new Map(teams.map(t => [t, avg.has(t) ? Trial.INFLUENCE * (avg.get(t) - all) : 0]));
   }
 
-  /* Rank by base + influence. Ties random. */
-  rankWithInfluence(round, teams, baseOf) {
+  /* Rank by base + influence. Ties random after any extraKeys. */
+  rankWithInfluence(round, teams, baseOf, extraKeys = []) {
     const inf = Trial.influence(round, teams);
     const entries = teams.map(team => {
       const base = baseOf(team);
       return { team, base, influence: inf.get(team), score: base + inf.get(team) };
     });
-    return this.sortBy(entries, [e => e.score]);
+    return this.sortBy(entries, [e => e.score, ...extraKeys]);
   }
 
   /* A random whole number from 0 to 7 (same range as the SOP score). */
@@ -1328,6 +4279,8 @@ class Trial {
   /* The right trial for a round's level. */
   static forRound(round, rng) {
     if (round.trialKind === "sop") return new SopTrial(rng);
+    if (round.trialKind === "splitBrief") return new SplitBriefTrial(rng);
+    if (round.trialKind === "mirror") return new MirrorTrial(rng);
     if (round.trialKind === "judged") return new JudgedTrial(rng, round.n);
     return new AutoTrial(rng);
   }
@@ -1342,8 +4295,12 @@ class Trial {
     const teamById = new Map(teams.map(t => [t.id, t]));
     let t;
     if (data.kind === "sop") {
-      t = new SopTrial(rng);
+      t = new SopTrial(rng, { pileSeed: Number.isInteger(data.pileSeed) ? (data.pileSeed >>> 0) : 0 });
       t.scores = new Map(data.scores.map(([id, s]) => [teamById.get(id), s]));
+    } else if (data.kind === "splitBrief") {
+      t = SplitBriefTrial.fromJSON(data, { rng, teams, byId });
+    } else if (data.kind === "mirror") {
+      t = MirrorTrial.fromJSON(data, { rng, teams, byId });
     } else if (data.kind === "judged") {
       t = new JudgedTrial(rng, data.level);
       t.prompt = data.prompt;
@@ -1361,9 +4318,41 @@ class Trial {
   }
 }
 
+/* Pure 32-bit FNV-1a + Murmur3 mix for deterministic SOP pile display order (no Math.random, no Rng draws). */
+function sopHashInt(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
 /* Level 1: the coffee SOP. */
 class SopTrial extends Trial {
-  constructor(rng) { super(rng); this.scores = new Map(); }
+  #pileSeed;
+  constructor(rng, { pileSeed = null } = {}) {
+    super(rng);
+    this.scores = new Map();
+    this.#pileSeed = Number.isInteger(pileSeed) ? (pileSeed >>> 0) : (Rng.canSave(rng) ? (rng.getState() >>> 0) : 0);
+  }
+
+  get pileSeed() { return this.#pileSeed; }
+
+  /* Deterministic display order for SOP cards from round number and saved pileSeed (0 Rng draws). */
+  pileOrder(roundN = 1) {
+    const out = [...SopTrial.STEPS, SopTrial.ENDLESS];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = sopHashInt(roundN + "|" + this.#pileSeed + "|" + i) % (i + 1);
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
 
   static get MAX_SCORE() { return 7; }
   /* built: the team's steps in order. correct: the right order. endless: the step that should be left out.
@@ -1373,6 +4362,7 @@ class SopTrial extends Trial {
     const endlessOut = built.length > 0 && !built.includes(endless);
     return { right, endlessOut, score: right + (endlessOut ? 1 : 0) };
   }
+  static canSubmit(built) { return Array.isArray(built) && built.length > 0; }
 
   setScore(team, score) {
     if (this.ranking) throw new Error("The trial already ran.");
@@ -1424,7 +4414,7 @@ class SopTrial extends Trial {
   }
 
   get kind() { return "sop"; }
-  toJSON() { return { ...super.toJSON(), scores: [...this.scores].map(([team, s]) => [team.id, s]) }; }
+  toJSON() { return { ...super.toJSON(), scores: [...this.scores].map(([team, s]) => [team.id, s]), pileSeed: this.#pileSeed }; }
 }
 
 /* The coffee SOP: the steps in the right order, and the endless step that should be left out. */
@@ -1436,6 +4426,1045 @@ SopTrial.ENDLESS = "Repeat step 1 until performance is satisfactory";
 /* Levels 2-4 for now: random whole number 0 to 7 plus light influence. */
 class AutoTrial extends Trial {
   rank(round, teams) { return this.rankWithInfluence(round, teams, () => this.randomBase()); }
+}
+
+function scenarioById(id) {
+  return Object.values(Scenarios).find(s => s.id === id) || Scenarios.MEDLINE_SPRINT_1;
+}
+
+/* Level 2: Split Brief. Private cards dealt round-robin, team notes, shared 2-slot board,
+   final Lock In, and Ghosted Teammate twist. */
+class SplitBriefTrial extends Trial {
+  #scenario;
+  #teams = [];
+  #dealt = false;
+  #letterMap = {};           // original task id -> shuffled letter
+  #cardOrder = [];           // card ids in shuffled deal order
+  #deals = new Map();        // Player -> string[] card ids
+  #notes = new Map();        // Team -> [{ posterId, posterName, text, order }]
+  #notesUsed = new Map();    // Player -> number
+  #boards = new Map();       // Team -> string[] task ids
+  #lockOrder = new Map();    // Team -> number
+  #lockCounter = 0;
+  #lockedAfterTwist = new Set(); // Teams that locked in after the twist fired
+  #twistHolders = new Map(); // Team -> Player
+  #twistFired = false;
+  #twistDeadline = null;
+
+  constructor(rng, scenario = Scenarios.MEDLINE_SPRINT_1) {
+    if (typeof rng !== "function") throw new Error("SplitBriefTrial requires a seeded rng.");
+    super(rng);
+    this.#scenario = scenario || Scenarios.MEDLINE_SPRINT_1;
+    for (const t of this.#scenario.tasks) this.#letterMap[t.id] = t.id;
+    this.#cardOrder = this.#scenario.cards.map(c => c.id);
+    this.onAllLocked = null;
+  }
+
+  get kind() { return "splitBrief"; }
+  get scenario() { return this.#scenario; }
+  get dealt() { return this.#dealt; }
+  get letterMap() { return { ...this.#letterMap }; }
+  get cardOrder() { return this.#cardOrder.slice(); }
+  get tasks() {
+    return this.#scenario.tasks
+      .map(t => ({ ...t, id: this.#mapLetter(t.id) }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+  get preTwistAnswer() { return this.#scenario.preTwistAnswer.map(id => this.#mapLetter(id)); }
+  get postTwistAnswer() { return this.#scenario.postTwistAnswer.map(id => this.#mapLetter(id)); }
+  get twistFired() { return this.#twistFired; }
+  get twistDeadline() { return this.#twistDeadline; }
+  setTwistDeadline(at) { this.#twistDeadline = at; }
+
+  #shuffle(list) {
+    const out = list.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  #teamOf(player) { return this.#teams.find(t => t.has(player)) || null; }
+  #cardById(id) { return this.#scenario.cards.find(c => c.id === id) || null; }
+  #mapLetter(id) { return this.#letterMap[id] || id; }
+  #remapText(text) {
+    if (typeof text !== "string") return text;
+    return text.replace(/\(([A-Za-z0-9]+)\)/g, (m, id) => (this.#letterMap[id] ? "(" + this.#letterMap[id] + ")" : m));
+  }
+  #validTaskIds() { return new Set(this.tasks.map(t => t.id)); }
+
+  #activeWhy(player, verb) {
+    if (!player) return "Unknown player.";
+    if (player.isStuck()) return "Stuck players cannot " + verb + ".";
+    if (player.idle) return "Idle players cannot " + verb + ".";
+    if (!player.isActive()) return "Only active players can " + verb + ".";
+    return null;
+  }
+
+  #baseScore(team) {
+    if (team.members.some(p => !p.isBot)) {
+      return SplitBriefTrial.score(this.boardFor(team), this.postTwistAnswer);
+    }
+    return Math.floor(this.rng() * (SplitBriefTrial.MAX_SCORE + 1));
+  }
+
+  /* Shuffle task letters and card deal order, then deal round-robin to each team's active players. */
+  deal(teams) {
+    if (this.#dealt) throw new Error("Cards were already dealt.");
+    this.#teams = teams.slice();
+    this.#dealt = true;
+
+    const origIds = this.#scenario.tasks.map(t => t.id);
+    const shuffledLetters = this.#shuffle(origIds);
+    this.#letterMap = {};
+    origIds.forEach((orig, i) => { this.#letterMap[orig] = shuffledLetters[i]; });
+
+    const cards = this.#shuffle(this.#scenario.cards);
+    this.#cardOrder = cards.map(c => c.id);
+
+    for (const team of this.#teams) {
+      this.#boards.set(team, []);
+      this.#notes.set(team, []);
+      for (const p of team.members) {
+        this.#deals.set(p, []);
+        this.#notesUsed.set(p, 0);
+      }
+      const active = team.active();
+      if (!active.length) continue;
+      const seats = this.#shuffle(active);
+      for (let i = 0; i < cards.length; i++) {
+        this.#deals.get(seats[i % seats.length]).push(cards[i].id);
+      }
+    }
+  }
+
+  /* Private view: returns only the asking player's cards, with shuffled task letters applied. */
+  cardsFor(player) {
+    return (this.#deals.get(player) || []).map(id => {
+      const c = this.#cardById(id);
+      return { ...c, text: this.#remapText(c.text), botNote: this.#remapText(c.botNote) };
+    });
+  }
+
+  /* Team notes: active players only, max 80 chars, non-empty, max 3 per player, allowed after Lock In. */
+  postNote(player, text) {
+    const team = this.#teamOf(player);
+    const used = this.#notesUsed.get(player) || 0;
+    const t = String(text == null ? "" : text).trim();
+    const why = (this.ranking ? "The trial is closed." : null) ||
+      (!team ? "Player is not in this trial." : null) ||
+      this.#activeWhy(player, "post notes") ||
+      (used >= SplitBriefTrial.MAX_NOTES ? "No notes left." : null) ||
+      (!t ? "Write a note first." : null) ||
+      (t.length > SplitBriefTrial.MAX_NOTE_CHARS
+        ? "Note too long: " + t.length + " of " + SplitBriefTrial.MAX_NOTE_CHARS + " characters."
+        : null);
+    if (why) return { ok: false, reason: why };
+    const list = this.#notes.get(team);
+    const note = { posterId: player.id, posterName: player.name, text: t, order: list.length + 1 };
+    list.push(note);
+    this.#notesUsed.set(player, used + 1);
+    return { ok: true, note: { ...note }, notesLeft: SplitBriefTrial.MAX_NOTES - (used + 1) };
+  }
+
+  notesLeft(player) {
+    return Math.max(0, SplitBriefTrial.MAX_NOTES - (this.#notesUsed.get(player) || 0));
+  }
+
+  notesFor(team) {
+    return (this.#notes.get(team) || []).map(n => ({ ...n }));
+  }
+
+  boardFor(team) {
+    return (this.#boards.get(team) || []).slice();
+  }
+
+  /* Set team's ordered 0 to 2 task ids. Rejected after team Lock In. */
+  setBoard(player, taskIds) {
+    const team = this.#teamOf(player);
+    const validIds = this.#validTaskIds();
+    const why = (this.ranking ? "The trial is closed." : null) ||
+      (!team ? "Player is not in this trial." : null) ||
+      this.#activeWhy(player, "edit the board") ||
+      (this.#lockOrder.has(team) ? "Your team already locked in." : null) ||
+      (!Array.isArray(taskIds) ? "Not a valid board." : null) ||
+      (taskIds.length > SplitBriefTrial.MAX_BOARD_TASKS
+        ? "Pick at most " + SplitBriefTrial.MAX_BOARD_TASKS + " tasks."
+        : null) ||
+      (taskIds.some(id => !validIds.has(id)) ? "Not a valid task." : null) ||
+      (new Set(taskIds).size !== taskIds.length ? "Duplicate tasks are not allowed." : null);
+    if (why) return { ok: false, reason: why };
+    this.#boards.set(team, taskIds.slice());
+    return { ok: true, board: taskIds.slice() };
+  }
+
+  /* Any active teammate locks the team's board permanently, recording sequential lock order. */
+  lockIn(player) {
+    const team = this.#teamOf(player);
+    const why = (this.ranking ? "The trial is closed." : null) ||
+      (!team ? "Player is not in this trial." : null) ||
+      this.#activeWhy(player, "lock in") ||
+      (this.#lockOrder.has(team) ? "Your team already locked in." : null) ||
+      (!this.boardFor(team).length ? "Pick at least 1 task before locking in." : null);
+    if (why) return { ok: false, reason: why };
+    this.#lockCounter += 1;
+    this.#lockOrder.set(team, this.#lockCounter);
+    const afterTwist = this.#twistFired;
+    if (afterTwist) this.#lockedAfterTwist.add(team);
+    const out = { ok: true, lockOrder: this.#lockCounter, afterTwist, board: this.boardFor(team) };
+    if (this.allLocked() && this.onAllLocked) {
+      this.onAllLocked();
+      out.closed = true;
+    }
+    return out;
+  }
+
+  isLocked(team) { return this.#lockOrder.has(team); }
+  lockOrderOf(team) { return this.#lockOrder.get(team) || null; }
+  postTwistLockOrderOf(team) { return this.#lockedAfterTwist.has(team) ? this.#lockOrder.get(team) : null; }
+  allLocked(teams = this.#teams) { return teams.length > 0 && teams.every(t => this.#lockOrder.has(t)); }
+
+  /* Picks one random active player per team (including locked teams). Fires once only. */
+  fireTwist(teams = this.#teams) {
+    if (this.#twistFired || this.ranking) return false;
+    this.#twistFired = true;
+    for (const team of teams) {
+      const active = team.active();
+      if (!active.length) continue;
+      const chosen = active[Math.floor(this.rng() * active.length)];
+      this.#twistHolders.set(team, chosen);
+    }
+    return true;
+  }
+
+  #twistCard() {
+    const t = this.#scenario.twist;
+    return { ...t, text: this.#remapText(t.text), botNote: this.#remapText(t.botNote) };
+  }
+
+  /* Returns the twist card only for the chosen holder on each team, null for everyone else. */
+  twistFor(player) {
+    if (!this.#twistFired) return null;
+    const team = this.#teamOf(player);
+    if (team) return this.#twistHolders.get(team) === player ? this.#twistCard() : null;
+    if (!this.#teams.length) {
+      for (const holder of this.#twistHolders.values()) {
+        if (holder === player) return this.#twistCard();
+      }
+    }
+    return null;
+  }
+
+  /* Close the trial: fire the twist first if it has not fired yet, then run and rank. */
+  closeSplitBrief(round, teams = this.#teams) {
+    if (!this.#twistFired) this.fireTwist(teams);
+    return this.runTrial(round, teams);
+  }
+
+  /* +2 per correct task picked, +1 if both tasks are correct and in exact order. Max 5; empty scores 0. */
+  static score(board, answer = Scenarios.MEDLINE_SPRINT_1.postTwistAnswer) {
+    if (!Array.isArray(board) || board.length === 0) return 0;
+    const picked = [...new Set(board)].slice(0, SplitBriefTrial.MAX_BOARD_TASKS);
+    const correct = picked.filter(id => answer.includes(id)).length;
+    const exactOrder = picked.length === answer.length && answer.every((id, i) => picked[i] === id);
+    return correct * 2 + (exactOrder ? 1 : 0);
+  }
+
+  /* Rank by score after influence, then earliest post-twist lock-in (pre-twist and unlocked teams
+     have none and rank below), then random. */
+  rank(round, teams) {
+    const ranked = this.rankWithInfluence(
+      round,
+      teams,
+      t => this.#baseScore(t),
+      [
+        e => (this.postTwistLockOrderOf(e.team) !== null ? 1 : 0),
+        e => (this.postTwistLockOrderOf(e.team) !== null ? -this.postTwistLockOrderOf(e.team) : 0),
+      ]
+    );
+    return ranked.map(e => ({
+      ...e,
+      lockOrder: this.#lockOrder.get(e.team) || null,
+      postTwistLockOrder: this.postTwistLockOrderOf(e.team),
+    }));
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      scenarioId: this.#scenario.id,
+      dealt: this.#dealt,
+      letterMap: { ...this.#letterMap },
+      cardOrder: this.#cardOrder.slice(),
+      teamIds: this.#teams.map(t => t.id),
+      deals: [...this.#deals].map(([p, ids]) => [p.id, ids.slice()]),
+      notes: [...this.#notes].map(([t, list]) => [t.id, list.map(n => ({ ...n }))]),
+      notesUsed: [...this.#notesUsed].map(([p, n]) => [p.id, n]),
+      boards: [...this.#boards].map(([t, ids]) => [t.id, ids.slice()]),
+      lockOrder: [...this.#lockOrder].map(([t, n]) => [t.id, n]),
+      lockCounter: this.#lockCounter,
+      lockedAfterTwist: [...this.#lockedAfterTwist].map(t => t.id),
+      twistHolders: [...this.#twistHolders].map(([t, p]) => [t.id, p.id]),
+      twistFired: this.#twistFired,
+      twistDeadline: this.#twistDeadline,
+    };
+  }
+
+  static fromJSON(data, { rng, teams, byId, scenario } = {}) {
+    const teamById = new Map(teams.map(t => [t.id, t]));
+    const t = new SplitBriefTrial(rng, scenario || scenarioById(data.scenarioId));
+    t.#dealt = !!data.dealt;
+    if (data.letterMap) t.#letterMap = { ...data.letterMap };
+    if (Array.isArray(data.cardOrder)) t.#cardOrder = data.cardOrder.slice();
+    t.#teams = (data.teamIds || []).map(id => teamById.get(id)).filter(Boolean);
+    t.#deals = new Map((data.deals || []).map(([id, cards]) => [byId.get(id), cards.slice()]));
+    t.#notes = new Map((data.notes || []).map(([id, list]) => [teamById.get(id), list.map(n => ({ ...n }))]));
+    t.#notesUsed = new Map((data.notesUsed || []).map(([id, n]) => [byId.get(id), n]));
+    t.#boards = new Map((data.boards || []).map(([id, ids]) => [teamById.get(id), ids.slice()]));
+    t.#lockOrder = new Map((data.lockOrder || []).map(([id, n]) => [teamById.get(id), n]));
+    t.#lockCounter = data.lockCounter || 0;
+    t.#lockedAfterTwist = new Set((data.lockedAfterTwist || []).map(id => teamById.get(id)).filter(Boolean));
+    t.#twistHolders = new Map((data.twistHolders || []).map(([tId, pId]) => [teamById.get(tId), byId.get(pId)]));
+    t.#twistFired = !!data.twistFired;
+    t.#twistDeadline = data.twistDeadline ?? null;
+    t.ranking = data.ranking ? data.ranking.map(r => ({ ...r, team: teamById.get(r.team) })) : null;
+    return t;
+  }
+}
+
+const mirrorIdOf = x => (x && typeof x === "object" ? x.id : x);
+const MIRROR_SEED_MIX = 0x9E3779B9;
+
+function deriveMirrorSeedRng(rng) {
+  if (Rng.canSave(rng)) return Rng.seeded((rng.getState() ^ MIRROR_SEED_MIX) >>> 0);
+  // Test-only 1-draw fallback for non-saveable RNGs; real games always use a saveable Rng.
+  return Rng.seeded((Math.floor(rng() * 4294967296) ^ MIRROR_SEED_MIX) >>> 0);
+}
+
+/* Level 3: The Mirror: Presentation Day. Coordinates #lobby, #setup, and #dance.
+   Outside code (Game, screens, bots) calls MirrorTrial only, never MirrorParts directly. */
+class MirrorTrial extends Trial {
+  #seedRng;
+  #lobby;
+  #setup;
+  #dance;
+  #teams = [];
+  #teamIds = [];
+  #phase = "idle";               // "idle" | "lobby" | "reveal" | "showtime" | "failed"
+  #showtimeStartAt = null;
+  #failedTeams = new Set();
+  #failReasons = new Map();      // teamId -> "lobby" | "attention"
+  #botOnlyTeams = new Set();
+  #botAttention = new Map();     // teamId -> rolled 0..100 attention for bot-only teams
+  #lockedAttention = new Map();  // teamId -> 0..100 attention frozen at wrap-up, attention 0, or close
+  #crews = new Map();            // teamId -> { setupIds: [], danceIds: [] }
+
+  constructor(rng, { seedRng = null } = {}) {
+    if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
+    super(rng);
+    this.#seedRng = typeof seedRng === "function" ? seedRng : deriveMirrorSeedRng(rng);
+    this.#lobby = new MirrorParts.MirrorLobby(rng, null, { seedRng: this.#seedRng });
+    this.#setup = new MirrorParts.SetupCrew(rng, null, { seedRng: this.#seedRng });
+    this.#dance = new MirrorParts.DanceCrew(rng, null, { seedRng: this.#seedRng });
+  }
+
+  static get MAX_SCORE() { return MirrorData.scoring.maxScore; }
+
+  /* Audience attention (0 to 100) -> whole score 0 to 7. */
+  static score(attention) {
+    const min = MirrorData.scoring.attentionMin;
+    const max = MirrorData.scoring.attentionMax;
+    const maxScore = MirrorData.scoring.maxScore;
+    const raw = typeof attention === "number" && Number.isFinite(attention) ? attention : min;
+    const clamped = Math.max(min, Math.min(max, raw));
+    return Math.max(0, Math.min(maxScore, Math.round((clamped / max) * maxScore)));
+  }
+
+  get kind() { return "mirror"; }
+  get phase() { return this.#phase; }
+  get showtimeStartAt() { return this.#showtimeStartAt; }
+  get lobbyStarted() { return this.#lobby.started; }
+  get lobbyClosed() { return this.#lobby.closed; }
+  get setupStarted() { return this.#setup.started; }
+  get danceStarted() { return this.#dance.started; }
+
+  /* Setup Crew gets half of connected active players rounded up, capped at 3. */
+  static setupCrewSize(activeCount) {
+    return MirrorParts.SetupCrew.crewSize(activeCount);
+  }
+
+  #shuffle(list) {
+    const out = list.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  #showtimeWhy() {
+    if (this.ranking) return "The trial is closed.";
+    if (this.#phase !== "showtime") return "Showtime has not started.";
+    return null;
+  }
+
+  #playerTeamId(playerOrId) {
+    const ps = this.#lobby.playerState(playerOrId);
+    return ps ? ps.teamId : null;
+  }
+
+  #teamShowtimeWhy(teamOrId) {
+    const baseWhy = this.#showtimeWhy();
+    if (baseWhy) return baseWhy;
+    if (teamOrId !== null && teamOrId !== undefined) {
+      const tid = mirrorIdOf(teamOrId);
+      if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+        return "Team has already failed.";
+      }
+      if (this.#lockedAttention.has(tid)) {
+        return "Team presentation has already finished.";
+      }
+    }
+    return null;
+  }
+
+  #isBotOnly(team) {
+    if (this.#botOnlyTeams.has(team.id)) return true;
+    return !this.#lobby.started && Array.isArray(team.members) && team.members.length > 0 && team.members.every(p => p.isBot);
+  }
+
+  #ensureBotAttention(teamId) {
+    if (!this.#botAttention.has(teamId)) {
+      const min = MirrorData.scoring.attentionMin;
+      const max = MirrorData.scoring.attentionMax;
+      this.#botAttention.set(teamId, min + Math.floor(this.rng() * (max - min + 1)));
+    }
+    return this.#botAttention.get(teamId);
+  }
+
+  #lockTeamAttention(tid, showtimeSecondsLeft) {
+    const min = MirrorData.scoring.attentionMin;
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+      const reason = this.#lobby.isTeamFailed(tid) ? "lobby" : (this.#failReasons.get(tid) || "attention");
+      this.#failedTeams.add(tid);
+      this.#failReasons.set(tid, reason);
+      this.#lockedAttention.set(tid, min);
+      return { teamId: tid, attention: min, score: 0, failed: true, failReason: reason };
+    }
+    if (this.#lockedAttention.has(tid)) {
+      const att = this.#lockedAttention.get(tid);
+      const failed = att <= min;
+      return {
+        teamId: tid,
+        attention: att,
+        score: MirrorTrial.score(att),
+        failed,
+        failReason: this.#failReasons.get(tid) || (failed ? "attention" : null),
+      };
+    }
+    const att = this.attentionFor(tid, showtimeSecondsLeft);
+    this.#lockedAttention.set(tid, att);
+    const failed = att <= min;
+    if (failed) {
+      this.#failedTeams.add(tid);
+      this.#failReasons.set(tid, "attention");
+    }
+    return {
+      teamId: tid,
+      attention: att,
+      score: MirrorTrial.score(att),
+      failed,
+      failReason: failed ? "attention" : null,
+    };
+  }
+
+  #resolveTeamResult(team) {
+    const tid = team.id;
+    const min = MirrorData.scoring.attentionMin;
+    const botOnly = this.#isBotOnly(team);
+    if (this.#lobby.isTeamFailed(tid)) {
+      return { attention: min, base: 0, failed: true, failReason: "lobby", botOnly };
+    }
+    if (this.#failedTeams.has(tid)) {
+      return {
+        attention: min,
+        base: 0,
+        failed: true,
+        failReason: this.#failReasons.get(tid) || "attention",
+        botOnly,
+      };
+    }
+    if (botOnly) {
+      const att = this.#ensureBotAttention(tid);
+      const failed = att <= min;
+      return {
+        attention: att,
+        base: MirrorTrial.score(att),
+        failed,
+        failReason: failed ? "attention" : null,
+        botOnly: true,
+      };
+    }
+    let att;
+    if (this.#lockedAttention.has(tid)) att = this.#lockedAttention.get(tid);
+    else if (this.#phase === "showtime") att = this.attentionFor(tid, 0);
+    else att = min;
+    const failed = att <= min;
+    return {
+      attention: att,
+      base: MirrorTrial.score(att),
+      failed,
+      failReason: failed ? "attention" : null,
+      botOnly: false,
+    };
+  }
+
+  startLobby(teams) {
+    if (this.#lobby.started) throw new Error("Mirror lobby already started.");
+    this.#teams = teams.slice();
+    this.#teamIds = this.#teams.map(t => t.id);
+    this.#botOnlyTeams = new Set(
+      this.#teams.filter(t => t.members.length > 0 && t.members.every(p => p.isBot)).map(t => t.id)
+    );
+    this.#botAttention.clear();
+    this.#lockedAttention.clear();
+    this.#failReasons.clear();
+    this.#phase = "lobby";
+    return this.#lobby.start(this.#teams);
+  }
+
+  connect(playerId) { return this.#lobby.connect(playerId); }
+  miss(playerId) { return this.#lobby.miss(playerId); }
+  lobbyState() { return this.#lobby.state(); }
+  lobbyTeamState(teamOrId) { return this.#lobby.teamState(teamOrId); }
+  lobbyPlayerState(playerOrId) { return this.#lobby.playerState(playerOrId); }
+  lobbyCursorStart(playerOrId) { return this.#lobby.cursorStartOf(playerOrId); }
+  botConnectTimes(teamOrId = null) { return this.#lobby.botConnectTimes(teamOrId); }
+  botConnectTimeOf(playerId) { return this.#lobby.botConnectTimeOf(playerId); }
+  allConnected() { return this.#lobby.allConnected(); }
+
+  /* Close lobby doors, fail incomplete teams, deal Setup vs Dance crews, and start SetupCrew + DanceCrew. */
+  closeDoors() {
+    const res = this.#lobby.closeDoors();
+    if (res.alreadyClosed) return { ...res, phase: this.#phase, crews: this.allCrews() };
+    for (const teamId of res.failedTeams) {
+      this.#failedTeams.add(teamId);
+      this.#failReasons.set(teamId, "lobby");
+    }
+    for (const teamId of res.passedTeams) {
+      const pool = this.#shuffle(this.#lobby.connectedIds(teamId));
+      const setupCount = MirrorTrial.setupCrewSize(pool.length);
+      this.#crews.set(teamId, { setupIds: pool.slice(0, setupCount), danceIds: pool.slice(setupCount) });
+    }
+    if (res.passedTeams.length > 0) {
+      const setupDeals = res.passedTeams.map(teamId => {
+        const deal = this.#crews.get(teamId);
+        return {
+          teamId,
+          players: deal.setupIds.map(pid => this.#lobby.playerState(pid)),
+          danceIds: deal.danceIds.slice(),
+        };
+      });
+      this.#setup.start(setupDeals, { shuffleSlots: false });
+      this.#dance.start(this.#setup, {
+        playerLookup: pid => this.#lobby.playerState(pid),
+      });
+    }
+    this.#phase = res.passedTeams.length > 0 ? "reveal" : "failed";
+    return { ...res, phase: this.#phase, crews: this.allCrews() };
+  }
+
+  startShowtime({ now = null } = {}) {
+    if (this.#phase === "showtime") return { ok: false, alreadyStarted: true, phase: this.#phase };
+    if (this.#phase !== "reveal") throw new Error("Showtime can only start after crew reveal.");
+    const min = MirrorData.scoring.attentionMin;
+    const max = MirrorData.scoring.attentionMax;
+    for (const teamId of this.#teamIds) {
+      if (!this.#failedTeams.has(teamId) && this.#botOnlyTeams.has(teamId)) {
+        this.#botAttention.set(teamId, min + Math.floor(this.rng() * (max - min + 1)));
+      }
+    }
+    this.#showtimeStartAt = typeof now === "number" && Number.isFinite(now) ? now : null;
+    this.#setup.beginShowtime(this.#showtimeStartAt);
+    this.#dance.beginShowtime(this.#showtimeStartAt);
+    this.#phase = "showtime";
+    return { ok: true, phase: this.#phase, setup: this.#setup.state(), dance: this.#dance.state() };
+  }
+
+  nextCable(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextCable(teamOrId);
+  }
+  returnCable(teamOrId, port) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.returnCable(teamOrId, port);
+  }
+  cableHit(playerId, port, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.cableHit(playerId, port, opts);
+  }
+  cableMiss(playerId, port, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.cableMiss(playerId, port, opts);
+  }
+  nextSoundSpike(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextSoundSpike(teamOrId);
+  }
+  nextSoundJitter(teamOrId) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.nextSoundJitter(teamOrId);
+  }
+  soundAdjust(playerId, delta, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.soundAdjust(playerId, delta, opts);
+  }
+  soundHeld(playerId, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.soundHeld(playerId, opts);
+  }
+  soundFeedback(playerId, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.soundFeedback(playerId, opts);
+  }
+  micTap(playerId, micNumber, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.micTap(playerId, micNumber, opts);
+  }
+  pickFile(playerId, fileIndexOrName, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.pickFile(playerId, fileIndexOrName, opts);
+  }
+  reshuffleDeck(teamOrId, opts) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#setup.reshuffleDeck(teamOrId, opts);
+  }
+  nextSetupDeadline(teamOrId, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#teamShowtimeWhy(tid) || this.#botOnlyTeams.has(tid)) return null;
+    return this.#setup.nextDeadline(tid, opts);
+  }
+  tickSetup(teamOrId, now, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    const why = this.#teamShowtimeWhy(tid) || (this.#botOnlyTeams.has(tid) ? "Bot-only team." : null);
+    return why ? { ok: false, reason: why } : this.#setup.tickDeadlines(tid, now, opts);
+  }
+  nextShowtimeEventAt(teamOrId, { showStart, activeHumanIds = null, autoPilotIds = null, now = null, includeBots = false } = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#teamShowtimeWhy(tid) || this.#botOnlyTeams.has(tid)) return null;
+    let earliest = Infinity;
+    const setupDue = this.nextSetupDeadline(tid, { activeHumanIds, now });
+    if (setupDue !== null && setupDue < earliest) earliest = setupDue;
+    const danceDue = this.nextDanceDeadline(tid, { activeHumanIds, includeSpawns: true });
+    if (danceDue !== null && danceDue < earliest) earliest = danceDue;
+    if (includeBots && typeof showStart === "number" && Number.isFinite(showStart)) {
+      const autoSet = autoPilotIds instanceof Set
+        ? autoPilotIds
+        : new Set(Array.isArray(autoPilotIds) ? autoPilotIds : []);
+      const curPid = this.#setup.currentPlayerId(tid);
+      const botSetupSec = this.#setup.botStepDueAt(tid, { autoPilot: curPid !== null && autoSet.has(curPid) });
+      if (botSetupSec !== null) {
+        const at = showStart + Math.round(botSetupSec * 1000);
+        if (at < earliest) earliest = at;
+      }
+      const boostCap = MirrorData.dance.boostCap;
+      for (const d of this.#dance.dancersFor(tid)) {
+        if ((!d.isBot && !autoSet.has(d.playerId)) || d.boost >= boostCap || d.nextBotBoostAt === null) continue;
+        const at = showStart + Math.round(d.nextBotBoostAt * 1000);
+        if (at < earliest) earliest = at;
+      }
+    }
+    return Number.isFinite(earliest) ? earliest : null;
+  }
+  setupViewFor(teamOrId, now = null) {
+    return this.#setup.setupViewFor(teamOrId, now);
+  }
+  answerQa(playerId, answerIndex, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.answerQa(playerId, answerIndex, opts);
+  }
+  timeoutQa(playerId, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#setup.timeoutQa(playerId, opts);
+  }
+  wrapUp(playerId, opts = {}) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    if (why) return { ok: false, reason: why };
+    const res = this.#setup.wrapUp(playerId, opts);
+    if (res.ok && !this.#botOnlyTeams.has(res.teamId)) {
+      let sec = null;
+      if (typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)) {
+        sec = opts.showtimeSecondsLeft;
+      } else if (typeof opts.elapsedSeconds === "number" && Number.isFinite(opts.elapsedSeconds)) {
+        sec = MirrorData.timers.showtimeSeconds - opts.elapsedSeconds;
+      }
+      if (sec !== null) {
+        const locked = this.#lockTeamAttention(res.teamId, sec);
+        return {
+          ...res,
+          attention: locked.attention,
+          score: locked.score,
+          failed: locked.failed,
+          failReason: locked.failReason,
+        };
+      }
+    }
+    return res;
+  }
+  completeBotSetupStep(playerId, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    if (why) return { ok: false, reason: why };
+    const res = this.#setup.completeBotStep(playerId, opts);
+    if (res.ok && res.wrappedUp && !this.#botOnlyTeams.has(res.teamId)) {
+      const secLeft = MirrorData.timers.showtimeSeconds - res.finishedAt;
+      const locked = this.#lockTeamAttention(res.teamId, secLeft);
+      return {
+        ...res,
+        attention: locked.attention,
+        score: locked.score,
+        failed: locked.failed,
+        failReason: locked.failReason,
+      };
+    }
+    return res;
+  }
+  advanceBotSetup(teamOrId, elapsedSeconds, opts) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    if (why) return { ok: false, reason: why };
+    const res = this.#setup.advanceBotSetup(teamOrId, elapsedSeconds, opts);
+    if (res.ok && res.wrappedUp && !this.#botOnlyTeams.has(res.teamId) && !this.#lockedAttention.has(res.teamId)) {
+      const wrapEv = res.events ? res.events.find(e => e.wrappedUp) : null;
+      const finishedAt = wrapEv && typeof wrapEv.finishedAt === "number" ? wrapEv.finishedAt : elapsedSeconds;
+      const secLeft = MirrorData.timers.showtimeSeconds - finishedAt;
+      const locked = this.#lockTeamAttention(res.teamId, secLeft);
+      return {
+        ...res,
+        attention: locked.attention,
+        score: locked.score,
+        failed: locked.failed,
+        failReason: locked.failReason,
+      };
+    }
+    return res;
+  }
+
+  dancePress(playerId, dir, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#dance.press(playerId, dir, opts);
+  }
+  nextDanceDeadline(teamOrId, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#teamShowtimeWhy(tid) || this.#botOnlyTeams.has(tid)) return null;
+    return this.#dance.nextDeadline(tid, opts);
+  }
+  tickDance(teamOrId, now, opts = {}) {
+    const tid = mirrorIdOf(teamOrId);
+    const why = this.#teamShowtimeWhy(tid) || (this.#botOnlyTeams.has(tid) ? "Bot-only team." : null);
+    return why ? { ok: false, reason: why } : this.#dance.tickDeadlines(tid, now, opts);
+  }
+  danceViewFor(playerOrId, now = null) {
+    return this.#dance.danceViewFor(playerOrId, now);
+  }
+  danceHit(playerId, quality, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#dance.noteHit(playerId, quality, opts);
+  }
+  danceMiss(playerId, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#dance.noteMiss(playerId, opts);
+  }
+  danceStray(playerId, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#dance.strayPress(playerId, opts);
+  }
+  applyBotDanceBoost(playerId, opts) {
+    const why = this.#teamShowtimeWhy(this.#playerTeamId(playerId));
+    return why ? { ok: false, reason: why } : this.#dance.applyBotBoost(playerId, opts);
+  }
+  advanceBotDance(teamOrId, elapsedSeconds, opts) {
+    const why = this.#teamShowtimeWhy(teamOrId);
+    return why ? { ok: false, reason: why } : this.#dance.advanceBotDance(teamOrId, elapsedSeconds, opts);
+  }
+
+  setupSlots(teamOrId) { return this.#setup.slotsFor(teamOrId); }
+  setupSlotOf(playerOrId) { return this.#setup.slotOf(playerOrId); }
+  setupStep(teamOrId) { return this.#setup.currentStep(teamOrId); }
+  setupCurrentPlayerId(teamOrId) { return this.#setup.currentPlayerId(teamOrId); }
+  isSetupTurn(playerOrId) { return this.#setup.isPlayersTurn(playerOrId); }
+  isSetupWrappedUp(teamOrId) { return this.#setup.isWrappedUp(teamOrId); }
+  setupPenalties(teamOrId) { return this.#setup.penaltiesFor(teamOrId); }
+  micSequenceFor(teamOrId) { return this.#setup.micSequenceFor(teamOrId); }
+  deckOrderFor(teamOrId) { return this.#setup.deckOrderFor(teamOrId); }
+  qaOrderFor(teamOrId) { return this.#setup.qaOrderFor(teamOrId); }
+  currentQaFor(teamOrId) { return this.#setup.currentQaFor(teamOrId); }
+  botSetupDueAt(teamOrId, opts) { return this.#setup.botStepDueAt(teamOrId, opts); }
+  setupTeamState(teamOrId) { return this.#setup.teamState(teamOrId); }
+  setupState() { return this.#setup.state(); }
+
+  dancersFor(teamOrId) { return this.#dance.dancersFor(teamOrId); }
+  dancerIdsFor(teamOrId) { return this.#dance.dancerIdsFor(teamOrId); }
+  dancerState(playerOrId) { return this.#dance.dancerState(playerOrId); }
+  danceBoostFor(teamOrId) { return this.#dance.avgBoostFor(teamOrId); }
+  dancePenaltiesFor(teamOrId) { return this.#dance.avgPenaltiesFor(teamOrId); }
+  botDanceNextAt(playerOrId) { return this.#dance.botNextBoostAt(playerOrId); }
+  botDanceNextsFor(teamOrId = null) { return this.#dance.botNextBoostsFor(teamOrId); }
+  danceTeamState(teamOrId) { return this.#dance.teamState(teamOrId); }
+  danceState() { return this.#dance.state(); }
+  isBotOnlyTeam(teamOrId) { return this.#botOnlyTeams.has(mirrorIdOf(teamOrId)); }
+  botAttentionFor(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#botAttention.has(tid) ? this.#botAttention.get(tid) : null;
+  }
+
+  /* Current team attention (0..100). Attention drains only during showtime, never in lobby/reveal. */
+  attentionFor(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) return MirrorData.scoring.attentionMin;
+    if (this.#lockedAttention.has(tid)) return this.#lockedAttention.get(tid);
+    if (this.#phase !== "showtime") return MirrorData.scoring.attentionMax;
+    if (this.#botOnlyTeams.has(tid)) {
+      return this.#botAttention.has(tid) ? this.#botAttention.get(tid) : MirrorData.scoring.attentionMin;
+    }
+    const maxSec = MirrorData.timers.showtimeSeconds;
+    const sec = typeof showtimeSecondsLeft === "number" && Number.isFinite(showtimeSecondsLeft)
+      ? Math.max(0, Math.min(maxSec, showtimeSecondsLeft))
+      : maxSec;
+    const base = (sec / maxSec) * MirrorData.scoring.attentionMax;
+    const raw = base + this.#dance.avgBoostFor(tid) - this.#setup.penaltiesFor(tid) - this.#dance.avgPenaltiesFor(tid);
+    return Math.max(MirrorData.scoring.attentionMin, Math.min(MirrorData.scoring.attentionMax, raw));
+  }
+
+  scoreFor(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
+    return MirrorTrial.score(this.attentionFor(teamOrId, showtimeSecondsLeft));
+  }
+
+  lockedAttentionFor(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#lockedAttention.has(tid) ? this.#lockedAttention.get(tid) : null;
+  }
+
+  failReasonOf(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#lobby.isTeamFailed(tid) ? "lobby" : (this.#failReasons.get(tid) || null);
+  }
+
+  /* Check if showtime attention has hit 0 and lock the failure on that team. */
+  checkAttention(teamOrId, showtimeSecondsLeft = MirrorData.timers.showtimeSeconds) {
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+      const reason = this.#lobby.isTeamFailed(tid) ? "lobby" : (this.#failReasons.get(tid) || "attention");
+      return {
+        teamId: tid,
+        attention: MirrorData.scoring.attentionMin,
+        score: 0,
+        failed: true,
+        failReason: reason,
+        locked: true,
+      };
+    }
+    if (this.#lockedAttention.has(tid)) {
+      const att = this.#lockedAttention.get(tid);
+      const failed = att <= MirrorData.scoring.attentionMin;
+      return {
+        teamId: tid,
+        attention: att,
+        score: MirrorTrial.score(att),
+        failed,
+        failReason: this.#failReasons.get(tid) || (failed ? "attention" : null),
+        locked: true,
+      };
+    }
+    const att = this.attentionFor(tid, showtimeSecondsLeft);
+    if (this.#phase === "showtime" && !this.#botOnlyTeams.has(tid) && att <= MirrorData.scoring.attentionMin) {
+      const res = this.#lockTeamAttention(tid, showtimeSecondsLeft);
+      return { ...res, locked: true };
+    }
+    return {
+      teamId: tid,
+      attention: att,
+      score: MirrorTrial.score(att),
+      failed: false,
+      failReason: null,
+      locked: false,
+    };
+  }
+
+  /* Lock a team's final attention and 0..7 score during showtime. */
+  finishTeam(teamOrId, showtimeSecondsLeft = 0) {
+    if (this.ranking) return { ok: false, reason: "The trial is closed." };
+    const tid = mirrorIdOf(teamOrId);
+    if (this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid)) {
+      return { ok: true, ...this.#lockTeamAttention(tid, 0) };
+    }
+    if (this.#phase !== "showtime") return { ok: false, reason: "Showtime has not started." };
+    if (this.#botOnlyTeams.has(tid)) {
+      const att = this.#ensureBotAttention(tid);
+      const failed = att <= MirrorData.scoring.attentionMin;
+      return {
+        ok: true,
+        teamId: tid,
+        attention: att,
+        score: MirrorTrial.score(att),
+        failed,
+        failReason: failed ? "attention" : null,
+      };
+    }
+    return { ok: true, ...this.#lockTeamAttention(tid, showtimeSecondsLeft) };
+  }
+
+  /* Finalize all remaining teams and rank the round with Focus influence and exact-attention tiebreaks. */
+  closeMirror(round, teams = this.#teams, { showtimeSecondsLeft = 0 } = {}) {
+    if (this.#lobby.started && !this.#lobby.closed) this.closeDoors();
+    if (this.#phase === "reveal") this.startShowtime();
+    const list = teams && teams.length ? teams : this.#teams;
+    for (const t of list) {
+      if (this.#lobby.isTeamFailed(t.id) || this.#failedTeams.has(t.id)) {
+        this.#lockTeamAttention(t.id, 0);
+      } else if (this.#isBotOnly(t)) {
+        this.#ensureBotAttention(t.id);
+      } else if (!this.#lockedAttention.has(t.id) && this.#phase === "showtime") {
+        this.#lockTeamAttention(t.id, showtimeSecondsLeft);
+      }
+    }
+    const ranking = this.runTrial(round, list);
+    if (round) {
+      round.mirrorResults = {};
+      for (const r of ranking) {
+        round.mirrorResults[r.team.id] = {
+          attention: r.attention,
+          score: r.base,
+          failed: r.failed,
+          failReason: r.failReason,
+          botOnly: r.botOnly,
+        };
+      }
+    }
+    return ranking;
+  }
+
+  /* Rank by 0..7 score + light Focus influence, then higher exact attention, then Rng. */
+  rank(round, teams = this.#teams) {
+    const list = teams && teams.length ? teams : this.#teams;
+    const byTeam = new Map(list.map(t => [t, this.#resolveTeamResult(t)]));
+    const ranked = this.rankWithInfluence(
+      round,
+      list,
+      t => byTeam.get(t).base,
+      [e => byTeam.get(e.team).attention]
+    );
+    return ranked.map(e => {
+      const info = byTeam.get(e.team);
+      return {
+        ...e,
+        attention: info.attention,
+        failed: info.failed,
+        failReason: info.failReason,
+        botOnly: info.botOnly,
+      };
+    });
+  }
+
+  isTeamFailed(teamOrId) {
+    const tid = mirrorIdOf(teamOrId);
+    return this.#lobby.isTeamFailed(tid) || this.#failedTeams.has(tid);
+  }
+  failedTeamIds() {
+    return [...new Set([...this.#lobby.failedTeamIds(), ...this.#failedTeams])];
+  }
+
+  crewFor(teamOrId) {
+    const d = this.#crews.get(mirrorIdOf(teamOrId));
+    return d ? { setupIds: d.setupIds.slice(), danceIds: d.danceIds.slice() } : null;
+  }
+
+  allCrews() {
+    return [...this.#crews].map(([teamId, d]) => ({
+      teamId,
+      setupIds: d.setupIds.slice(),
+      danceIds: d.danceIds.slice(),
+    }));
+  }
+
+  roleOf(playerOrId) {
+    const pid = mirrorIdOf(playerOrId);
+    for (const deal of this.#crews.values()) {
+      if (deal.setupIds.includes(pid)) return "setup";
+      if (deal.danceIds.includes(pid)) return "dance";
+    }
+    return null;
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      seedRngState: Rng.canSave(this.#seedRng) ? this.#seedRng.getState() : null,
+      phase: this.#phase,
+      showtimeStartAt: this.#showtimeStartAt,
+      teamIds: this.#teamIds.slice(),
+      lobby: this.#lobby.toJSON(),
+      setup: this.#setup.toJSON(),
+      dance: this.#dance.toJSON(),
+      failedTeams: [...this.#failedTeams],
+      failReasons: [...this.#failReasons],
+      botOnlyTeams: [...this.#botOnlyTeams],
+      botAttention: [...this.#botAttention],
+      lockedAttention: [...this.#lockedAttention],
+      crews: [...this.#crews].map(([teamId, deal]) => [
+        teamId,
+        { setupIds: deal.setupIds.slice(), danceIds: deal.danceIds.slice() },
+      ]),
+    };
+  }
+
+  static fromJSON(data, { rng, teams = [] } = {}) {
+    if (typeof rng !== "function") throw new Error("MirrorTrial requires a seeded rng.");
+    const teamById = new Map(teams.map(t => [t.id, t]));
+    const savedSeedState = typeof data.seedRngState === "number"
+      ? data.seedRngState
+      : (data.setup && typeof data.setup.seedRngState === "number"
+        ? data.setup.seedRngState
+        : (data.lobby && typeof data.lobby.seedRngState === "number" ? data.lobby.seedRngState : null));
+    let seedRng;
+    if (savedSeedState !== null) {
+      seedRng = Rng.seeded(0);
+      seedRng.setState(savedSeedState);
+    } else {
+      seedRng = deriveMirrorSeedRng(rng);
+    }
+    const t = new MirrorTrial(rng, { seedRng });
+    t.#phase = data.phase || "idle";
+    t.#showtimeStartAt = typeof data.showtimeStartAt === "number" ? data.showtimeStartAt : null;
+    t.#teamIds = (data.teamIds || []).slice();
+    t.#teams = t.#teamIds.map(id => teamById.get(id)).filter(Boolean);
+    if (data.lobby) t.#lobby = MirrorParts.MirrorLobby.fromJSON(data.lobby, { rng, seedRng });
+    if (data.setup) {
+      t.#setup = MirrorParts.SetupCrew.fromJSON(data.setup, { rng, seedRng });
+      if (t.#setup.showtimeStartAt === null && t.#showtimeStartAt !== null) {
+        t.#setup.beginShowtime(t.#showtimeStartAt);
+      }
+    }
+    if (data.dance) {
+      t.#dance = MirrorParts.DanceCrew.fromJSON(data.dance, { rng, seedRng });
+      if (t.#dance.showtimeStartAt === null && t.#showtimeStartAt !== null) {
+        t.#dance.beginShowtime(t.#showtimeStartAt);
+      }
+    }
+    t.#failedTeams = new Set(data.failedTeams || []);
+    t.#failReasons = new Map(data.failReasons || []);
+    t.#botOnlyTeams = new Set(data.botOnlyTeams || []);
+    t.#botAttention = new Map(data.botAttention || []);
+    t.#lockedAttention = new Map(data.lockedAttention || []);
+    t.#crews = new Map((data.crews || []).map(([teamId, deal]) => [
+      teamId,
+      {
+        setupIds: (deal.setupIds || []).slice(),
+        danceIds: (deal.danceIds || []).slice(),
+      },
+    ]));
+    t.ranking = data.ranking ? data.ranking.map(r => ({ ...r, team: teamById.get(r.team) })) : null;
+    return t;
+  }
 }
 
 /* Levels 5-6 prompts. Fixed, reviewed list (placeholders; the team may change them). */
@@ -1584,12 +5613,23 @@ class JudgedTrial extends Trial {
 
 Trial.INFLUENCE = 0.5;
 Trial.MAX_BASE = 7;
+SplitBriefTrial.MAX_NOTE_CHARS = 80;
+SplitBriefTrial.MAX_NOTES = 3;
+SplitBriefTrial.MAX_BOARD_TASKS = 2;
+SplitBriefTrial.MAX_SCORE = 5;
+SplitBriefTrial.TRIAL_SECONDS = 180;
+SplitBriefTrial.TWIST_SECONDS = 90;
+MirrorTrial.LOBBY_SECONDS = MirrorData.timers.lobbySeconds;
+MirrorTrial.REVEAL_SECONDS = MirrorData.timers.revealSeconds;
+MirrorTrial.SHOWTIME_SECONDS = MirrorData.timers.showtimeSeconds;
 JudgedTrial.MAX_CHARS = 300;          // submission length
 JudgedTrial.MAX_PROMPT_CHARS = 200;   // custom host prompt length
 JudgedTrial.WRITING_SECONDS = 180;    // writing timer: 3 minutes
 JudgedTrial.BOT_ANSWER = "Bot answer";
 Trial.SopTrial = SopTrial;
 Trial.AutoTrial = AutoTrial;
+Trial.SplitBriefTrial = SplitBriefTrial;
+Trial.MirrorTrial = MirrorTrial;
 Trial.JudgedTrial = JudgedTrial;
 return Trial;
 })();
@@ -1767,10 +5807,15 @@ class Economy {
   /* Trial cost for every non-Stuck player. */
   payTrialCosts(players, round) {
     const out = new Map();
+    const rec = {};
     for (const p of players) {
       const r = p.payTrial(round.attr, round.cost);
-      if (r) out.set(p, r);
+      if (r) {
+        out.set(p, r);
+        rec[p.id] = { ...r };
+      }
     }
+    round.trialPayments = rec;
     return out;
   }
 
@@ -1895,6 +5940,7 @@ const Game = (() => {
 
 // Part 6: a team with this many active players or fewer gets the quiet heart buff at round start.
 const QUIET_HEART_TEAM_MAX = 3;
+const roundDisplayScore = (x, max) => Math.min(max, Math.max(0, Math.round(x)));
 
 const STEP_NAME = { openFloor: "Open Floor", trial: "Trial", glitchReport: "Glitch Report",
                     giftWindow: "Gift window", lockIn: "Lock-in", statsUpdate: "Stats Update",
@@ -1921,18 +5967,26 @@ const REQUIRED = { trial: "payTrialCosts", glitchReport: "endGlitchReport", lock
 
 /* Step timers (Part 13). Game stores each running timer's end time (a deadline), never seconds left.
    Only these phases are timed; every other step waits for an explicit call (decided: untimed for now).
-     intermission  the first one only, before Level 1   ends: startNextRound
-     openFloor                                            ends: advance (unanswered gifts expire)
-     sop           Level 1 Trial, until the SOP is scored ends: closeSop (each board scored as it stands)
-     writing       Levels 5-6, while writing is open     ends: closeWriting
-     glitchReport  until accusations close                ends: closeGlitchReport
-     giftWindow                                           ends: closeGiftWindow (Lock-in, earnings)
-     statsUpdate   after earnings                         ends: unplaced points by the bot rule, finishRound
-     graduation    Level 7                                ends: unplaced points by the bot rule, results
+     intermission    the first one only, before Level 1     ends: startNextRound
+     openFloor                                              ends: advance (unanswered gifts expire)
+     sop             Level 1 Trial, until the SOP is scored ends: closeSop (each board scored as it stands)
+     splitBrief      Level 2 Trial, until locked or 180 s   ends: closeSplitBrief (fires twist first if needed)
+     mirrorLobby     Level 3 Trial, 30 s connect lobby      ends: closeMirrorLobby
+     mirrorReveal    Level 3 Trial, 1 s crew reveal         ends: startMirrorShowtime
+     mirrorShowtime  Level 3 Trial, 75 s presentation       ends: closeMirror
+     writing         Levels 5-6, while writing is open      ends: closeWriting
+     glitchReport    until accusations close                ends: closeGlitchReport
+     giftWindow                                             ends: closeGiftWindow (Lock-in, earnings)
+     statsUpdate     after earnings                         ends: unplaced points by the bot rule, finishRound
+     graduation      Level 7                                ends: unplaced points by the bot rule, results
    A timer that ends opens the next one from its own deadline (decided), so a game that slept
    catches up exactly as if it never stopped. */
 const TIMER_SECONDS = {
   intermission: STEP_SECONDS.intermission, openFloor: STEP_SECONDS.openFloor, sop: STEP_SECONDS.sopTrial,
+  splitBrief: Trial.SplitBriefTrial.TRIAL_SECONDS,
+  mirrorLobby: Trial.MirrorTrial.LOBBY_SECONDS,
+  mirrorReveal: Trial.MirrorTrial.REVEAL_SECONDS,
+  mirrorShowtime: Trial.MirrorTrial.SHOWTIME_SECONDS,
   writing: Trial.JudgedTrial.WRITING_SECONDS, glitchReport: AUTO_ADVANCE_SECONDS.glitchReport,
   giftWindow: STEP_SECONDS.giftWindow, statsUpdate: AUTO_ADVANCE_SECONDS.statsUpdate, graduation: GRADUATION_PLACE_SECONDS,
 };
@@ -1941,7 +5995,7 @@ class Game {
   /* attendance: Attendance settings (host dials): { idleMs, popupMs, maxPerRound }.
      clock: returns the time in ms. Times Attendance and the step timers. Tests pass a fake one.
      rng: the game's random numbers. Use Rng.seeded(seed) if the game will be saved (toJSON).
-     hooks (optional, not saved): { onStart(game, timerName), beforeClose(game, timerName) }.
+     hooks (optional, not saved): { onStart(game, timerName), onVoteStart(game, vote), beforeClose(game, timerName), onTick(game, now), onGift(game, gift) }.
        The prototype passes Bots.hooks so bots act at the same moments as before. Base44 passes none. */
   constructor({ teams, rng = Math.random, host = false, attendance = {}, clock = () => Date.now(), hooks = {} }) {
     this.teams = teams;
@@ -1956,6 +6010,7 @@ class Game {
     this.attendance = new Attendance(attendance);
     this.economy = new Economy();
     this.hooks = hooks;
+    this._closingPhase = null;
     this._timer = this._makeTimer(clock);
     this.syncAttendance();   // starts in intermission: paused
   }
@@ -1965,10 +6020,20 @@ class Game {
       clock,
       durations: TIMER_SECONDS,
       getPhase: () => { const name = this.timerName(); return name ? { name, key: this.level + ":" + name } : null; },
-      onStart: name => { if (this.hooks.onStart) this.hooks.onStart(this, name); },
+      onStart: name => {
+        if (name === "splitBrief") this._startSplitBrief();
+        if (this.hooks.onStart) this.hooks.onStart(this, name);
+      },
       onClose: name => {
-        if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
-        this._closeTimerPhase(name);
+        if (name === "splitBrief") this._checkTwist(this.now());
+        this._closingPhase = name;
+        try {
+          if (name === "mirrorShowtime") this._advanceMirrorShowtime(this.now());
+          if (this.hooks.beforeClose) this.hooks.beforeClose(this, name);
+          this._closeTimerPhase(name);
+        } finally {
+          this._closingPhase = null;
+        }
       },
     });
   }
@@ -1986,6 +6051,13 @@ class Game {
     if (s === "trial") {
       const t = this.round.trial;
       if (t instanceof Trial.SopTrial && !this.didRun("runTrial")) return "sop";
+      if (t instanceof Trial.SplitBriefTrial && !this.didRun("runTrial")) return "splitBrief";
+      if (t instanceof Trial.MirrorTrial && !this.didRun("runTrial")) {
+        if (t.phase === "lobby") return "mirrorLobby";
+        if (t.phase === "reveal") return "mirrorReveal";
+        if (t.phase === "showtime") return "mirrorShowtime";
+        return null;
+      }
       if (t instanceof Trial.JudgedTrial && t.writing === "open") return "writing";
       return null;
     }
@@ -1996,7 +6068,57 @@ class Game {
   }
   refreshTimer() { this._timer.refresh(); }
   secondsLeft(now) { return this._timer.secondsLeft(now); }
-  tick(now) { return this._timer.tick(now); }
+  timerView(now) {
+    const cur = this._timer.current;
+    return cur ? { name: cur.name, secondsLeft: this._timer.secondsLeft(now) } : null;
+  }
+  _startSplitBrief() {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.SplitBriefTrial)) return;
+    if (t.twistDeadline == null && !t.twistFired) {
+      t.setTwistDeadline(this.now() + Trial.SplitBriefTrial.TWIST_SECONDS * 1000);
+    }
+  }
+  _wireSplitBrief(t) {
+    if (!(t instanceof Trial.SplitBriefTrial)) return;
+    t.onAllLocked = () => {
+      if (this.running) this.closeTimer(this.now());
+      else this.closeSplitBrief();
+    };
+  }
+  _checkTwist(now) {
+    if (this.step !== "trial" || this.didRun("runTrial")) return false;
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.SplitBriefTrial)) return false;
+    if (t.twistFired || t.twistDeadline == null || now < t.twistDeadline) return false;
+    return t.fireTwist(this.teams);
+  }
+  tick(now = this.now()) {
+    this._checkTwist(now);
+    const closed = [];
+    if (this._isMirrorShowtimeActive()) {
+      const cur = this._timer.current;
+      const cap = this.running && cur && cur.name === "mirrorShowtime" ? Math.min(now, cur.deadline) : now;
+      const hadShowtimeTimer = this.running && cur && cur.name === "mirrorShowtime";
+      if (this._advanceMirrorShowtime(cap) && hadShowtimeTimer) closed.push("mirrorShowtime");
+    }
+    closed.push(...this._timer.tick(now));
+    this._checkTwist(now);
+    if (this._isMirrorShowtimeActive()) {
+      const cur = this._timer.current;
+      const cap = this.running && cur && cur.name === "mirrorShowtime" ? Math.min(now, cur.deadline) : now;
+      const hadShowtimeTimer = this.running && cur && cur.name === "mirrorShowtime";
+      if (this._advanceMirrorShowtime(cap) && hadShowtimeTimer) closed.push("mirrorShowtime");
+    }
+    if (this.hooks.onTick) this.hooks.onTick(this, now);
+    if (this._isMirrorShowtimeActive()) {
+      const cur = this._timer.current;
+      const hadShowtimeTimer = this.running && cur && cur.name === "mirrorShowtime";
+      if (this._advanceMirrorShowtime(now) && hadShowtimeTimer) closed.push("mirrorShowtime");
+    }
+    if (this._maybeCloseVote()) closed.push("vote");
+    return closed;
+  }
   closeTimer(now) { return this._timer.close(now); }
   closeTimerAt(at) { this._timer.closeAt(at); }
   _closeTimerPhase(name) {
@@ -2004,6 +6126,10 @@ class Game {
       case "intermission": this.startNextRound(); break;
       case "openFloor": this.advance(); break;
       case "sop": this.closeSop(); break;
+      case "splitBrief": this.closeSplitBrief(); break;
+      case "mirrorLobby": this.closeMirrorLobby(); break;
+      case "mirrorReveal": this.startMirrorShowtime(); break;
+      case "mirrorShowtime": this.closeMirror(); break;
       case "writing": this.closeWriting(); break;
       case "glitchReport": this.closeGlitchReport(); break;
       case "giftWindow": this.closeGiftWindow(); break;
@@ -2042,7 +6168,7 @@ class Game {
   /* Run about once a second. Checks every human player (bots answer at once, so they are skipped).
      Returns [{ player, state, msLeft }] for players with the popup open, and for a miss
      [{ player, state: "missed", counted, pending, locked, stuck }] (see attendanceMiss). */
-  checkAttendance(now) {
+  checkAttendance(now = this.now()) {
     const out = [];
     this.syncAttendance(now);
     for (const p of this.players) {
@@ -2056,6 +6182,11 @@ class Game {
       if (r.state === "popup" || r.state === "missed") out.push({ player: p, ...r });
     }
     return out;
+  }
+  /* Server-ready attendance check on Game's own clock (this.now()). Checks every human player so
+     a closed browser tab never skips a player's check. */
+  pollAttendance() {
+    return this.checkAttendance(this.now());
   }
 
   /* True while a missed check-in can still be saved: from Open Floor until the gift window closes
@@ -2118,9 +6249,32 @@ class Game {
     if (need && !this.didRun(need)) throw new Error("Finish " + this.stepName() + " first (" + need + ").");
     if (this.step === "openFloor" || this.step === "giftWindow") Gift.expireAll(this.round);   // no answer = declined
     const step = this.round.nextStep();
+    if (step === "trial" && this.round.trial instanceof Trial.SplitBriefTrial) {
+      if (!this.round.trial.dealt) this.round.trial.deal(this.teams);
+      this._wireSplitBrief(this.round.trial);
+    }
+    if (step === "trial" && this.round.trial instanceof Trial.MirrorTrial) {
+      if (!this.round.trial.lobbyStarted) this.round.trial.startLobby(this.teams);
+    }
+    if (step === "trial" && this.round.trial instanceof Trial.JudgedTrial && !this.host) {
+      if (!this.round.trial.writing) this.round.trial.startWriting({ host: this.host, prompts: this.prompts });
+    }
     this.syncAttendance();
     this.refreshTimer();
     return step;
+  }
+  setTrialForTest(trial) {
+    if (!this.round || this.round.isFinal) throw new Error("No active trial round.");
+    this.round.trial = trial;
+    if (this.step === "trial" && trial instanceof Trial.SplitBriefTrial) {
+      if (!trial.dealt) trial.deal(this.teams);
+      this._wireSplitBrief(trial);
+      this.refreshTimer();
+    }
+    if (this.step === "trial" && trial instanceof Trial.MirrorTrial) {
+      if (!trial.lobbyStarted) trial.startLobby(this.teams);
+      this.refreshTimer();
+    }
   }
 
   startNextRound() {
@@ -2137,6 +6291,150 @@ class Game {
     this.quietHeartBuff();
     this.syncAttendance();   // briefing: paused
     this.refreshTimer();
+    return this.round;
+  }
+
+  /* Dev jump (remove or gate before Base44): fast-forward this game to targetLevel's briefing.
+     During fast-forward, human players act via the existing bot rules (hooks / auto-pilot). */
+  jumpToLevel(targetLevel) {
+    if (!Number.isInteger(targetLevel) || targetLevel < 1 || targetLevel > Round.LEVELS.length) {
+      throw new Error("No level " + targetLevel);
+    }
+    if (this.level === targetLevel && this.step === "briefing") {
+      if (!this.running) this.start();
+      return this.round;
+    }
+    if (this.level > targetLevel || (this.level === targetLevel && this.step !== "briefing")) {
+      throw new Error("Cannot jump backward on an active game.");
+    }
+    if (!this.running) this.start();
+
+    const humans = this.players.filter(p => !p.isBot);
+    const setBotPilot = on => {
+      for (const p of humans) {
+        p.isBot = on;
+        if (!p.isStuck()) p.idle = false;
+      }
+    };
+    const setMirrorAutoPilot = () => {
+      for (const p of humans) {
+        p.isBot = false;
+        if (!p.isStuck()) p.idle = true;
+      }
+    };
+    const timerIs = name => !!(this._timer.current && this._timer.current.name === name);
+
+    try {
+      setBotPilot(true);
+      let guard = 0;
+      while (!(this.level === targetLevel && this.step === "briefing")) {
+        if (++guard > 200) throw new Error("Jump loop.");
+        const s = this.step;
+        if (s === "intermission") {
+          if (timerIs("intermission")) this._timer.closeAt(this._timer.current.deadline);
+          else this.startNextRound();
+        } else if (s === "briefing") {
+          this.advance();
+        } else if (s === "openFloor") {
+          if (this.hooks.onFastForward) this.hooks.onFastForward(this, "openFloor");
+          if (timerIs("openFloor")) this._timer.closeAt(this._timer.current.deadline);
+          else {
+            if (this.hooks.beforeClose) this.hooks.beforeClose(this, "openFloor");
+            this.advance();
+          }
+        } else if (s === "trial") {
+          const t = this.round.trial;
+          if (!this.didRun("runTrial")) {
+            if (t instanceof Trial.MirrorTrial) {
+              const hasMixed = this.teams.some(team => !t.isBotOnlyTeam(team));
+              if (hasMixed) setMirrorAutoPilot();
+              if (timerIs("mirrorLobby") || timerIs("mirrorReveal") || timerIs("mirrorShowtime")) {
+                this._timer.closeAt(this._timer.current.deadline);
+              } else if (t.phase === "lobby") {
+                if (this.hooks.beforeClose) this.hooks.beforeClose(this, "mirrorLobby");
+                this.closeMirrorLobby();
+              } else if (t.phase === "reveal") {
+                this.startMirrorShowtime();
+              } else {
+                if (this.hooks.beforeClose) this.hooks.beforeClose(this, "mirrorShowtime");
+                this.closeMirror({ showtimeSecondsLeft: 0 });
+              }
+              if (hasMixed && this.didRun("runTrial")) setBotPilot(true);
+            } else if (t instanceof Trial.SopTrial) {
+              if (timerIs("sop")) this._timer.closeAt(this._timer.current.deadline);
+              else this.closeSop();
+            } else if (t instanceof Trial.SplitBriefTrial) {
+              if (timerIs("splitBrief")) this._timer.closeAt(this._timer.current.deadline);
+              else {
+                if (!t.twistFired) t.fireTwist(this.teams);
+                if (this.hooks.beforeClose) this.hooks.beforeClose(this, "splitBrief");
+                this.closeSplitBrief();
+              }
+            } else if (t instanceof Trial.JudgedTrial) {
+              if (!t.writing) {
+                if (this.host && !t.prompt) {
+                  this.setPrompt(Math.floor(this.rng() * Trial.JudgedTrial.prompts(this.level).length));
+                }
+                this.startWriting();
+              } else if (t.writing === "open") {
+                if (this.hooks.onFastForward) this.hooks.onFastForward(this, "writing");
+                if (t.writing === "open") {
+                  if (timerIs("writing")) this._timer.closeAt(this._timer.current.deadline);
+                  else this.closeWriting();
+                }
+              } else if (!t.vote) {
+                this.startVote();
+              } else {
+                if (this.hooks.onFastForward) this.hooks.onFastForward(this, "vote");
+                if (!this.didRun("runTrial")) this.runTrial();
+              }
+            } else {
+              this.runTrial();
+            }
+          } else {
+            if (!this.didRun("payTrialCosts")) this.endTrial();
+            else this.advance();
+          }
+        } else if (s === "glitchReport") {
+          if (!this.didRun("endGlitchReport")) {
+            if (timerIs("glitchReport")) this._timer.closeAt(this._timer.current.deadline);
+            else {
+              if (this.hooks.beforeClose) this.hooks.beforeClose(this, "glitchReport");
+              this.closeGlitchReport();
+            }
+          } else {
+            this.advance();
+          }
+        } else if (s === "giftWindow") {
+          if (this.hooks.onFastForward) this.hooks.onFastForward(this, "giftWindow");
+          if (timerIs("giftWindow")) this._timer.closeAt(this._timer.current.deadline);
+          else this.closeGiftWindow();
+        } else if (s === "lockIn") {
+          if (!this.didRun("lockIn")) this.lockIn();
+          this.advance();
+        } else if (s === "statsUpdate") {
+          if (!this.didRun("computeEarnings")) this.computeEarnings();
+          else if (timerIs("statsUpdate")) this._timer.closeAt(this._timer.current.deadline);
+          else {
+            this.placeAllRemaining();
+            this.finishRound();
+          }
+        } else {
+          throw new Error("Cannot fast-forward from step " + s + ".");
+        }
+      }
+    } finally {
+      const now = this.now();
+      for (const p of humans) {
+        p.isBot = false;
+        if (!p.isStuck()) p.idle = false;
+        if (p.lastActivity != null && p.lastActivity > now) p.lastActivity = now;
+        if (p.attendanceResumeAt != null && p.attendanceResumeAt > now) p.attendanceResumeAt = now;
+        if (p.attendanceMissAt != null && p.attendanceMissAt > now) p.attendanceMissAt = now;
+      }
+      this.syncAttendance(now);
+      this.refreshTimer();
+    }
     return this.round;
   }
 
@@ -2208,18 +6506,479 @@ class Game {
       ? this.round.trial.sopBoard(this.round, team)
       : Trial.SopTrial.sopBoard(this.round, team);
   }
+  sopOrder() { return this.round && this.round.trial instanceof Trial.SopTrial ? this.round.trial.pileOrder(this.round.n) : []; }
   setSopBoard(p, built) {
     const why = this.wrongStep("trial") || (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null);
     if (why) return { ok: false, reason: why };
     return this.round.trial.setSopBoard(this.round, p, this.teamOf(p), built);
   }
+  canSubmitSop(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    return !!(team && Trial.SopTrial.canSubmit(this.sopBoard(team)));
+  }
+  /* Player clicks Submit SOP: saves/validates their team's SOP board only; never closes the SOP timer early. */
+  submitSop(p, built) {
+    const team = this.teamOf(p);
+    const why = this.wrongStep("trial") ||
+      (!(this.round.trial instanceof Trial.SopTrial) ? "This level has no SOP." : null) ||
+      (!team ? "No team for player." : null) ||
+      (p.idle ? "You are idle." : null);
+    if (why) return { ok: false, reason: why };
+    const board = built === undefined ? this.sopBoard(team) : built;
+    if (!Trial.SopTrial.canSubmit(board)) return { ok: false, reason: "Place at least one step before submitting." };
+    const res = this.round.trial.setSopBoard(this.round, p, team, board);
+    if (!res.ok) return res;
+    this.round.completed.add("submitSop");
+    return { ok: true, board: this.sopBoard(team).slice() };
+  }
   /* The SOP timer ended (or the team submitted): every team with a player on it scores its board as it
      stands (placing nothing scores 0); bot-only teams get a random score. Then the trial ranks the teams.
      Results per team id: { right, endlessOut, score } in round.sopResults. */
   closeSop() {
+    this.round.sopTimedOut = !this.didRun("submitSop");
     const ranking = this.sop().closeSop(this.round, this.teams);
+    for (const t of this.teams) {
+      if (this.round.sopResults[t.id] && this.round.sopResults[t.id].endlessOut) {
+        for (const p of t.members) this.recordAnomaly(p, "loop");
+      }
+    }
     this.refreshTimer();
     return ranking;
+  }
+  splitBrief() {
+    this.mustBe("trial");
+    if (!(this.round.trial instanceof Trial.SplitBriefTrial)) throw new Error("This level has no Split Brief.");
+    return this.round.trial;
+  }
+  closeSplitBrief() {
+    const ranking = this.splitBrief().closeSplitBrief(this.round, this.teams);
+    this.refreshTimer();
+    return ranking;
+  }
+  _splitBriefWhy() {
+    return this.wrongStep("trial") || (!(this.round.trial instanceof Trial.SplitBriefTrial) ? "This level has no Split Brief." : null);
+  }
+  splitBriefPostNote(p, text) {
+    const why = this._splitBriefWhy();
+    return why ? { ok: false, reason: why } : this.round.trial.postNote(p, text);
+  }
+  splitBriefSetBoard(p, taskIds) {
+    const why = this._splitBriefWhy();
+    return why ? { ok: false, reason: why } : this.round.trial.setBoard(p, taskIds);
+  }
+  splitBriefLockIn(p) {
+    const why = this._splitBriefWhy();
+    return why ? { ok: false, reason: why } : this.round.trial.lockIn(p);
+  }
+  splitBriefView(p) {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.SplitBriefTrial)) return null;
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const closed = this.didRun("runTrial") || !!t.ranking;
+    const board = t.boardFor(team);
+    const tc = t.twistFor(pl);
+    const maxScore = Trial.SplitBriefTrial.MAX_SCORE;
+    const ranking = closed
+      ? (t.ranking || []).map(r => ({
+          place: r.place,
+          teamId: r.team.id,
+          teamName: r.team.name,
+          isMine: r.team === team,
+          base: r.base,
+          score: r.score,
+          shownScore: roundDisplayScore(r.score, maxScore),
+          won: r.won,
+        }))
+      : null;
+    const mine = ranking ? ranking.find(r => r.isMine) : null;
+    return {
+      done: closed,
+      scenarioTitle: t.scenario.title,
+      tasks: t.tasks,
+      cards: t.cardsFor(pl).map(({ id, title, text }) => ({ id, title, text })),
+      twistFired: t.twistFired,
+      twistCard: tc ? { id: tc.id, title: tc.title, text: tc.text } : null,
+      notes: t.notesFor(team),
+      notesLeft: t.notesLeft(pl),
+      board,
+      locked: t.isLocked(team),
+      maxScore,
+      postTwistAnswer: closed ? t.postTwistAnswer : null,
+      boardScore: closed ? Trial.SplitBriefTrial.score(board, t.postTwistAnswer) : null,
+      shownScore: mine ? mine.shownScore : null,
+      winnersCount: ranking ? Trial.winners(ranking.length) : 0,
+      ranking,
+    };
+  }
+  _mirrorWhy() {
+    return this.wrongStep("trial") || (!(this.round.trial instanceof Trial.MirrorTrial) ? "This level has no Mirror trial." : null);
+  }
+  mirrorLobbyElapsed(now = this.now()) {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial) || t.phase !== "lobby") return null;
+    const cur = this._timer.current;
+    if (cur && cur.name === "mirrorLobby") {
+      const left = Math.max(0, Math.min(Trial.MirrorTrial.LOBBY_SECONDS, (cur.deadline - now) / 1000));
+      return Trial.MirrorTrial.LOBBY_SECONDS - left;
+    }
+    return 0;
+  }
+  mirrorShowtimeSecondsLeft(now = this.now()) {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial)) return null;
+    if (t.phase === "lobby" || t.phase === "reveal") return Trial.MirrorTrial.SHOWTIME_SECONDS;
+    if (t.phase !== "showtime") return 0;
+    const cur = this._timer.current;
+    if (cur && cur.name === "mirrorShowtime") {
+      return Math.max(0, Math.min(Trial.MirrorTrial.SHOWTIME_SECONDS, (cur.deadline - now) / 1000));
+    }
+    return Trial.MirrorTrial.SHOWTIME_SECONDS;
+  }
+  mirrorShowtimeElapsed(now = this.now()) {
+    const left = this.mirrorShowtimeSecondsLeft(now);
+    return left === null ? null : Trial.MirrorTrial.SHOWTIME_SECONDS - left;
+  }
+  _mirrorElapsedOpts(opts = {}) {
+    const out = { ...opts };
+    if (typeof out.now !== "number" || !Number.isFinite(out.now)) {
+      out.now = this.now();
+    }
+    if (typeof out.elapsedSeconds !== "number" || !Number.isFinite(out.elapsedSeconds)) {
+      const elapsed = this.mirrorShowtimeElapsed(out.now);
+      if (elapsed !== null) out.elapsedSeconds = elapsed;
+    }
+    return out;
+  }
+  _mirrorLeftOpts(opts = {}) {
+    if (typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)) return opts;
+    if (typeof opts.elapsedSeconds === "number" && Number.isFinite(opts.elapsedSeconds)) return opts;
+    const left = this.mirrorShowtimeSecondsLeft(this.now());
+    return left === null ? opts : { ...opts, showtimeSecondsLeft: left };
+  }
+  _isMirrorShowtimeActive() {
+    return this.step === "trial" &&
+      !this.didRun("runTrial") &&
+      this.round &&
+      this.round.trial instanceof Trial.MirrorTrial &&
+      this.round.trial.phase === "showtime";
+  }
+  _resolvePlayer(playerOrId) {
+    if (this.players.includes(playerOrId)) return playerOrId;
+    return this.players.find(p => p.id === playerOrId) || null;
+  }
+  _mirrorDanceOpts(playerOrId, opts = {}) {
+    const out = this._mirrorElapsedOpts(opts);
+    const pl = this._resolvePlayer(playerOrId);
+    out.isIdle = !!(pl && pl.idle);
+    return out;
+  }
+  _mirrorSetupOpts(playerOrId, opts = {}) {
+    const out = this._mirrorElapsedOpts(opts);
+    const pl = this._resolvePlayer(playerOrId);
+    if (pl && !pl.isBot) {
+      out.isStuck = pl.isStuck();
+      out.isIdle = !!pl.idle;
+      out.isInactive = !pl.isActive();
+    }
+    return out;
+  }
+  _activeMirrorHumanIds() {
+    return new Set(this.players.filter(p => !p.isBot && !p.isStuck() && !p.idle).map(p => p.id));
+  }
+  _mirrorShowtimeStartAt(t, fallbackNow) {
+    if (t.showtimeStartAt !== null) return t.showtimeStartAt;
+    const cur = this._timer.current;
+    if (cur && cur.name === "mirrorShowtime") {
+      return cur.deadline - Trial.MirrorTrial.SHOWTIME_SECONDS * 1000;
+    }
+    return fallbackNow;
+  }
+  _allHumanMirrorTeamsDone(t) {
+    const humanTeams = this.teams.filter(team => !t.isBotOnlyTeam(team));
+    if (!humanTeams.length) return false;
+    return humanTeams.every(team => t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null);
+  }
+  _maybeCloseMirrorShowtime(now = this.now()) {
+    if (this.step !== "trial" || this.didRun("runTrial") || this._closingPhase === "mirrorShowtime") return false;
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial) || t.phase !== "showtime" || !this._allHumanMirrorTeamsDone(t)) return false;
+    if (this.running && this._timer.current && this._timer.current.name === "mirrorShowtime") {
+      this.closeTimer(now);
+    } else {
+      this.closeMirror({ showtimeSecondsLeft: this.mirrorShowtimeSecondsLeft(now) });
+    }
+    return true;
+  }
+  _advanceMirrorShowtime(targetNow = this.now()) {
+    if (!this._isMirrorShowtimeActive()) return false;
+    const t = this.round.trial;
+    const showStart = this._mirrorShowtimeStartAt(t, targetNow);
+    const hasHooks = !!(this.hooks && this.hooks.onTick);
+    const maxIter = Math.max(5000, this.players.length * 400);
+    let guard = 0;
+
+    const runChrono = () => {
+      while (this._isMirrorShowtimeActive()) {
+        if (++guard > maxIter) throw new Error("Mirror showtime loop.");
+        const activeHumanIds = this._activeMirrorHumanIds();
+        let nextAt = Infinity;
+        for (const team of this.teams) {
+          if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
+          const autoPilotIds = new Set(team.members.filter(p => !p.isBot && !p.isStuck() && p.idle).map(p => p.id));
+          const evAt = t.nextShowtimeEventAt(team, {
+            showStart,
+            activeHumanIds,
+            autoPilotIds,
+            now: targetNow,
+            includeBots: hasHooks,
+          });
+          if (evAt !== null && evAt <= targetNow && evAt < nextAt) nextAt = evAt;
+        }
+        if (!Number.isFinite(nextAt)) break;
+
+        const secLeftAt = this.mirrorShowtimeSecondsLeft(nextAt);
+        for (const team of this.teams) {
+          if (!t.isBotOnlyTeam(team)) t.checkAttention(team, secLeftAt);
+        }
+        if (this._maybeCloseMirrorShowtime(nextAt)) return true;
+
+        for (const team of this.teams) {
+          if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
+          t.tickSetup(team, nextAt, { activeHumanIds });
+          t.tickDance(team, nextAt, { activeHumanIds });
+        }
+        for (const team of this.teams) {
+          if (!t.isBotOnlyTeam(team)) t.checkAttention(team, secLeftAt);
+        }
+        if (this._maybeCloseMirrorShowtime(nextAt)) return true;
+
+        if (hasHooks) {
+          this.hooks.onTick(this, nextAt);
+          if (!this._isMirrorShowtimeActive()) return true;
+          for (const team of this.teams) {
+            if (!t.isBotOnlyTeam(team)) t.checkAttention(team, secLeftAt);
+          }
+          if (this._maybeCloseMirrorShowtime(nextAt)) return true;
+        }
+      }
+      return false;
+    };
+
+    if (runChrono()) return true;
+    if (hasHooks && this._isMirrorShowtimeActive()) {
+      this.hooks.onTick(this, targetNow);
+      if (!this._isMirrorShowtimeActive()) return true;
+      if (runChrono()) return true;
+    }
+    if (!this._isMirrorShowtimeActive()) return true;
+    const left = this.mirrorShowtimeSecondsLeft(targetNow);
+    for (const team of this.teams) {
+      if (!t.isBotOnlyTeam(team)) t.checkAttention(team, left);
+    }
+    if (this._maybeCloseMirrorShowtime(targetNow)) return true;
+    const activeHumanIdsEnd = this._activeMirrorHumanIds();
+    for (const team of this.teams) {
+      if (t.isBotOnlyTeam(team) || t.isTeamFailed(team) || t.lockedAttentionFor(team) !== null) continue;
+      t.tickDance(team, targetNow, { activeHumanIds: activeHumanIdsEnd });
+    }
+    for (const team of this.teams) {
+      if (!t.isBotOnlyTeam(team)) t.checkAttention(team, left);
+    }
+    return this._maybeCloseMirrorShowtime(targetNow);
+  }
+  _afterMirrorAction(res, { checkAttention = false, checkClose = false } = {}) {
+    if (!res || !res.ok) return res;
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial)) return res;
+    const now = this.now();
+    if (checkAttention && res.teamId !== undefined) {
+      const att = t.checkAttention(res.teamId, this.mirrorShowtimeSecondsLeft(now));
+      if (att.failed) {
+        const closed = this._maybeCloseMirrorShowtime(now);
+        return {
+          ...res,
+          attention: att.attention,
+          score: att.score,
+          failed: true,
+          failReason: att.failReason,
+          ...(closed ? { closed: true } : {}),
+        };
+      }
+    }
+    if (checkClose) {
+      const closed = this._maybeCloseMirrorShowtime(now);
+      if (closed) return { ...res, closed: true };
+    }
+    return res;
+  }
+  _mirrorCall(fn, afterOpts = null) {
+    const why = this._mirrorWhy();
+    if (why) return { ok: false, reason: why };
+    if (afterOpts && afterOpts.setupActor !== undefined) {
+      const pl = this._resolvePlayer(afterOpts.setupActor);
+      if (pl && !pl.isBot) {
+        if (pl.isStuck()) return { ok: false, reason: "Stuck players cannot act." };
+        if (pl.idle) return { ok: false, reason: "Idle players cannot act." };
+        if (!pl.isActive()) return { ok: false, reason: "Inactive players cannot act." };
+      }
+    }
+    const res = fn(this.round.trial);
+    return afterOpts ? this._afterMirrorAction(res, afterOpts) : res;
+  }
+  mirror() {
+    this.mustBe("trial");
+    if (!(this.round.trial instanceof Trial.MirrorTrial)) throw new Error("This level has no Mirror trial.");
+    return this.round.trial;
+  }
+  closeMirrorLobby() {
+    const t = this.mirror();
+    const res = t.closeDoors();
+    if (!this.didRun("runTrial") && (t.phase === "failed" || this._allHumanMirrorTeamsDone(t))) {
+      this.closeMirror({ showtimeSecondsLeft: 0 });
+      return { ...res, closed: true };
+    }
+    this.refreshTimer();
+    return res;
+  }
+  startMirrorShowtime() {
+    const res = this.mirror().startShowtime({ now: this.now() });
+    this.refreshTimer();
+    return res;
+  }
+  closeMirror(opts = {}) {
+    const t = this.mirror();
+    const sec = typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)
+      ? opts.showtimeSecondsLeft
+      : this.mirrorShowtimeSecondsLeft(this.now());
+    const ranking = t.closeMirror(this.round, this.teams, { showtimeSecondsLeft: sec });
+    this.refreshTimer();
+    return ranking;
+  }
+  mirrorConnect(playerOrId) {
+    return this._mirrorCall(t => {
+      const res = t.connect(playerOrId);
+      if (res.ok && res.allConnected && this._closingPhase !== "mirrorLobby") {
+        if (this.running && this._timer.current && this._timer.current.name === "mirrorLobby") {
+          this.closeTimer(this.now());
+        } else {
+          this.closeMirrorLobby();
+        }
+        return { ...res, closed: true, phase: t.phase };
+      }
+      return res;
+    });
+  }
+  mirrorMiss(playerOrId) { return this._mirrorCall(t => t.miss(playerOrId)); }
+  mirrorNextCable(teamOrId) { return this._mirrorCall(t => t.nextCable(teamOrId)); }
+  mirrorReturnCable(teamOrId, port) { return this._mirrorCall(t => t.returnCable(teamOrId, port)); }
+  mirrorCableHit(playerOrId, port, opts) { return this._mirrorCall(t => t.cableHit(playerOrId, port, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId }); }
+  mirrorCableMiss(playerOrId, port, opts) { return this._mirrorCall(t => t.cableMiss(playerOrId, port, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId, checkAttention: true }); }
+  mirrorNextSoundSpike(teamOrId) { return this._mirrorCall(t => t.nextSoundSpike(teamOrId)); }
+  mirrorNextSoundJitter(teamOrId) { return this._mirrorCall(t => t.nextSoundJitter(teamOrId)); }
+  mirrorSoundAdjust(playerOrId, delta, opts) { return this._mirrorCall(t => t.soundAdjust(playerOrId, delta, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId, checkAttention: true }); }
+  mirrorSoundHeld(playerOrId, opts) { return this._mirrorCall(t => t.soundHeld(playerOrId, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId }); }
+  mirrorSoundFeedback(playerOrId, opts) { return this._mirrorCall(t => t.soundFeedback(playerOrId, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId, checkAttention: true }); }
+  mirrorMicTap(playerOrId, micNumber, opts) { return this._mirrorCall(t => t.micTap(playerOrId, micNumber, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId, checkAttention: true }); }
+  mirrorPickFile(playerOrId, fileIndexOrName, opts) { return this._mirrorCall(t => t.pickFile(playerOrId, fileIndexOrName, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId, checkAttention: true }); }
+  mirrorReshuffleDeck(teamOrId, opts) { return this._mirrorCall(t => t.reshuffleDeck(teamOrId, this._mirrorElapsedOpts(opts))); }
+  mirrorAnswerQa(playerOrId, answerIndex, opts) { return this._mirrorCall(t => t.answerQa(playerOrId, answerIndex, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId, checkAttention: true }); }
+  mirrorTimeoutQa(playerOrId, opts) { return this._mirrorCall(t => t.timeoutQa(playerOrId, this._mirrorSetupOpts(playerOrId, opts)), { setupActor: playerOrId, checkAttention: true }); }
+  mirrorWrapUp(playerOrId, opts = {}) { return this._mirrorCall(t => t.wrapUp(playerOrId, { ...this._mirrorSetupOpts(playerOrId, opts), ...this._mirrorLeftOpts(opts) }), { setupActor: playerOrId, checkClose: true }); }
+  mirrorDancePress(playerOrId, dir, opts) { return this._mirrorCall(t => t.dancePress(playerOrId, dir, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
+  mirrorDanceHit(playerOrId, quality, opts) { return this._mirrorCall(t => t.danceHit(playerOrId, quality, this._mirrorDanceOpts(playerOrId, opts))); }
+  mirrorDanceMiss(playerOrId, opts) { return this._mirrorCall(t => t.danceMiss(playerOrId, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
+  mirrorDanceStray(playerOrId, opts) { return this._mirrorCall(t => t.danceStray(playerOrId, this._mirrorDanceOpts(playerOrId, opts)), { checkAttention: true }); }
+  mirrorAttention(teamOrId, now = this.now()) {
+    const t = this.round && this.round.trial;
+    return t instanceof Trial.MirrorTrial ? t.attentionFor(teamOrId, this.mirrorShowtimeSecondsLeft(now)) : null;
+  }
+  mirrorScore(teamOrId, now = this.now()) {
+    const t = this.round && this.round.trial;
+    return t instanceof Trial.MirrorTrial ? t.scoreFor(teamOrId, this.mirrorShowtimeSecondsLeft(now)) : null;
+  }
+  mirrorPhase() { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.phase : null; }
+  mirrorLobbyTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.lobbyTeamState(teamOrId) : null; }
+  mirrorLobbyCursorStart(playerOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.lobbyCursorStart(playerOrId) : null; }
+  mirrorCrew(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.crewFor(teamOrId) : null; }
+  mirrorSetupSlots(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupSlots(teamOrId) : []; }
+  mirrorRole(playerOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.roleOf(playerOrId) : null; }
+  mirrorFailReason(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.failReasonOf(teamOrId) : null; }
+  mirrorSetupTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.setupTeamState(teamOrId) : null; }
+  mirrorSetupView(playerOrId, now = this.now()) {
+    const t = this.round && this.round.trial;
+    if (!(t instanceof Trial.MirrorTrial)) return null;
+    let team = null;
+    if (this.teams.includes(playerOrId)) team = playerOrId;
+    else if (this.players.includes(playerOrId)) team = this.teamOf(playerOrId);
+    else {
+      const pl = this.players.find(p => p.id === playerOrId);
+      team = pl ? this.teamOf(pl) : this.teams.find(tm => tm.id === playerOrId) || null;
+    }
+    return team ? t.setupViewFor(team, now) : null;
+  }
+  mirrorDanceTeam(teamOrId) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceTeamState(teamOrId) : null; }
+  mirrorDanceView(playerOrId, now = this.now()) { const t = this.round && this.round.trial; return t instanceof Trial.MirrorTrial ? t.danceViewFor(playerOrId, now) : null; }
+  trialRanking() { return (this.round && this.round.trial && this.round.trial.ranking) || []; }
+  trialResultView(teamOrId) {
+    const team = this.teams.includes(teamOrId)
+      ? teamOrId
+      : this.teams.find(x => x.id === (teamOrId && typeof teamOrId === "object" ? teamOrId.id : teamOrId)) || null;
+    const trial = this.round && this.round.trial;
+    if (!trial || !team) return null;
+    const done = this.didRun("runTrial") || !!trial.ranking;
+    const isSop = trial instanceof Trial.SopTrial;
+    const isSplit = trial instanceof Trial.SplitBriefTrial;
+    const maxScore = isSop ? Trial.SopTrial.MAX_SCORE : isSplit ? Trial.SplitBriefTrial.MAX_SCORE : Trial.MAX_BASE;
+    const ranking = done
+      ? (trial.ranking || []).map(r => ({
+          place: r.place,
+          teamId: r.team.id,
+          teamName: r.team.name,
+          isMine: r.team === team,
+          shownScore: roundDisplayScore(r.score, maxScore),
+          won: r.won,
+        }))
+      : [];
+    const mine = ranking.find(x => x.isMine) || null;
+    const sopStepCorrect = isSop && done ? this.sopBoard(team).map((step, i) => Trial.SopTrial.STEPS[i] === step) : [];
+    return {
+      done,
+      kind: trial.kind,
+      maxScore,
+      teamWon: mine ? mine.won : !!team.won,
+      shownScore: mine ? mine.shownScore : 0,
+      winnersCount: Trial.winners(ranking.length),
+      ranking,
+      sopStepCorrect,
+    };
+  }
+  teamTrialResults(teamOrId) { const t = typeof teamOrId === "object" && teamOrId ? teamOrId : this.teams.find(x => x.id === teamOrId); return t ? { ...t.trialResults } : {}; }
+  teamStandings() {
+    const sorted = [...this.teams].sort((a, b) => b.trialWins - a.trialWins);
+    let place = 1;
+    return sorted.map((team, i) => {
+      if (i > 0 && team.trialWins < sorted[i - 1].trialWins) place = i + 1;
+      return { place, team, wins: team.trialWins };
+    });
+  }
+  statTieOrderLabel() { return Game.statTieOrderLabel(); }
+  mirrorCheckAttention(teamOrId, now = this.now()) {
+    return this._mirrorCall(t => {
+      const res = t.checkAttention(teamOrId, this.mirrorShowtimeSecondsLeft(now));
+      if (res.failed) this._maybeCloseMirrorShowtime(now);
+      return { ok: true, ...res, closed: this.didRun("runTrial") };
+    });
+  }
+  mirrorFinishTeam(teamOrId, opts = {}) {
+    return this._mirrorCall(t => {
+      const sec = typeof opts.showtimeSecondsLeft === "number" && Number.isFinite(opts.showtimeSecondsLeft)
+        ? opts.showtimeSecondsLeft
+        : this.mirrorShowtimeSecondsLeft(this.now());
+      return t.finishTeam(teamOrId, sec);
+    }, { checkClose: true });
   }
   judged() {
     this.mustBe("trial");
@@ -2233,7 +6992,9 @@ class Game {
   }
   /* Opens writing. No host: the engine picks a prompt at random. */
   startWriting() {
-    const prompt = this.judged().startWriting({ host: this.host, prompts: this.prompts });
+    const jt = this.judged();
+    if (jt.writing === "open") return jt.prompt;
+    const prompt = jt.startWriting({ host: this.host, prompts: this.prompts });
     this.refreshTimer();
     return prompt;
   }
@@ -2249,15 +7010,121 @@ class Game {
     const jt = this.judged();
     this.activity(p, now);
     const r = jt.submit(p, text, { players: this.players, submissions: this.submissions });
-    if (r.closed) this.refreshTimer();
+    if (r.closed) {
+      this.refreshTimer();
+      this.startVote();
+    }
     return r;
   }
-  /* The 3-minute timer ran out (or the host closes it). Submissions go on the game record. */
+  /* The 3-minute timer ran out (or the host closes it). Submissions go on the game record, and voting opens. */
   closeWriting() {
-    if (this.judged().closeWriting(this.submissions)) this.refreshTimer();
+    if (!this.judged().closeWriting(this.submissions)) return false;
+    this.refreshTimer();
+    this.startVote();
+    return true;
   }
   startVote() {
-    return this.judged().startVote(this.teams);
+    const jt = this.judged();
+    const hadVote = !!jt.vote;
+    const vote = jt.startVote(this.teams);
+    if (!hadVote) {
+      if (this.hooks.onVoteStart) this.hooks.onVoteStart(this, vote);
+      this._maybeCloseVote();
+    }
+    return vote;
+  }
+  _maybeCloseVote() {
+    if (this.step !== "trial" || this.didRun("runTrial")) return false;
+    const jt = this.round && this.round.trial;
+    if (!(jt instanceof Trial.JudgedTrial) || !jt.vote || jt.ranking) return false;
+    const activeVoters = this.players.filter(p => p.isActive());
+    if (!activeVoters.every(p => jt.vote.ballots.has(p))) return false;
+    this.runTrial();
+    return true;
+  }
+  /* Cast a Levels 5-6 ballot by player (or id) and target player ids. Closes and ranks when all active voters vote. */
+  castVote(voter, targetIds) {
+    const why = this.wrongStep("trial") ||
+      (!(this.round.trial instanceof Trial.JudgedTrial) ? "This level is not judged." : null);
+    if (why) return { ok: false, reason: why };
+    const jt = this.round.trial;
+    if (this.didRun("runTrial") || jt.ranking) return { ok: false, reason: "The vote is closed." };
+    if (jt.writing !== "closed" || !jt.vote) return { ok: false, reason: "Voting is not open." };
+    const v = this._resolvePlayer(voter);
+    if (!v) return { ok: false, reason: "Unknown player." };
+    if (v.isStuck()) return { ok: false, reason: "Stuck players do not vote." };
+    if (v.idle || !v.isActive()) return { ok: false, reason: "You are idle." };
+    if (jt.vote.ballots.has(v)) return { ok: false, reason: "You already voted." };
+    if (!Array.isArray(targetIds)) return { ok: false, reason: "Choose a player for every place." };
+    if (targetIds.some(x => x === "" || x === null || x === undefined)) {
+      return { ok: false, reason: "Choose a player for every place." };
+    }
+    const targets = targetIds.map(x => this._resolvePlayer(x) || this.players.find(p => String(p.id) === String(x)) || null);
+    if (targets.some(t => !t)) return { ok: false, reason: "Unknown player." };
+    this.activity(v);
+    const res = jt.vote.cast(v, targets);
+    if (!res.ok) return res;
+    const closed = this._maybeCloseVote();
+    return { ok: true, closed };
+  }
+  /* Player-scoped read-only view for Levels 5-6 judged trials. Hides other ballots, Initiative weights, stats, and types. */
+  judgedView(p) {
+    const jt = this.round && this.round.trial;
+    if (!(jt instanceof Trial.JudgedTrial)) return null;
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const done = this.didRun("runTrial") || !!jt.ranking;
+    const active = this.players.filter(x => x.isActive());
+    const vote = jt.vote;
+    const myBallot = vote && vote.ballots.has(pl) ? vote.ballots.get(pl).map(q => q.id) : null;
+    return {
+      done,
+      phase: done ? "result" : jt.writing === "open" ? "writing" : vote ? "vote" : "prompt",
+      writing: jt.writing,
+      prompt: jt.prompt ? { level: jt.prompt.level, index: jt.prompt.index, text: jt.prompt.text, custom: jt.prompt.custom } : null,
+      maxChars: Trial.JudgedTrial.MAX_CHARS,
+      mySubmission: jt.submissions.has(pl) ? jt.submissions.get(pl) : null,
+      activeCount: active.length,
+      submittedCount: active.filter(x => jt.submissions.has(x)).length,
+      hasMissingSubmissions: this.players.some(x => !x.isStuck() && !jt.submissions.has(x)),
+      submissions: jt.writing === "closed"
+        ? this.teams.flatMap(t => t.members
+            .filter(q => jt.submissions.has(q))
+            .map(q => ({
+              playerId: q.id,
+              name: q.name,
+              teamId: t.id,
+              teamName: t.name,
+              isMine: t === team,
+              text: jt.submissions.get(q),
+            })))
+        : [],
+      voteOpen: !!vote && !done,
+      canVote: !!vote && !done && pl.isActive(),
+      isStuck: pl.isStuck(),
+      isIdle: !!pl.idle,
+      choices: vote && !done
+        ? vote.choicesFor(pl).map(q => ({ id: q.id, name: q.name, teamName: this.teamOf(q).name }))
+        : [],
+      slots: vote && !done ? vote.slotsFor(pl) : 0,
+      myBallot,
+      hasVoted: myBallot !== null,
+      votersDone: vote ? active.filter(x => vote.ballots.has(x)).length : 0,
+      votersTotal: active.length,
+      ranking: done
+        ? (jt.ranking || []).map(r => ({
+            place: r.place,
+            teamId: r.team.id,
+            teamName: r.team.name,
+            isMine: r.team === team,
+            total: r.total,
+            score: r.score,
+            firsts: r.firsts,
+            won: r.won,
+          }))
+        : null,
+    };
   }
   /* Returns the ranked list: [{ team, place, won, ... }] best first. */
   runTrial() {
@@ -2285,6 +7152,18 @@ class Game {
     if (why) return { ok: false, reason: why };
     return this.round.accuse(accuser, target, this.teamOf(accuser), this.rng);
   }
+  /* Player clicks Skip on Glitch Report: validates step/eligibility only; never closes the Glitch Report timer early. */
+  skipAccusation(p) {
+    const pl = this._resolvePlayer(p);
+    const why = this.wrongStep("glitchReport") ||
+      (this.didRun("endGlitchReport") ? "The Glitch Report is closed." : null) ||
+      (!pl ? "Unknown player." : null) ||
+      (pl.accusedThisRound ? "You already accused this round." : null) ||
+      (pl.idle ? "You are idle." : null);
+    if (why) return { ok: false, reason: why };
+    this.round.completed.add("skipAccusation:" + pl.id);
+    return { ok: true, skipped: true };
+  }
   endGlitchReport() {
     this.mustBe("glitchReport");
     this.once("endGlitchReport");
@@ -2303,7 +7182,9 @@ class Game {
     const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
       "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
     if (why) return { ok: false, reason: why };
-    return this.round.gift(giver, receiver, this.teamOf(giver), pts, this.rng);
+    const res = this.round.gift(giver, receiver, this.teamOf(giver), pts, this.rng);
+    if (res.ok && this.hooks.onGift) this.hooks.onGift(this, res.gift);
+    return res;
   }
   /* The receiver answers a pending gift: accept (true) or decline (false). */
   answerGift(gift, accept) {
@@ -2437,13 +7318,196 @@ class Game {
     Object.assign(g, {
       teams, players, rng, host: data.host, level: data.level, round: null,
       log: data.log.map(x => ({ ...x })), prompts: data.prompts.map(x => ({ ...x })), submissions: data.submissions.map(x => ({ ...x })),
-      attendance: new Attendance(data.attendance), economy: new Economy(), hooks,
+      attendance: new Attendance(data.attendance), economy: new Economy(), hooks, _closingPhase: null,
     });
     g._timer = g._makeTimer(clock);
     g._timer.restore({ running: data.running, timer: data.timer });
-    if (data.round) g.round = Round.fromJSON(data.round, { byId, trialFromJSON: d => Trial.fromJSON(d, { rng, teams, byId }) });
+    if (data.round) {
+      g.round = Round.fromJSON(data.round, { byId, trialFromJSON: d => Trial.fromJSON(d, { rng, teams, byId }) });
+      if (g.round.trial instanceof Trial.SplitBriefTrial) g._wireSplitBrief(g.round.trial);
+    }
     if (tick) g.tick();
     return g;
+  }
+
+  /* Player-scoped read/action pass-throughs (Step 8): screens read only p's own data plus public board fields. */
+  playerState(p, draft = undefined) {
+    const pl = this._resolvePlayer(p);
+    if (!pl) return null;
+    const team = this.teamOf(pl);
+    const levelsDone = this.over ? this.level : this.didRun("finishRound") ? this.level : Math.max(0, this.level - 1);
+    const useDraft = draft === undefined ? pl.draft : draft;
+    return {
+      id: pl.id,
+      name: pl.name,
+      teamId: team ? team.id : null,
+      teamName: team ? team.name : null,
+      level: this.level,
+      levelsDone,
+      attrs: pl.attrs,
+      draft: { ...pl.draft },
+      hearts: pl.hearts.count,
+      glitches: pl.glitches,
+      status: pl.boardStatus(),
+      isStuck: pl.isStuck(),
+      idle: !!pl.idle,
+      earned: pl.earned,
+      placedThisRound: pl.placedThisRound,
+      placeLeft: pl.placeLeft(pl.draft),
+      canCashOut: pl.canCashOut(),
+      cashedOutThisRound: !!pl.cashedOutThisRound,
+      pathProgress: pl.pathProgress,
+      pathDone: !!pl.pathDone,
+      gradChecks: pl.gradChecks(),
+      graduates: pl.graduates(),
+      abilityLines: pl.abilityLines(useDraft),
+    };
+  }
+  roundSummary(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    const r = this.round;
+    if (!pl || !r || !team) return null;
+    const accClosed = this.didRun("endGlitchReport");
+    const acc = r.accusations.find(a => a.accuser === pl);
+    const skipped = !acc && (r.completed.has("skipAccusation:" + pl.id) || accClosed);
+    return {
+      n: r.n,
+      name: r.name,
+      trialName: r.trialName,
+      attr: r.attr,
+      cost: r.cost,
+      isFinal: r.isFinal,
+      trialKind: r.trialKind,
+      teamWon: !!team.won,
+      trialPayment: r.trialPayments && r.trialPayments[pl.id] ? { ...r.trialPayments[pl.id] } : null,
+      sopTimedOut: !!r.sopTimedOut,
+      sopSubmitted: r.completed.has("submitSop"),
+      sopResult: r.sopResults && r.sopResults[team.id] ? { ...r.sopResults[team.id] } : null,
+      ranking: (r.trial && r.trial.ranking ? r.trial.ranking : []).map(x => ({
+        place: x.place,
+        teamId: x.team.id,
+        teamName: x.team.name,
+        isMine: x.team === team,
+        base: x.base,
+        score: x.score,
+        won: x.won,
+      })),
+      drainOn: r.drainOn(pl),
+      caughtOn: accClosed ? r.caughtOn(team, pl).map(q => ({ id: q.id, name: q.name })) : [],
+      accusation: acc
+        ? { target: acc.target.name, result: !!acc.correct, safe: !!acc.safe, done: true, skipped: false }
+        : { target: "", result: null, safe: false, done: skipped, skipped },
+      earnings: r.earnings && r.earnings[pl.id] ? r.earnings[pl.id].slice() : [],
+    };
+  }
+  sabotageOptions(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const stepWhy = this.wrongStep("openFloor");
+    const cost = Sabotage.cost(pl);
+    const targets = team.mates(pl).map(q => {
+      const why = stepWhy || Sabotage.check(pl, q, team);
+      return {
+        id: q.id,
+        name: q.name,
+        status: q.boardStatus(),
+        isStuck: q.isStuck(),
+        canSabotage: !why,
+        reason: why,
+      };
+    });
+    return {
+      canRole: pl.type.canSabotage(),
+      open: !stepWhy,
+      cost,
+      attr: this.round ? this.round.attr : null,
+      blockedThisRound: !!pl.sabotageBlockedThisRound,
+      caughtByTeam: pl.wasCaughtBy(team.id),
+      canAny: targets.some(t => t.canSabotage),
+      targets,
+    };
+  }
+  giftOptions(p) {
+    const pl = this._resolvePlayer(p);
+    const team = pl ? this.teamOf(pl) : null;
+    if (!pl || !team) return null;
+    const stepWhy = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+      "Not allowed now. Gifts happen in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
+    const targets = team.mates(pl).map(q => ({
+      id: q.id,
+      name: q.name,
+      status: q.boardStatus(),
+      isStuck: q.isStuck(),
+      amounts: q.isStuck()
+        ? []
+        : [1, 2].map(pts => {
+            const cost = Gift.cost(pl, pts);
+            const why = stepWhy || Gift.check(pl, q, team, pts);
+            return { pts, cost, canGift: !why, reason: why };
+          }),
+    }));
+    const gifts = this.round ? this.round.gifts : [];
+    const sent = [];
+    const incoming = [];
+    gifts.forEach((g, index) => {
+      if (g.giver === pl) {
+        sent.push({
+          index,
+          toId: g.receiver.id,
+          toName: g.receiver.name,
+          pts: g.pts,
+          cost: g.cost,
+          status: g.status === "refused" ? "declined" : g.status,
+          discount: !!g.discount,
+          cancelled: !!g.cancelled,
+          overflow: g.overflow || 0,
+        });
+      }
+      if (g.receiver === pl && g.status !== "refused") {
+        incoming.push({
+          index,
+          fromId: g.giver.id,
+          fromName: g.giver.name,
+          pts: g.pts,
+          status: g.status,
+          target: g.target || null,
+        });
+      }
+    });
+    return {
+      open: !stepWhy,
+      canAcceptGifts: pl.type.canAcceptGifts(),
+      costs: { 1: Gift.cost(pl, 1), 2: Gift.cost(pl, 2) },
+      targets,
+      sent,
+      incoming,
+    };
+  }
+  answerGiftByIndex(p, index, accept) {
+    const pl = this._resolvePlayer(p);
+    if (!pl) return { ok: false, reason: "Unknown player." };
+    const why = (this.step === "openFloor" || this.step === "giftWindow") ? null :
+      "Not allowed now. Gifts are answered in Open Floor or the Gift window; the game is in " + this.stepName() + ".";
+    if (why) return { ok: false, reason: why };
+    if (!this.round) return { ok: false, reason: "No active round." };
+    if (!Number.isInteger(index) || index < 0 || index >= this.round.gifts.length) {
+      return { ok: false, reason: "No such gift." };
+    }
+    const g = this.round.gifts[index];
+    if (g.receiver !== pl) return { ok: false, reason: "That gift is not for you." };
+    return this.round.answerGift(g, accept);
+  }
+
+  /* Anomalies (Step 9): per-player found anomaly ids ("L", "id", "loop"), never exposed on Game.board(). */
+  recordAnomaly(p, id) {
+    const pl = this._resolvePlayer(p);
+    return pl ? pl.recordAnomaly(id) : false;
+  }
+  anomaliesFor(p) {
+    const pl = this._resolvePlayer(p);
+    return pl ? pl.anomalies() : [];
   }
 
   /* Progress board: read-only, open to every player at any time. Returns new plain objects with only
@@ -2470,6 +7534,32 @@ class Game {
   }
 
   static get POINTS() { return Economy.POINTS; }
+  static statTieOrderLabel() {
+    return Attributes.TIE_ORDER.map(k => Attributes.ABILITY[k].name).join(", ");
+  }
+  static checkEmail(email) {
+    const value = String(email == null ? "" : email).trim();
+    if (!/^[^@\s]+@icstars\.org$/i.test(value)) {
+      return {
+        ok: false,
+        value,
+        reason: "Use your i.c.stars email (ends in @icstars.org). This game is for the i.c.stars community only.",
+      };
+    }
+    return { ok: true, value };
+  }
+  static checkJoinCode(code, expected = "CYCLE60") {
+    const value = String(code == null ? "" : code).trim().toUpperCase();
+    const target = String(expected == null ? "" : expected).trim().toUpperCase();
+    if (!target || value !== target) {
+      return {
+        ok: false,
+        value,
+        reason: "That join code doesn't match an open game. Check with your host.",
+      };
+    }
+    return { ok: true, value };
+  }
 }
 
 Game.QUIET_HEART_TEAM_MAX = QUIET_HEART_TEAM_MAX;
@@ -2490,6 +7580,39 @@ const Bots = (() => {
 
 const KEYS = () => Player.KEYS;
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
+const SPLIT_CARD_WINDOW_MS = 30000;
+const SPLIT_TWIST_WINDOW_MS = 10000;
+
+/* Deterministic 32-bit FNV-1a + Murmur3 mix for bot note timing (no Math.random, no Rng draws). */
+function hashInt(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+function splitDealSignature(game, trial) {
+  return game.teams
+    .map(t => t.members.map(m => m.id + ":" + trial.cardsFor(m).map(c => c.id).join(",")).join(";"))
+    .join("|");
+}
+
+function splitTrialStart(game, trial) {
+  if (game.timer && game.timer.name === "splitBrief") {
+    return game.timer.deadline - Trial.SplitBriefTrial.TRIAL_SECONDS * 1000;
+  }
+  if (trial.twistDeadline != null) {
+    return trial.twistDeadline - Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+  }
+  return null;
+}
 
 const Bots = {
   SETTINGS: { sabotageRate: 0.5, victimAccuses: 0.9, otherAccuses: 0.25, idleAccuses: 0.05,
@@ -2503,6 +7626,12 @@ const Bots = {
     const spend = {};
     order.forEach((k, i) => { spend[k] = [5, 4, 3, 2, 1][i]; });
     return spend;
+  },
+  /* Pure helper for dev jump: default type "coop", fill typicalSpend if points are unspent. */
+  devBuild(type, spend) {
+    const t = type || "coop";
+    const s = spend && typeof spend === "object" && Player.spendLeft(spend) === 0 ? spend : Bots.typicalSpend(t);
+    return { type: t, spend: s };
   },
   makePlayer(id, name, type) {
     return new Player({ id, name, type, spend: Bots.typicalSpend(type), isBot: true });
@@ -2529,7 +7658,7 @@ const Bots = {
   openFloor(game, rng) {
     for (const team of game.teams) {
       for (const p of team.members) {
-        if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageBlockedThisRound || p.wasCaughtBy(team.id)) continue;
+        if (!p.isBot || !p.type.canSabotage() || p.isStuck() || p.sabotageBlockedThisRound || p.sabotagesThisRound > 0 || p.wasCaughtBy(team.id)) continue;
         if (!p.hearts.has(Sabotage.cost(p))) continue;
         if (rng() >= Bots.SETTINGS.sabotageRate) continue;
         const targets = team.mates(p).filter(q => !q.isStuck());
@@ -2547,9 +7676,9 @@ const Bots = {
       game.startWriting();
       Bots.submit(game);
       game.closeWriting();
-      Bots.vote(game, game.startVote(), rng);
+      if (!game.didRun("runTrial")) Bots.vote(game, game.startVote(), rng);
     }
-    return game.runTrial();
+    return game.didRun("runTrial") ? game.trialRanking() : game.runTrial();
   },
 
   /* Levels 5-6: every active bot submits the text "Bot answer" so tests still run the vote. */
@@ -2632,26 +7761,216 @@ const Bots = {
   /* Typical placement: every other point to the lowest bonus attribute, else the lowest open one. */
   allocate(p, n, final) { return Economy.allocate(p, n, final); },
 
+  /* Level 2 (Split Brief): bots post accurate card notes in 0-30s and twist note within 10s of twist,
+     keeping 1 note in reserve until the twist fires. After the twist fires, any bot (ghosted or not)
+     may use its reserved note, still capped at MAX_NOTES (3) per player. Bots never edit the board or lock in. */
+  splitBrief(game, now = game.now()) {
+    if (game.step !== "trial" || game.didRun("runTrial")) return;
+    const trial = game.round && game.round.trial;
+    if (!(trial instanceof Trial.SplitBriefTrial) || !trial.dealt || trial.ranking) return;
+    const startAt = splitTrialStart(game, trial);
+    if (startAt == null) return;
+    const sig = splitDealSignature(game, trial);
+    const twistAt = trial.twistDeadline != null ? trial.twistDeadline : startAt + Trial.SplitBriefTrial.TWIST_SECONDS * 1000;
+    const reserveCount = Trial.SplitBriefTrial.MAX_NOTES - 1;
+
+    for (const team of game.teams) {
+      const posted = new Set(trial.notesFor(team).map(n => n.posterId + "\n" + n.text));
+      const events = [];
+
+      team.members.forEach((p, memberIndex) => {
+        if (!p.isBot || !p.isActive()) return;
+        const twist = trial.twistFor(p);
+        const twistAtNote = trial.twistFired && twist
+          ? twistAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|twist") % (SPLIT_TWIST_WINDOW_MS + 1))
+          : null;
+
+        if (twistAtNote != null && !posted.has(p.id + "\n" + twist.botNote)) {
+          events.push({ p, memberIndex, at: twistAtNote, kindOrder: 0, cardIndex: -1, text: twist.botNote, isTwist: true });
+        }
+
+        const cards = trial.cardsFor(p).map((c, cardIndex) => ({
+          card: c,
+          cardIndex,
+          at: startAt + (hashInt(sig + "|" + game.level + "|" + p.id + "|" + c.id) % (SPLIT_CARD_WINDOW_MS + 1)),
+        })).sort((a, b) => a.at - b.at || a.cardIndex - b.cardIndex);
+
+        cards.forEach((item, rank) => {
+          if (posted.has(p.id + "\n" + item.card.botNote)) return;
+          let postAt = item.at;
+          if (rank >= reserveCount) {
+            if (!trial.twistFired) return;
+            postAt = Math.max(postAt, twistAtNote != null ? twistAtNote : twistAt);
+          }
+          events.push({ p, memberIndex, at: postAt, kindOrder: 1, cardIndex: item.cardIndex, text: item.card.botNote, isTwist: false });
+        });
+      });
+
+      events.sort((a, b) => a.at - b.at || a.kindOrder - b.kindOrder || a.memberIndex - b.memberIndex || a.cardIndex - b.cardIndex);
+
+      for (const ev of events) {
+        if (now < ev.at) continue;
+        if (posted.has(ev.p.id + "\n" + ev.text)) continue;
+        if (trial.notesLeft(ev.p) <= 0) continue;
+        if (!ev.isTwist) {
+          const twist = trial.twistFor(ev.p);
+          const needsTwistSlot = !trial.twistFired || (twist && !posted.has(ev.p.id + "\n" + twist.botNote));
+          if (needsTwistSlot && trial.notesLeft(ev.p) <= 1) continue;
+        }
+        const res = trial.postNote(ev.p, ev.text);
+        if (res.ok) posted.add(ev.p.id + "\n" + ev.text);
+      }
+    }
+  },
+
+  /* Level 3 (The Mirror: Presentation Day): bots connect at 3-15s in lobby, bot setup steps run
+     on schedule with 30% hiccups (-3 attention) and auto wrap-up, bot dancers boost +1 every
+     1.5-2.5s up to 45 with no misses, bot-only teams keep their seeded random 0-100 attention,
+     and idle humans follow the same bot behavior as auto-pilot. Calls MirrorTrial and Game only. */
+  mirror(game, now = game.now()) {
+    if (game.step !== "trial" || game.didRun("runTrial")) return;
+    const trial = game.round && game.round.trial;
+    if (!(trial instanceof Trial.MirrorTrial) || trial.ranking) return;
+
+    if (trial.phase === "lobby") {
+      const elapsed = game.mirrorLobbyElapsed(now);
+      if (elapsed === null) return;
+      const dueBots = trial.botConnectTimes()
+        .filter(e => e.seconds <= elapsed)
+        .sort((a, b) => a.seconds - b.seconds || a.playerId - b.playerId);
+      for (const entry of dueBots) {
+        if (trial.phase !== "lobby" || game.didRun("runTrial")) return;
+        const st = trial.lobbyPlayerState(entry.playerId);
+        if (!st || st.connected) continue;
+        game.mirrorConnect(entry.playerId);
+      }
+      for (const team of game.teams) {
+        for (const p of team.members) {
+          if (trial.phase !== "lobby" || game.didRun("runTrial")) return;
+          if (p.isBot || p.isStuck() || !p.idle) continue;
+          const st = trial.lobbyPlayerState(p.id);
+          if (!st || st.connected) continue;
+          game.mirrorConnect(p.id);
+        }
+      }
+      return;
+    }
+
+    if (trial.phase !== "showtime") return;
+    const elapsed = game.mirrorShowtimeElapsed(now);
+    if (elapsed === null) return;
+
+    const maxSec = Trial.MirrorTrial.SHOWTIME_SECONDS;
+    const boostCap = MirrorData.dance.boostCap;
+    const activeTeams = () => game.teams.filter(
+      team => !trial.isBotOnlyTeam(team) && !trial.isTeamFailed(team) && trial.lockedAttentionFor(team) === null
+    );
+    const autoIdsFor = team => new Set(
+      team.members.filter(p => !p.isBot && !p.isStuck() && p.idle).map(p => p.id)
+    );
+
+    // Prime newly idle human dancers so DanceCrew assigns their nextBotBoostAt via seeded Rng.
+    for (const team of activeTeams()) {
+      const autoIds = autoIdsFor(team);
+      if (!autoIds.size) continue;
+      const needsPrime = trial.dancersFor(team).some(
+        d => !d.isBot && autoIds.has(d.playerId) && d.boost < boostCap && d.nextBotBoostAt === null
+      );
+      if (needsPrime) trial.advanceBotDance(team, 0, { autoPilotIds: autoIds });
+    }
+
+    // Advance all active teams in strict chronological order so Rng draws match regardless of tick size.
+    const maxIter = Math.max(1000, game.players.length * 100);
+    let guard = 0;
+    while (trial.phase === "showtime" && !trial.ranking && !game.didRun("runTrial")) {
+      if (++guard > maxIter) throw new Error("Mirror bot loop.");
+      let nextAt = Infinity;
+      const teams = activeTeams();
+      const autoByTeam = new Map();
+
+      for (const team of teams) {
+        const autoIds = autoIdsFor(team);
+        autoByTeam.set(team.id, autoIds);
+        for (const d of trial.dancersFor(team)) {
+          if ((!d.isBot && !autoIds.has(d.playerId)) || d.boost >= boostCap || d.nextBotBoostAt === null) continue;
+          if (d.nextBotBoostAt <= elapsed && d.nextBotBoostAt < nextAt) nextAt = d.nextBotBoostAt;
+        }
+        const curPid = trial.setupCurrentPlayerId(team);
+        const setupDue = trial.botSetupDueAt(team, { autoPilot: curPid !== null && autoIds.has(curPid) });
+        if (setupDue !== null && setupDue <= elapsed && setupDue < nextAt) nextAt = setupDue;
+      }
+
+      if (!Number.isFinite(nextAt)) break;
+
+      const secLeftAt = Math.max(0, maxSec - nextAt);
+      for (const team of teams) {
+        if (trial.isTeamFailed(team) || trial.lockedAttentionFor(team) !== null) continue;
+        const autoIds = autoByTeam.get(team.id);
+        const preAtt = trial.checkAttention(team, secLeftAt);
+        if (preAtt.failed) continue;
+
+        const hasDanceDue = trial.dancersFor(team).some(
+          d => (d.isBot || autoIds.has(d.playerId)) && d.boost < boostCap && d.nextBotBoostAt !== null && d.nextBotBoostAt <= nextAt
+        );
+        if (hasDanceDue) trial.advanceBotDance(team, nextAt, { autoPilotIds: autoIds });
+
+        const curPid = trial.setupCurrentPlayerId(team);
+        const setupDue = trial.botSetupDueAt(team, { autoPilot: curPid !== null && autoIds.has(curPid) });
+        if (setupDue !== null && setupDue <= nextAt) {
+          trial.advanceBotSetup(team, nextAt, { autoPilotIds: autoIds });
+          if (trial.lockedAttentionFor(team) === null && !trial.isTeamFailed(team)) {
+            trial.checkAttention(team, secLeftAt);
+          }
+        }
+      }
+    }
+  },
+
   /* Game hooks for the prototype (Part 13): bots act at the same moments the screen code used to call them.
-     beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends.
-     onStart: bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     beforeClose: bot Contrarians sabotage as Open Floor ends; bots accuse as the Glitch Report ends;
+       Split Brief bots post any due notes before the trial closes; Mirror bots finish any due connect/setup/dance.
+     onStart: Split Brief and Mirror initialize/process bot actions; bots submit "Bot answer" when writing opens;
+       bots gift when the gift window opens; place points when Stats Update or Graduation opens.
+     onVoteStart: bots cast their ballots when Levels 5-6 voting opens.
+     onTick: Split Brief and Mirror bots advance scheduled actions as time passes.
+     onGift: bot receiver answers an incoming gift immediately using game.rng.
      Pass as new Game({ ..., hooks: Bots.hooks }) or Game.fromJSON(data, { hooks: Bots.hooks }). */
   hooks: {
     beforeClose(game, name) {
       if (name === "openFloor") Bots.openFloor(game, game.rng);
       else if (name === "glitchReport") Bots.accusations(game, game.rng);
+      else if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
     },
     onStart(game, name) {
-      if (name === "giftWindow") Bots.gifts(game, game.rng);
+      if (name === "splitBrief") Bots.splitBrief(game, game.now());
+      else if (name === "mirrorLobby" || name === "mirrorShowtime") Bots.mirror(game, game.now());
+      else if (name === "writing") Bots.submit(game);
+      else if (name === "giftWindow") Bots.gifts(game, game.rng);
       else if (name === "statsUpdate") Bots.statsUpdate(game);
       else if (name === "graduation") Bots.graduation(game);
+    },
+    onVoteStart(game, vote) {
+      Bots.vote(game, vote, game.rng);
+    },
+    onTick(game, now) {
+      Bots.splitBrief(game, now);
+      Bots.mirror(game, now);
+    },
+    onGift(game, gift) {
+      Bots.answer(game, gift, game.rng);
+    },
+    onFastForward(game, phase) {
+      if (phase === "writing") Bots.submit(game);
+      else if (phase === "vote") Bots.vote(game, game.round.trial.vote, game.rng);
+      else if (phase === "openFloor" || phase === "giftWindow") Bots.answerAll(game, game.rng);
     },
   },
 
   /* Bot votes: rank 3 players from other teams at random. */
   vote(game, vote, rng) {
     for (const p of game.players) {
-      if (!p.isBot || p.isStuck()) continue;
+      if (!p.isBot || p.isStuck() || vote.ballots.has(p)) continue;
       const pool = vote.choicesFor(p).slice();
       const ranking = [];
       while (ranking.length < 3 && pool.length) ranking.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
@@ -2662,5 +7981,5 @@ const Bots = {
 return Bots;
 })();
 
-globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Wallet, PlayerStatus, Attributes, PathTracker, Player, Team, Sabotage, Accusation, Gift, Round, Vote, Trial, Attendance, Timer, Economy, Game, Bots });
+globalThis.EP = Object.assign(globalThis.EP || {}, { Rng, Hearts, CharacterType, Wallet, PlayerStatus, Attributes, PathTracker, Player, Team, Sabotage, Accusation, Gift, Round, Vote, Scenarios, MirrorData, MirrorParts, Trial, Attendance, Timer, Economy, Game, Bots });
 })();

@@ -1,0 +1,21 @@
+-- 1. Every bot card note posted by 30s, matches botNote, posterName is bot's name
+PASS  All bot card notes posted by 30s  -> notes=16
+PASS  Every note text matches botNote and posterName matches bot name
+PASS  Bots never edit the board or lock in
+-- 2. Twist held by a bot: twist note posted between 90s and 100s
+PASS  No twist note posted before 90s  -> firstAt=92s
+PASS  All 4 bot teams posted twist note between 90s and 100s
+PASS  Twist note poster is the bot holding the twist
+-- 3. Bot holding 3 cards: 2 before twist, 1 spare; twist holder uses spare for twist
+PASS  3-card bot posts 2 card notes before twist and keeps 1 spare
+PASS  3-card bot with twist uses its spare note for the twist note
+PASS  3-card bot without twist uses its spare note for its 3rd card
+-- 4. Save at 15s, wake at 40s: no duplicate notes, all card notes present
+PASS  Save at 15s, wake at 40s: no duplicate notes and all card notes present
+PASS  Bots still never edited board or locked in after reload
+-- 5. Same seed gives the same note times every run
+PASS  Same seed produces identical note times and order
+-- 6. Stuck and idle bots do nothing
+PASS  Stuck and idle bots post 0 notes
+
+13 passed, 0 failed.

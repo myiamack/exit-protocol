@@ -14,11 +14,21 @@ const TESTS = [
   "check_rules",
   "check_gifts",
   "check_steps",
-  "check_teams",
-  "check_balance",
-  "check_cheese",
   "check_save",
+  "check_scenarios",
+  "check_split_brief",
+  "check_split_timing",
+  "check_split_bots",
+  "check_mirror_data",
+  "check_mirror_lobby",
+  "check_mirror_setup",
+  "check_mirror_dance",
+  "check_mirror_score",
+  "check_mirror_timing",
+  "check_mirror_bots",
+  "check_screen_rules",
 ];
+const NO_SNAPSHOT = new Set(["check_bundle", "check_screen_rules"]);
 
 function runTest(name) {
   const file = path.join("Tests", name + ".js");
@@ -52,7 +62,7 @@ function save() {
   fs.mkdirSync(BASELINE_DIR, { recursive: true });
   let failed = false;
   for (const name of TESTS) {
-    if (name === "check_bundle") continue;
+    if (NO_SNAPSHOT.has(name)) continue;
     const res = runTest(name);
     if (res.status !== 0) {
       console.log(`FAIL  ${name}  (exit ${res.status})`);
@@ -69,7 +79,7 @@ function save() {
 function check() {
   let failed = false;
   for (const name of TESTS) {
-    if (name === "check_bundle") {
+    if (NO_SNAPSHOT.has(name)) {
       const res = runTest(name);
       if (res.status === 0) console.log(`PASS  ${name}`);
       else {

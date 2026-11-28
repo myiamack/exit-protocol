@@ -1,0 +1,33 @@
+-- 1. Hook wiring, no Game-to-Bots link, no MirrorParts duplication, and guards
+PASS  No Game-to-Bots link, Bots.mirror delegates without Math.random/MirrorParts/team names, Round.LEVELS[2] uses mirror, and guards hold
+-- 2. Lobby bot connections inside 3..15s window and beforeClose catch-up
+PASS  Bots connect at exact seeded 3..15s lobby times while human remains unconnected until human connects
+PASS  Lobby closes early at exact last bot connect second (<= 15s) into 1s reveal
+PASS  Jumping straight to 30s closes mirrorLobby via beforeClose after connecting all bots
+-- 3. Bot setup steps run in order with ~30% hiccups (-3 attention) and wrap-up
+PASS  Bot setup runs cables/sound/mic/deck/qa/wrapUp at 4/10/16/22/28/34s and locks team score  -> seed=303, hiccups=0, att=41.17
+PASS  Across 100 bot setup runs (500 steps), hiccup rate is ~30% and each hiccup costs 3 attention  -> 152/500 (30.4%)
+-- 4. Bot dancers boost +1 every 1.5..2.5s up to 45 with no misses
+PASS  Bot dancers gain +1 every 1.5..2.5s up to 45 with zero misses/strays over full 75s showtime  -> boosts=38,35
+PASS  Active human dancer gets 0 bot boosts; auto-pilot stops cleanly at boost cap 45
+-- 5. Bot-only teams get seeded random attention 0..100 and 0..7 score
+PASS  All-bot-only game rolls 0..100 attention on showtime start, keeps it constant, and scores on 75s close
+PASS  Bot-only random attention across 30 seeds stays integer 0..100, varies, and repeats on same seed  -> distinct=56
+-- 6. Mixed team combining humans and bots (both turn orders)
+PASS  Human slot 0 -> Bot slot 1 handoff: bots wait for human, boost dance, then complete deck/qa/wrapUp
+PASS  Bot slot 0 -> Human slot 1 handoff: bot completes cables/sound/mic, waits for human, human dances & wraps up
+-- 7. Idle human on auto-pilot (pre-lobby, mid-lobby, Attendance mid-showtime, and return)
+PASS  Pre-lobby idle human is excluded from lobby/crews while remaining bots finish cleanly
+PASS  Human going idle mid-lobby is auto-connected by Bots.hooks so team passes lobby
+PASS  Real Attendance miss mid-showtime triggers idle auto-pilot to finish Setup Crew and wrap up  -> missedAt=76s
+PASS  Idle human dancer gains +1 auto-pilot boosts, then stops immediately when activity() clears idle
+-- 8. Save and load mid-showtime with bots matches unbroken run identically
+PASS  Mid-showtime save (15s) is plain JSON and unbroken, 1s-reload, 50s-jump, and 100s-jump twins end identically  -> 4 twins identical
+PASS  Long-running bot dancers across 75s match identically after mid-showtime save at both 50s and 100s catch-up
+PASS  Attention-0 failure with bot dancers matches identically on late wake (no resurrection by later bot boosts)
+-- 9. Fixed-seed repeatability across full Mirror trial
+PASS  Same fixed seed produces identical full Mirror bot run; different seed varies
+-- 10. Idle human dancer gets zero -2 misses during Game.tick() and presses are rejected
+PASS  Idle human dancer gets 0 misses on Game.tick(), gains auto-pilot boosts, and press/hit/miss/stray are rejected
+
+21 passed, 0 failed.
